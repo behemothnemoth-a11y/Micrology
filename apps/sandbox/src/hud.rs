@@ -152,6 +152,8 @@ pub fn update(
     let (loads, saves, meshing) = tasks.counts();
     let footprint = world.footprint();
     let camera_region = global.cell().region();
+    let account = stream.streamer.account();
+    let budget = stream.streamer.budget();
 
     **text.into_inner() = format!(
         "Micrology · DROP 0002 · mesher: {mesher}\n\
@@ -162,6 +164,8 @@ pub fn update(
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
+         budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
+         evicted {evicted}  withheld {withheld}\n\
          last rebuild {rebuilt} section(s)   material: {material}   fps {fps:.0}\n\
          {status}",
         mesher = geometry.compiler.name(),
@@ -199,11 +203,27 @@ pub fn update(
         palette_bytes = human_bytes(footprint.palette_bytes),
         mesh_bytes = human_bytes(stats.mesh_bytes),
         inflight = human_bytes(stream.scheduler.awaiting_apply_bytes()),
+        used = human_bytes(account.total()),
+        soft = human_bytes(budget.soft_bytes),
+        hard = human_bytes(budget.hard_bytes),
+        pressure = pressure_label(stream.streamer.pressure()),
+        radius = stream.streamer.load_radius_in_use(),
+        evicted = streaming.evicted_for_budget,
+        withheld = streaming.loads_withheld,
         rebuilt = geometry.cache.last_rebuild_sections(),
         material = palette.current_name(),
         fps = fps,
         status = status.0,
     );
+}
+
+/// How memory pressure reads on the overlay.
+fn pressure_label(pressure: engine_stream::Pressure) -> &'static str {
+    match pressure {
+        engine_stream::Pressure::Comfortable => "ok",
+        engine_stream::Pressure::OverSoft => "OVER SOFT",
+        engine_stream::Pressure::OverHard => "OVER HARD",
+    }
 }
 
 /// Bytes in a form a person can read at a glance.

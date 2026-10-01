@@ -44,8 +44,12 @@ pub struct StreamRes {
 
 impl StreamRes {
     pub fn new(dir: PathBuf, meta: WorldMeta) -> Self {
+        let mut streamer = RegionStreamer::new(StreamingConfig::default());
+        // Deliberately modest: a budget nobody ever reaches is a budget that
+        // was never tested.
+        streamer.set_budget(engine_stream::MemoryBudget::with_ceiling(96 * 1024 * 1024));
         Self {
-            streamer: RegionStreamer::new(StreamingConfig::default()),
+            streamer,
             scheduler: MeshScheduler::new(SchedulerLimits {
                 max_active_mesh_jobs: 6,
                 max_results_applied_per_tick: 4,
@@ -67,16 +71,52 @@ impl StreamRes {
 }
 
 /// Work handed to the async compute pool.
+///
+/// Each task carries the bytes it owns, because in-flight work counts against
+/// the memory budget just as resident data does — a budget that ignores the
+/// queue is one that scheduling alone can blow.
 #[derive(Resource, Default)]
 pub struct StreamTasks {
     loads: Vec<(LoadTicket, Task<RegionLoad>)>,
-    saves: Vec<(SaveTicket, Task<bool>)>,
-    meshes: Vec<Task<engine_stream::MeshJobResult>>,
+    saves: Vec<(SaveTicket, u64, Task<bool>)>,
+    meshes: Vec<(u64, Task<engine_stream::MeshJobResult>)>,
 }
 
 impl StreamTasks {
     pub fn counts(&self) -> (usize, usize, usize) {
         (self.loads.len(), self.saves.len(), self.meshes.len())
+    }
+
+    /// Bytes held by mesh job snapshots currently compiling.
+    pub fn mesh_snapshot_bytes(&self) -> u64 {
+        self.meshes.iter().map(|(bytes, _)| bytes).sum()
+    }
+
+    /// Bytes held by region snapshots currently being written.
+    pub fn io_snapshot_bytes(&self) -> u64 {
+        self.saves.iter().map(|(_, bytes, _)| bytes).sum()
+    }
+}
+
+/// Measure where memory is going, so the budget has something real to act on.
+///
+/// The pieces live in different places — the world owns cells, the mesh cache
+/// owns compiled geometry, the scheduler and the task list own work in flight —
+/// so only the host can add them up.
+pub fn measure_memory(
+    world: &WorldRes,
+    geometry: &GeometryRes,
+    stream: &StreamRes,
+    tasks: &StreamTasks,
+) -> engine_stream::MemoryAccount {
+    let footprint = world.0.footprint();
+    engine_stream::MemoryAccount {
+        volume_bytes: footprint.cell_bytes,
+        palette_bytes: footprint.palette_bytes,
+        cpu_mesh_bytes: geometry.cache.stats().mesh_bytes,
+        mesh_snapshot_bytes: tasks.mesh_snapshot_bytes(),
+        awaiting_apply_bytes: stream.scheduler.awaiting_apply_bytes(),
+        io_snapshot_bytes: tasks.io_snapshot_bytes(),
     }
 }
 
@@ -98,6 +138,11 @@ pub fn drive_streaming(
     };
     let camera_region = camera.global.cell().region();
 
+    // Tell the engine what memory is actually being used before it decides
+    // what else to fetch.
+    let account = measure_memory(&world, &geometry, &stream, &tasks);
+    stream.streamer.note_memory(account);
+
     let pool = AsyncComputeTaskPool::get();
     let actions = stream.streamer.update(&mut world.0, camera_region);
 
@@ -118,8 +163,10 @@ pub fn drive_streaming(
                 };
                 let dir = stream.dir.clone();
                 let region = ticket.region;
+                let bytes = snapshot.footprint().total();
                 tasks.saves.push((
                     ticket,
+                    bytes,
                     pool.spawn(async move { v2::save_region(&dir, region, &snapshot).is_ok() }),
                 ));
             }
@@ -214,7 +261,7 @@ pub fn poll_region_tasks(
     let mut finished_saves = Vec::new();
     tasks
         .saves
-        .retain_mut(|(ticket, task)| match check_ready(task) {
+        .retain_mut(|(ticket, _, task)| match check_ready(task) {
             Some(ok) => {
                 finished_saves.push((*ticket, ok));
                 false
@@ -291,9 +338,10 @@ pub fn dispatch_mesh_jobs(
     for job in stream.scheduler.take_jobs(&world.0, grid) {
         // The choice travels with the job because the job is compiled on a
         // worker; a trait object would need to be Send + Sync and shared.
+        let bytes = job.snapshot_bytes();
         tasks
             .meshes
-            .push(pool.spawn(async move { compiler.compile(&job) }));
+            .push((bytes, pool.spawn(async move { compiler.compile(&job) })));
     }
 }
 
@@ -317,13 +365,15 @@ pub fn apply_mesh_results(
     mut targets: UploadTargets,
 ) {
     let mut finished = Vec::new();
-    tasks.meshes.retain_mut(|task| match check_ready(task) {
-        Some(result) => {
-            finished.push(result);
-            false
-        }
-        None => true,
-    });
+    tasks
+        .meshes
+        .retain_mut(|(_, task)| match check_ready(task) {
+            Some(result) => {
+                finished.push(result);
+                false
+            }
+            None => true,
+        });
     for result in finished {
         stream.scheduler.deliver(result);
     }

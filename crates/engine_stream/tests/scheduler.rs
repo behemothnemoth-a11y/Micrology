@@ -546,3 +546,161 @@ fn clearing_abandons_everything() {
     assert_eq!(s.counts().active, 0);
     assert_eq!(s.counts().awaiting_apply, 0);
 }
+
+// --- in-flight snapshot bytes (0002.10c) --------------------------------
+
+/// A snapshot of one filled volume, measured rather than assumed.
+fn one_volume_snapshot_bytes() -> u64 {
+    let w = populated(1);
+    let mut s = MeshScheduler::new(limits(1, 16));
+    s.request(section(0), SectionPriority::required_dirty(0));
+    s.take_jobs(&w, GRID)[0].snapshot_bytes()
+}
+
+#[test]
+fn dispatch_is_bounded_by_snapshot_bytes_as_well_as_job_count() {
+    let unit = one_volume_snapshot_bytes();
+    // Spaced, so each snapshot costs exactly one volume: a snapshot also copies
+    // the six neighbours, and adjacent sections would each cost three volumes
+    // here, which would make the arithmetic below meaningless.
+    let w = spaced(10);
+    // Room for ten jobs by count, but only two and a bit by bytes.
+    let mut s = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 10,
+        max_in_flight_snapshot_bytes: unit * 5 / 2,
+        ..SchedulerLimits::default()
+    });
+    for i in 0..10 {
+        s.request(spaced_section(i), SectionPriority::required_dirty(i as u64));
+    }
+
+    let jobs = s.take_jobs(&w, GRID);
+    assert_eq!(jobs.len(), 2, "the third would cross the byte ceiling");
+    assert_eq!(s.in_flight_snapshot_bytes(), unit * 2);
+    assert_eq!(s.counts().dispatches_withheld_for_bytes, 1);
+    assert_eq!(s.counts().pending, 8, "withheld work stays queued");
+}
+
+#[test]
+fn one_job_always_gets_through_however_large_its_snapshot() {
+    // A section whose snapshot exceeds the whole ceiling must still be meshed,
+    // or the world would have a permanent hole in it.
+    let w = spaced(4);
+    let mut s = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 4,
+        max_in_flight_snapshot_bytes: 1,
+        ..SchedulerLimits::default()
+    });
+    for i in 0..4 {
+        s.request(spaced_section(i), SectionPriority::required_dirty(i as u64));
+    }
+
+    let jobs = s.take_jobs(&w, GRID);
+    assert_eq!(jobs.len(), 1, "never zero, or meshing would stall forever");
+    assert!(s.in_flight_snapshot_bytes() > 1);
+    assert!(
+        s.take_jobs(&w, GRID).is_empty(),
+        "and no more until it lands"
+    );
+}
+
+#[test]
+fn finishing_a_job_releases_its_snapshot_bytes() {
+    let unit = one_volume_snapshot_bytes();
+    let w = spaced(4);
+    let mut s = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 4,
+        max_in_flight_snapshot_bytes: unit * 3 / 2,
+        ..SchedulerLimits::default()
+    });
+    for i in 0..4 {
+        s.request(spaced_section(i), SectionPriority::required_dirty(i as u64));
+    }
+
+    let first = s.take_jobs(&w, GRID);
+    assert_eq!(first.len(), 1);
+    assert_eq!(s.in_flight_snapshot_bytes(), unit);
+
+    let result = first[0].compile(&GreedyCompiler);
+    assert_eq!(
+        s.complete(&w, GRID, &result),
+        ResultDisposition::Applied,
+        "a fresh result applies"
+    );
+    assert_eq!(
+        s.in_flight_snapshot_bytes(),
+        0,
+        "the worker no longer owns those cells"
+    );
+
+    assert_eq!(s.take_jobs(&w, GRID).len(), 1, "and the next one may go");
+}
+
+#[test]
+fn a_discarded_result_releases_its_snapshot_bytes_too() {
+    // The failure this guards: counting bytes on dispatch and forgetting to
+    // release them when a result is thrown away would leak the budget until
+    // nothing could ever be dispatched again.
+    let unit = one_volume_snapshot_bytes();
+    let mut w = spaced(2);
+    let mut s = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 1,
+        ..SchedulerLimits::default()
+    });
+    s.request(spaced_section(0), SectionPriority::required_dirty(0));
+    let job = s.take_jobs(&w, GRID).remove(0);
+    assert_eq!(s.in_flight_snapshot_bytes(), unit);
+
+    // Edit under the worker's feet, so its result is stale.
+    w.set(spaced_cell(0), None);
+    w.take_dirty();
+    let result = job.compile(&GreedyCompiler);
+    assert_eq!(
+        s.complete(&w, GRID, &result),
+        ResultDisposition::DiscardedStale
+    );
+    assert_eq!(s.in_flight_snapshot_bytes(), 0);
+}
+
+#[test]
+fn cancelling_an_in_flight_section_releases_its_snapshot_bytes() {
+    let mut s = MeshScheduler::new(limits(2, 16));
+    let w = populated(2);
+    s.request(section(0), SectionPriority::required_dirty(0));
+    s.take_jobs(&w, GRID);
+    assert!(s.in_flight_snapshot_bytes() > 0);
+
+    s.cancel(section(0));
+    assert_eq!(s.in_flight_snapshot_bytes(), 0);
+}
+
+#[test]
+fn snapshot_byte_backpressure_does_not_reorder_work() {
+    // Holding back on bytes must not let a small far-away section jump a large
+    // near one: the queue stops at the first job that will not fit rather than
+    // skipping over it.
+    let unit = one_volume_snapshot_bytes();
+    let mut w = world();
+    w.insert_volume(VolumePos::new(0, 0, 0), Volume::filled(STONE));
+    w.insert_volume(VolumePos::new(3, 0, 0), Volume::filled(STONE));
+    // A third section with nothing in it: its snapshot is nearly free.
+    w.insert_volume(VolumePos::new(6, 0, 0), Volume::new());
+    w.take_dirty();
+
+    let mut s = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 8,
+        max_in_flight_snapshot_bytes: unit * 3 / 2,
+        ..SchedulerLimits::default()
+    });
+    s.request(spaced_section(0), SectionPriority::required_dirty(0));
+    s.request(spaced_section(1), SectionPriority::required_dirty(1));
+    s.request(spaced_section(2), SectionPriority::required_dirty(2));
+
+    let jobs = s.take_jobs(&w, GRID);
+    let sections: Vec<_> = jobs.iter().map(|j| j.section).collect();
+    assert_eq!(
+        sections,
+        vec![spaced_section(0)],
+        "the cheap third section did not queue-jump the second"
+    );
+}

@@ -39,6 +39,7 @@
 //! An update does a bounded amount of work. Streaming converges over frames; it
 //! never tries to make the world fully current in one.
 
+use crate::memory::{MemoryAccount, MemoryBudget, Pressure};
 use crate::residency::{ResidencyState, ResidencyTable};
 use engine_core::{RegionPos, Revision};
 use engine_world::{Region, World};
@@ -165,6 +166,11 @@ pub struct StreamCounts {
     pub saves_failed: u64,
     pub regions_dropped: u64,
     pub teleports: u64,
+    /// Regions evicted because memory was over budget rather than because the
+    /// camera had left them behind.
+    pub evicted_for_budget: u64,
+    /// Loads not started because memory was over budget.
+    pub loads_withheld: u64,
 }
 
 /// Decides what should be resident, and tracks what is in flight.
@@ -179,6 +185,8 @@ pub struct RegionStreamer {
     active_saves: BTreeMap<RegionPos, Revision>,
     wanted: BTreeSet<RegionPos>,
     last_camera: Option<RegionPos>,
+    budget: MemoryBudget,
+    account: MemoryAccount,
     counts: StreamCounts,
 }
 
@@ -193,7 +201,70 @@ impl RegionStreamer {
             active_saves: BTreeMap::new(),
             wanted: BTreeSet::new(),
             last_camera: None,
+            budget: MemoryBudget::default(),
+            account: MemoryAccount::default(),
             counts: StreamCounts::default(),
+        }
+    }
+
+    /// Set how much memory residency may use.
+    pub fn set_budget(&mut self, budget: MemoryBudget) {
+        self.budget = budget;
+    }
+
+    pub fn budget(&self) -> MemoryBudget {
+        self.budget
+    }
+
+    /// Report what memory is currently being used.
+    ///
+    /// The host measures this, because the pieces live in different places: the
+    /// world owns cells, the mesh cache owns compiled geometry, and the
+    /// scheduler owns work in flight.
+    pub fn note_memory(&mut self, account: MemoryAccount) {
+        self.account = account;
+    }
+
+    pub fn account(&self) -> MemoryAccount {
+        self.account
+    }
+
+    /// How hard memory is currently pressing.
+    pub fn pressure(&self) -> Pressure {
+        self.budget.pressure(&self.account)
+    }
+
+    /// The reach actually in use right now, after memory pressure.
+    ///
+    /// Exposed for the host overlay and the stress harness: a radius that
+    /// silently shrank is exactly the kind of thing that must be visible.
+    pub fn load_radius_in_use(&self) -> i32 {
+        self.effective_load_radius()
+    }
+
+    /// How far to reach for new regions, given memory pressure.
+    ///
+    /// Distance decides what is wanted; the budget decides how much of it may
+    /// actually be fetched. Under pressure the engine stops reaching outward
+    /// before it starts throwing away what it already has.
+    fn effective_load_radius(&self) -> i32 {
+        match self.pressure() {
+            Pressure::Comfortable => self.config.load_radius,
+            Pressure::OverSoft => (self.config.load_radius - 1).max(0),
+            Pressure::OverHard => 0,
+        }
+    }
+
+    /// How far to keep regions, given memory pressure.
+    ///
+    /// Shrinks under pressure, but never below the load radius: evicting
+    /// something the camera is actively asking for would just reload it.
+    fn effective_unload_radius(&self) -> i32 {
+        let floor = self.config.load_radius;
+        match self.pressure() {
+            Pressure::Comfortable => self.config.unload_radius,
+            Pressure::OverSoft => (self.config.unload_radius - 1).max(floor + 1),
+            Pressure::OverHard => floor,
         }
     }
 
@@ -221,6 +292,29 @@ impl RegionStreamer {
             active_saves: self.active_saves.len(),
             ..self.counts
         }
+    }
+
+    /// Regions that could be evicted right now, least recently needed first.
+    ///
+    /// Preference order, as the plan sets it out: not wanted, then farthest,
+    /// then least recently needed. Dirty regions never appear — they must be
+    /// saved first, and unsaved data is never dropped to satisfy a budget.
+    pub fn eviction_candidates(&self, camera: RegionPos) -> Vec<RegionPos> {
+        let mut candidates: Vec<(bool, i32, u64, RegionPos)> = self
+            .residency
+            .iter()
+            .filter(|(_, record)| record.is_safe_to_evict() && !record.state.is_departing())
+            .map(|(pos, record)| {
+                (
+                    self.wanted.contains(&pos),
+                    -camera.chebyshev_distance(pos),
+                    record.last_needed,
+                    pos,
+                )
+            })
+            .collect();
+        candidates.sort();
+        candidates.into_iter().map(|(_, _, _, pos)| pos).collect()
     }
 
     /// The regions within `load_radius` of the camera, ascending.
@@ -268,6 +362,7 @@ impl RegionStreamer {
 
         // Start loads for wanted regions that are not here yet, nearest first so
         // a bounded budget is spent where it matters.
+        let reach = self.effective_load_radius();
         let mut candidates: Vec<(i32, RegionPos)> = self
             .wanted
             .iter()
@@ -276,9 +371,15 @@ impl RegionStreamer {
             .collect();
         candidates.sort();
 
-        for (_, region) in candidates {
+        for (distance, region) in candidates {
             if self.active_loads.len() >= self.config.max_active_loads {
                 break;
+            }
+            if distance > reach {
+                // Wanted, but memory says not yet. It stays wanted, so it will
+                // be fetched once there is room.
+                self.counts.loads_withheld += 1;
+                continue;
             }
             self.residency.request(region);
             if self.residency.begin_load(region).is_err() {
@@ -292,11 +393,19 @@ impl RegionStreamer {
             actions.push(StreamAction::LoadRegion(LoadTicket { region, generation }));
         }
 
-        // Evict what has fallen outside the larger radius.
+        // Evict what has fallen outside the keep radius, which shrinks under
+        // memory pressure.
+        let keep = self.effective_unload_radius();
+        let over_budget = self.pressure() != Pressure::Comfortable;
         let resident: Vec<RegionPos> = self.resident_regions(world);
         for region in resident {
-            if camera.chebyshev_distance(region) <= self.config.unload_radius {
+            if camera.chebyshev_distance(region) <= keep {
                 continue;
+            }
+            if over_budget && camera.chebyshev_distance(region) > self.config.unload_radius {
+                // Would have been evicted anyway; not a budget eviction.
+            } else if over_budget {
+                self.counts.evicted_for_budget += 1;
             }
             // Work genuinely in flight is left alone; a task is only in flight
             // while the host still owes us a result.

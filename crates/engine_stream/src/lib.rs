@@ -10,11 +10,13 @@
 //! job started, jobs completing out of order — is reachable in a unit test with
 //! no window, no GPU and no filesystem.
 
+pub mod memory;
 pub mod mesh_jobs;
 pub mod residency;
 pub mod scheduler;
 pub mod streamer;
 
+pub use memory::{MemoryAccount, MemoryBudget, Pressure};
 pub use mesh_jobs::{MeshJobInput, MeshJobResult, ResultDisposition, SectionFingerprint};
 pub use residency::{
     EvictionReason, RegionResidency, ResidencyCounts, ResidencyState, ResidencyTable,

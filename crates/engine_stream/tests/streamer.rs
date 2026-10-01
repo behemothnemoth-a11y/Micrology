@@ -715,3 +715,251 @@ fn an_invalid_config_is_caught_in_debug() {
         "equal radii give no hysteresis"
     );
 }
+
+// --- memory budget ----------------------------------------------------------
+
+use engine_stream::{MemoryAccount, MemoryBudget, Pressure};
+
+/// An account reporting a given total as resident cell data.
+fn using(bytes: u64) -> MemoryAccount {
+    MemoryAccount {
+        volume_bytes: bytes,
+        ..MemoryAccount::default()
+    }
+}
+
+#[test]
+fn memory_pressure_shrinks_how_far_the_engine_reaches() {
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 2,
+        unload_radius: 4,
+        max_active_loads: 256,
+        ..config()
+    });
+    streamer.set_budget(MemoryBudget::new(1000, 2000));
+
+    // Comfortable: the full 5x5x5 desired set is fetched.
+    streamer.note_memory(using(0));
+    assert_eq!(streamer.pressure(), Pressure::Comfortable);
+    let comfortable = streamer
+        .update(&mut world, RegionPos::ZERO)
+        .iter()
+        .filter(|a| matches!(a, StreamAction::LoadRegion(_)))
+        .count();
+    assert_eq!(comfortable, 125);
+
+    // Over the soft target: reach drops by one, so only the 3x3x3 core.
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 2,
+        unload_radius: 4,
+        max_active_loads: 256,
+        ..config()
+    });
+    streamer.set_budget(MemoryBudget::new(1000, 2000));
+    streamer.note_memory(using(1500));
+    assert_eq!(streamer.pressure(), Pressure::OverSoft);
+    let mut world = World::with_materials(materials());
+    let squeezed = streamer
+        .update(&mut world, RegionPos::ZERO)
+        .iter()
+        .filter(|a| matches!(a, StreamAction::LoadRegion(_)))
+        .count();
+    assert_eq!(squeezed, 27, "reach shrinks before anything is thrown away");
+    assert!(streamer.counts().loads_withheld > 0);
+
+    // Past the ceiling: only the camera's own region.
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 2,
+        unload_radius: 4,
+        max_active_loads: 256,
+        ..config()
+    });
+    streamer.set_budget(MemoryBudget::new(1000, 2000));
+    streamer.note_memory(using(5000));
+    assert_eq!(streamer.pressure(), Pressure::OverHard);
+    let mut world = World::with_materials(materials());
+    let critical = streamer
+        .update(&mut world, RegionPos::ZERO)
+        .iter()
+        .filter(|a| matches!(a, StreamAction::LoadRegion(_)))
+        .count();
+    assert_eq!(critical, 1, "only what is essential");
+}
+
+#[test]
+fn a_withheld_region_is_still_wanted_and_arrives_once_there_is_room() {
+    let mut disk = disk(4);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    streamer.set_budget(MemoryBudget::new(1000, 2000));
+
+    streamer.note_memory(using(5000));
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    let under_pressure = populated_regions(&world);
+
+    streamer.note_memory(using(0));
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    assert!(
+        populated_regions(&world) > under_pressure,
+        "withheld regions must arrive once memory allows, not be forgotten"
+    );
+}
+
+#[test]
+fn pressure_evicts_sooner_than_distance_alone_would() {
+    let mut disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 1,
+        unload_radius: 4,
+        ..config()
+    });
+    streamer.note_memory(using(0));
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    settle(
+        &mut streamer,
+        &mut world,
+        &mut disk,
+        RegionPos::new(3, 0, 0),
+    );
+    let comfortable = populated_regions(&world);
+    assert!(
+        world.region(RegionPos::ZERO).is_some(),
+        "inside the unload radius, so distance alone keeps it"
+    );
+
+    // Now declare memory pressure and settle again at the same place.
+    streamer.set_budget(MemoryBudget::new(1000, 2000));
+    streamer.note_memory(using(5000));
+    settle(
+        &mut streamer,
+        &mut world,
+        &mut disk,
+        RegionPos::new(3, 0, 0),
+    );
+
+    assert!(
+        populated_regions(&world) < comfortable,
+        "pressure must make room, {} vs {comfortable}",
+        populated_regions(&world)
+    );
+    assert!(streamer.counts().evicted_for_budget > 0);
+}
+
+#[test]
+fn unsaved_work_is_never_dropped_to_satisfy_a_budget() {
+    // Correctness beats the budget. If nothing can safely go, the pressure is
+    // reported rather than resolved by losing a player's edits.
+    let mut disk = disk(4);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+
+    world.set(CellPos::new(1, 1, 1), Some(DIRT));
+    streamer.note_region_edited(RegionPos::ZERO);
+
+    streamer.set_budget(MemoryBudget::new(1, 2));
+    streamer.note_memory(using(1_000_000));
+    assert_eq!(streamer.pressure(), Pressure::OverHard);
+
+    let actions = streamer.update(&mut world, RegionPos::new(9, 0, 0));
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, StreamAction::DropRegion(r) if *r == RegionPos::ZERO)),
+        "a dirty region must be saved before it can go, budget or not"
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, StreamAction::SaveRegion(t) if t.region == RegionPos::ZERO)),
+        "and the save must be scheduled"
+    );
+    assert!(world.region(RegionPos::ZERO).unwrap().is_dirty());
+}
+
+#[test]
+fn eviction_candidates_prefer_unwanted_then_distant_then_stale() {
+    let mut disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 1,
+        unload_radius: 6,
+        ..config()
+    });
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    settle(
+        &mut streamer,
+        &mut world,
+        &mut disk,
+        RegionPos::new(4, 0, 0),
+    );
+
+    let candidates = streamer.eviction_candidates(RegionPos::new(4, 0, 0));
+    assert!(!candidates.is_empty());
+
+    // Nothing the camera currently wants may be offered ahead of something it
+    // does not.
+    let first_wanted = candidates.iter().position(|r| streamer.is_wanted(*r));
+    let last_unwanted = candidates.iter().rposition(|r| !streamer.is_wanted(*r));
+    if let (Some(first), Some(last)) = (first_wanted, last_unwanted) {
+        assert!(
+            last < first,
+            "every unwanted region must be offered before any wanted one"
+        );
+    }
+
+    // And the first candidate is among the farthest.
+    let camera = RegionPos::new(4, 0, 0);
+    let first_distance = camera.chebyshev_distance(candidates[0]);
+    for candidate in &candidates {
+        if !streamer.is_wanted(*candidate) {
+            assert!(
+                camera.chebyshev_distance(*candidate) <= first_distance,
+                "a farther region should have been offered first"
+            );
+        }
+    }
+}
+
+#[test]
+fn memory_stays_bounded_while_travelling_under_a_tight_budget() {
+    let mut disk = disk(20);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(StreamingConfig {
+        load_radius: 1,
+        unload_radius: 3,
+        ..config()
+    });
+    // Tight enough that travel must keep making room.
+    streamer.set_budget(MemoryBudget::new(24 * 1024, 48 * 1024));
+
+    let mut peak = 0usize;
+    for x in 0..18 {
+        // The host measures; here resident cell bytes stand in for the whole.
+        let footprint = world.footprint();
+        streamer.note_memory(MemoryAccount {
+            volume_bytes: footprint.cell_bytes,
+            palette_bytes: footprint.palette_bytes,
+            ..MemoryAccount::default()
+        });
+        settle(
+            &mut streamer,
+            &mut world,
+            &mut disk,
+            RegionPos::new(x, 0, 0),
+        );
+        peak = peak.max(populated_regions(&world));
+    }
+
+    assert!(
+        populated_regions(&world) <= peak,
+        "residency must not grow without bound while travelling"
+    );
+    assert!(
+        populated_regions(&world) <= 49,
+        "a 7x7 plate is the most a radius-3 keep can hold, got {}",
+        populated_regions(&world)
+    );
+}

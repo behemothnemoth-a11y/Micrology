@@ -43,7 +43,7 @@
 use crate::mesh_jobs::{MeshJobInput, MeshJobResult, ResultDisposition, SectionFingerprint};
 use engine_core::{RenderSectionId, SectionGrid, VolumePos};
 use engine_world::World;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Why a section needs geometry. Lower is more urgent.
 ///
@@ -152,6 +152,14 @@ pub struct SchedulerLimits {
     pub max_pending_mesh_requests: usize,
     /// Ticks a request waits before its class is promoted one step.
     pub starvation_ticks: u64,
+    /// Ceiling on cell data copied into in-flight mesh snapshots.
+    ///
+    /// The job count alone is a poor bound on snapshot memory: a snapshot of a
+    /// dense section costs orders of magnitude more than one of empty air, so
+    /// four jobs can mean a few kilobytes or many megabytes. One job is always
+    /// allowed through regardless, because a section larger than the whole
+    /// ceiling must still eventually be meshed.
+    pub max_in_flight_snapshot_bytes: u64,
 }
 
 impl Default for SchedulerLimits {
@@ -161,6 +169,7 @@ impl Default for SchedulerLimits {
             max_results_applied_per_tick: 8,
             max_pending_mesh_requests: 4096,
             starvation_ticks: 120,
+            max_in_flight_snapshot_bytes: 16 * 1024 * 1024,
         }
     }
 }
@@ -177,13 +186,17 @@ pub struct SchedulerCounts {
     pub discarded_unwanted: u64,
     /// Requests refused because the pending queue was full.
     pub rejected_over_capacity: u64,
+    /// Dispatches held back because in-flight snapshots were already at the
+    /// byte ceiling. Work was not lost; it stayed queued.
+    pub dispatches_withheld_for_bytes: u64,
 }
 
 /// Pending, in-flight and completed-but-unapplied geometry work.
 #[derive(Clone, Debug)]
 pub struct MeshScheduler {
     pending: BTreeMap<RenderSectionId, PendingMeshRequest>,
-    active: BTreeSet<RenderSectionId>,
+    /// In-flight sections, each with the bytes its snapshot holds.
+    active: BTreeMap<RenderSectionId, u64>,
     /// Results that came back and have not been applied yet.
     inbox: Vec<MeshJobResult>,
     limits: SchedulerLimits,
@@ -201,7 +214,7 @@ impl MeshScheduler {
     pub fn new(limits: SchedulerLimits) -> Self {
         Self {
             pending: BTreeMap::new(),
-            active: BTreeSet::new(),
+            active: BTreeMap::new(),
             inbox: Vec::new(),
             limits,
             tick: 0,
@@ -339,7 +352,7 @@ impl MeshScheduler {
     }
 
     pub fn active(&self) -> impl Iterator<Item = RenderSectionId> + '_ {
-        self.active.iter().copied()
+        self.active.keys().copied()
     }
 
     // --- dispatch -------------------------------------------------------
@@ -349,6 +362,11 @@ impl MeshScheduler {
         self.limits
             .max_active_mesh_jobs
             .saturating_sub(self.active.len())
+    }
+
+    /// Bytes of cell data currently copied into in-flight snapshots.
+    pub fn in_flight_snapshot_bytes(&self) -> u64 {
+        self.active.values().sum()
     }
 
     /// Take the most important work that fits within the active-job bound.
@@ -363,15 +381,27 @@ impl MeshScheduler {
 
         let taking: Vec<RenderSectionId> =
             self.pending_order().into_iter().take(capacity).collect();
-        taking
-            .into_iter()
-            .map(|section| {
-                self.pending.remove(&section);
-                self.active.insert(section);
-                self.counts.dispatched += 1;
-                MeshJobInput::snapshot(world, grid, section)
-            })
-            .collect()
+        let mut in_flight = self.in_flight_snapshot_bytes();
+        let mut jobs = Vec::new();
+        for section in taking {
+            let input = MeshJobInput::snapshot(world, grid, section);
+            let bytes = input.snapshot_bytes();
+            // The byte ceiling is checked after snapshotting because the cost is
+            // not knowable before. One job always goes through when nothing else
+            // is in flight, so an oversized section cannot stall forever.
+            if in_flight > 0
+                && in_flight.saturating_add(bytes) > self.limits.max_in_flight_snapshot_bytes
+            {
+                self.counts.dispatches_withheld_for_bytes += 1;
+                break;
+            }
+            in_flight = in_flight.saturating_add(bytes);
+            self.pending.remove(&section);
+            self.active.insert(section, bytes);
+            self.counts.dispatched += 1;
+            jobs.push(input);
+        }
+        jobs
     }
 
     // --- completion -----------------------------------------------------
@@ -418,7 +448,7 @@ impl MeshScheduler {
         grid: SectionGrid,
         result: &MeshJobResult,
     ) -> ResultDisposition {
-        if !self.active.remove(&result.section) {
+        if self.active.remove(&result.section).is_none() {
             self.counts.discarded_unwanted += 1;
             return ResultDisposition::DiscardedUnwanted;
         }
