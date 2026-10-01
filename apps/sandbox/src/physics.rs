@@ -328,12 +328,18 @@ pub struct DynamicFragments {
 }
 
 impl DynamicFragments {
-    #[expect(dead_code, reason = "consumed by the interactive detachment host in 0003.14")]
+    #[expect(
+        dead_code,
+        reason = "consumed by the interactive detachment host in 0003.14"
+    )]
     pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
         self.fragments.insert(fragment.id, fragment)
     }
 
-    #[expect(dead_code, reason = "consumed by fragment lifecycle/streaming in 0003.12-13")]
+    #[expect(
+        dead_code,
+        reason = "consumed by fragment lifecycle/streaming in 0003.12-13"
+    )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.fragments.remove(&id)
     }
