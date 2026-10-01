@@ -271,10 +271,12 @@ fn repeat_determinism(cases: &mut Vec<Case>) {
     let mut ok = true;
     for _ in 0..32 {
         let (mut world, result) =
-            damaged_job(StructuralScenario::MultiIsland, SnapshotLimits::default());
+            damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
         let mut sequence = DestructionSequence::new(5);
-        let outcome =
-            detach_if(&mut world, &mut sequence, &result, |_| true).expect("multi-island detaches");
+        let Ok(outcome) = detach_if(&mut world, &mut sequence, &result, |_| true) else {
+            ok = false;
+            break;
+        };
         let current = (
             world.occupied_count(),
             outcome
