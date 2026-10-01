@@ -11,14 +11,14 @@
 //! need it, so it does not belong in an app.
 
 use crate::camera::{FlyCamera, cursor_grabbed};
-use crate::render::{self, SectionEntities};
+use crate::render::SectionEntities;
 use crate::scene;
-use crate::{GeometryRes, SavePath, StatusLine, WorldRes};
+use crate::streaming::StreamRes;
+use crate::{GeometryRes, StatusLine, WorldRes};
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 use engine_core::MaterialId;
-use engine_geometry::{ExactCompiler, GreedyCompiler};
 use engine_world::raycast;
 
 /// How far the edit ray reaches, in cells.
@@ -128,35 +128,40 @@ pub fn edit_cells(
     }
 }
 
-/// `F5` saves, `F9` reloads.
+/// `F5` flushes unsaved regions, `F9` drops everything and streams it back.
 pub fn save_and_load(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
-    path: Res<SavePath>,
+    mut stream: ResMut<StreamRes>,
     mut world: ResMut<WorldRes>,
     mut geometry: ResMut<GeometryRes>,
     mut sections: ResMut<SectionEntities>,
     mut status: ResMut<StatusLine>,
 ) {
     if keys.just_pressed(KeyCode::F5) {
-        status.0 = match engine_io::save_world(&world.0, &path.0) {
-            Ok(()) => format!("saved {}", path.0.display()),
+        // Only the regions with unsaved edits are written, which is what makes
+        // a flush affordable on a large world.
+        let dir = stream.dir.clone();
+        let meta = stream.meta.clone();
+        status.0 = match engine_io::save_dirty_regions(&mut world.0, &meta, &dir) {
+            Ok(written) if written.is_empty() => "nothing to save".to_string(),
+            Ok(written) => format!("saved {} region(s)", written.len()),
             Err(error) => format!("save failed: {error}"),
         };
+        for region in world.0.region_positions().collect::<Vec<_>>() {
+            stream.streamer.residency_mut().mark_saved(region);
+        }
     }
 
     if keys.just_pressed(KeyCode::F9) {
-        match engine_io::load_world(&path.0) {
-            Ok(loaded) => {
-                world.0 = loaded;
-                // Every mesh belongs to the previous world; start clean. The
-                // loader has already marked every chunk dirty.
-                geometry.cache.clear();
-                render::clear_section_entities(&mut commands, &mut sections);
-                status.0 = format!("loaded {}", path.0.display());
-            }
-            Err(error) => status.0 = format!("load failed: {error}"),
-        }
+        // Drop residency and let streaming bring the world back from disk.
+        let materials = world.0.materials().clone();
+        world.0 = engine_world::World::with_materials(materials);
+        geometry.cache.clear();
+        sections.clear(&mut commands);
+        stream.scheduler.clear();
+        stream.streamer.clear();
+        status.0 = "reloading from disk".to_string();
     }
 }
 
@@ -174,11 +179,7 @@ pub fn toggle_compiler(
         return;
     }
 
-    geometry.compiler = if geometry.compiler.name() == "greedy" {
-        Box::new(ExactCompiler)
-    } else {
-        Box::new(GreedyCompiler)
-    };
+    geometry.compiler = geometry.compiler.toggled();
     status.0 = format!("compiler: {}", geometry.compiler.name());
 
     geometry.cache.clear();

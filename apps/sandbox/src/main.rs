@@ -8,9 +8,14 @@
 //! Run it from the repository root:
 //!
 //! ```text
-//! cargo run -p sandbox                      # the built-in demo scene
-//! cargo run -p sandbox -- some/world.json   # load a saved world instead
+//! cargo run -p sandbox                     # stream the demo world from saves/world
+//! cargo run -p sandbox -- some/world-dir   # stream a different world directory
+//! cargo run -p sandbox -- some/world.json  # open a v1 file, fully resident
 //! ```
+//!
+//! On first run the demo world is written out as a v2 directory, because
+//! streaming needs something to stream *from*. The world then starts empty and
+//! regions arrive around the camera.
 //!
 //! All of the interesting work happens in the engine crates. This app only
 //! translates input into cell edits and turns compiled geometry into Bevy
@@ -21,27 +26,60 @@ mod edit;
 mod hud;
 mod render;
 mod scene;
+mod streaming;
 
 use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowPlugin};
-use engine_geometry::{GreedyCompiler, SectionMeshCache, SurfaceCompiler};
+use engine_geometry::SectionMeshCache;
 use engine_world::World as EngineWorld;
 use std::path::PathBuf;
-
-/// Where `F5` writes and `F9` reads.
-const DEFAULT_SAVE_PATH: &str = "saves/sandbox.world.json";
 
 /// The engine world being edited.
 #[derive(Resource, Deref, DerefMut)]
 pub struct WorldRes(pub EngineWorld);
 
+/// Which surface compiler the sandbox is using.
+///
+/// A plain enum rather than a trait object: a mesh job is compiled on a worker
+/// thread, so the choice has to be `Copy` and `Send` to travel with it.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum CompilerChoice {
+    #[default]
+    Greedy,
+    /// The exact oracle. Rendering with it is the fastest way to tell a meshing
+    /// bug from a world-data bug: if an artefact survives the swap, the cells
+    /// are wrong.
+    Exact,
+}
+
+impl CompilerChoice {
+    pub fn name(self) -> &'static str {
+        match self {
+            CompilerChoice::Greedy => "greedy",
+            CompilerChoice::Exact => "exact",
+        }
+    }
+
+    pub fn toggled(self) -> Self {
+        match self {
+            CompilerChoice::Greedy => CompilerChoice::Exact,
+            CompilerChoice::Exact => CompilerChoice::Greedy,
+        }
+    }
+
+    pub fn compile(self, job: &engine_stream::MeshJobInput) -> engine_stream::MeshJobResult {
+        match self {
+            CompilerChoice::Greedy => job.compile(&engine_geometry::GreedyCompiler),
+            CompilerChoice::Exact => job.compile(&engine_geometry::ExactCompiler),
+        }
+    }
+}
+
 /// Compiled geometry, plus which compiler produced it.
 #[derive(Resource)]
 pub struct GeometryRes {
     pub cache: SectionMeshCache,
-    /// Boxed so the oracle can be swapped in at runtime with `G`, which is the
-    /// fastest way to tell a meshing bug from a world-data bug.
-    pub compiler: Box<dyn SurfaceCompiler + Send + Sync>,
+    pub compiler: CompilerChoice,
 }
 
 impl Default for GeometryRes {
@@ -51,14 +89,10 @@ impl Default for GeometryRes {
             // volumes into fewer, larger submissions with no change to the
             // world model — which is the point of routing through a grid.
             cache: SectionMeshCache::new(engine_core::SectionGrid::ONE_VOLUME),
-            compiler: Box::new(GreedyCompiler),
+            compiler: CompilerChoice::default(),
         }
     }
 }
-
-/// Where this session saves and loads.
-#[derive(Resource)]
-pub struct SavePath(pub PathBuf);
 
 /// Status line for the HUD: the result of the last save/load, or an error.
 #[derive(Resource, Default)]
@@ -82,11 +116,11 @@ fn main() {
         brightness: 160.0,
         ..default()
     })
-    .insert_resource(SavePath(save_path_from_args()))
     .init_resource::<GeometryRes>()
     .init_resource::<StatusLine>()
     .init_resource::<render::SectionEntities>()
     .init_resource::<render::RenderOriginRes>()
+    .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     .add_systems(Startup, (scene::setup_world, scene::setup_view, hud::setup))
     .add_systems(
@@ -101,7 +135,13 @@ fn main() {
             edit::edit_cells,
             edit::save_and_load,
             edit::toggle_compiler,
-            render::rebuild_dirty_chunks,
+            // Streaming: decide residency, start I/O, dispatch compiles, and
+            // apply whatever came back that is still current.
+            streaming::drive_streaming,
+            streaming::poll_region_tasks,
+            streaming::queue_dirty_sections,
+            streaming::dispatch_mesh_jobs,
+            streaming::apply_mesh_results,
             hud::update,
         )
             // Edits must be applied before geometry is rebuilt, and geometry
@@ -112,11 +152,7 @@ fn main() {
     app.run();
 }
 
-/// The world to load at startup, if one was named on the command line.
+/// The world directory, or v1 file, named on the command line.
 fn world_from_args() -> Option<PathBuf> {
     std::env::args().nth(1).map(PathBuf::from)
-}
-
-fn save_path_from_args() -> PathBuf {
-    world_from_args().unwrap_or_else(|| PathBuf::from(DEFAULT_SAVE_PATH))
 }

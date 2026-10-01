@@ -4613,6 +4613,7 @@ dependencies = [
  "engine_core",
  "engine_geometry",
  "engine_io",
+ "engine_stream",
  "engine_volume",
  "engine_world",
 ]

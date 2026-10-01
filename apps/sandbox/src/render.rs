@@ -3,21 +3,20 @@
 //! One entity per **render section**, not per storage volume. Today a section is
 //! one volume, so the two coincide — but this module only ever speaks in
 //! [`RenderSectionId`], so grouping several volumes per submission later is a
-//! change to the cache's [`SectionGrid`] and nothing else.
+//! change to the cache's `SectionGrid` and nothing else.
 //!
-//! The engine says which sections changed, this module replaces exactly those
-//! meshes and despawns the entities of sections that no longer have a surface. A
-//! section whose cells did not change is never touched, so its mesh is never
-//! re-uploaded.
+//! Nothing here compiles geometry. Sections are uploaded when a mesh job
+//! returns and torn down when their region is evicted; the work happens on the
+//! compute pool, in `streaming.rs`.
 
-use crate::{GeometryRes, WorldRes};
+use crate::GeometryRes;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 use engine_core::{RenderOrigin, RenderSectionId};
-use engine_geometry::{MeshData, SectionMeshUpdate};
+use engine_geometry::{CachedSection, MeshData};
 
 /// Where global coordinates are currently rendered relative to.
 ///
@@ -39,79 +38,87 @@ impl SectionEntities {
     pub fn iter(&self) -> impl Iterator<Item = (RenderSectionId, Entity)> + '_ {
         self.entities.iter().map(|(id, entity)| (*id, *entity))
     }
-}
 
-/// Rebuild the geometry of every section the world's dirty volumes touch, and
-/// nothing else.
-pub fn rebuild_dirty_chunks(
-    mut commands: Commands,
-    mut world: ResMut<WorldRes>,
-    mut geometry: ResMut<GeometryRes>,
-    mut sections: ResMut<SectionEntities>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    origin: Res<RenderOriginRes>,
-) {
-    let dirty = world.take_dirty();
-    if dirty.is_empty() {
-        return;
+    pub fn len(&self) -> usize {
+        self.entities.len()
     }
 
-    let geometry = geometry.as_mut();
-    let updates = geometry.cache.rebuild(
-        &world.0,
-        world.materials(),
-        geometry.compiler.as_ref(),
-        dirty,
-    );
-
-    let material = sections
-        .material
-        .get_or_insert_with(|| {
-            materials.add(StandardMaterial {
-                // White, because vertex colours multiply into the base colour.
-                base_color: Color::WHITE,
-                perceptual_roughness: 0.92,
-                ..default()
+    fn shared_material(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+    ) -> Handle<StandardMaterial> {
+        self.material
+            .get_or_insert_with(|| {
+                materials.add(StandardMaterial {
+                    // White, because vertex colours multiply into the base colour.
+                    base_color: Color::WHITE,
+                    perceptual_roughness: 0.92,
+                    ..default()
+                })
             })
-        })
-        .clone();
+            .clone()
+    }
 
-    for update in updates {
-        match update {
-            SectionMeshUpdate::Built(pos) => {
-                let cached = geometry
-                    .cache
-                    .get(pos)
-                    .expect("a section reported as built is in the cache");
-                let handle = meshes.add(to_bevy_mesh(&cached.mesh));
+    /// Put a section's geometry on screen, replacing whatever was there.
+    ///
+    /// Replacing the mesh handle on an existing entity avoids the churn of
+    /// despawning and respawning on every edit.
+    pub fn upload(
+        &mut self,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+        origin: &RenderOrigin,
+        section: RenderSectionId,
+        cached: &CachedSection,
+    ) {
+        if cached.mesh.is_empty() {
+            self.despawn(commands, section);
+            return;
+        }
 
-                match sections.entities.get(&pos) {
-                    // Replacing the handle on the existing entity avoids the
-                    // churn of despawning and respawning on every edit.
-                    Some(entity) => {
-                        commands.entity(*entity).insert(Mesh3d(handle));
-                    }
-                    None => {
-                        let entity = commands
-                            .spawn((
-                                Mesh3d(handle),
-                                MeshMaterial3d(material.clone()),
-                                Transform::from_translation(Vec3::from_array(
-                                    origin.0.cell_to_render(cached.origin()),
-                                )),
-                                SectionMesh,
-                            ))
-                            .id();
-                        sections.entities.insert(pos, entity);
-                    }
-                }
+        let handle = meshes.add(to_bevy_mesh(&cached.mesh));
+        let placement = Vec3::from_array(origin.cell_to_render(cached.origin()));
+
+        match self.entities.get(&section) {
+            Some(entity) => {
+                commands
+                    .entity(*entity)
+                    .insert((Mesh3d(handle), Transform::from_translation(placement)));
             }
-            SectionMeshUpdate::Removed(pos) => {
-                if let Some(entity) = sections.entities.remove(&pos) {
-                    commands.entity(entity).despawn();
-                }
+            None => {
+                let material = self.shared_material(materials);
+                let entity = commands
+                    .spawn((
+                        Mesh3d(handle),
+                        MeshMaterial3d(material),
+                        Transform::from_translation(placement),
+                        SectionMesh,
+                    ))
+                    .id();
+                self.entities.insert(section, entity);
             }
+        }
+    }
+
+    /// Remove a section's entity, if it has one.
+    ///
+    /// Dropping the entity releases the last strong handle to its mesh asset,
+    /// which is what stops travel leaving a trail of dead meshes behind.
+    pub fn despawn(&mut self, commands: &mut Commands, section: RenderSectionId) -> bool {
+        match self.entities.remove(&section) {
+            Some(entity) => {
+                commands.entity(entity).despawn();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Drop every section entity, for when a different world is loaded.
+    pub fn clear(&mut self, commands: &mut Commands) {
+        for (_, entity) in self.entities.drain() {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -138,13 +145,6 @@ fn to_bevy_mesh(data: &MeshData) -> Mesh {
     .with_inserted_indices(Indices::U32(data.indices.clone()))
 }
 
-/// Drop every section entity, for when a different world is loaded.
-pub fn clear_section_entities(commands: &mut Commands, sections: &mut SectionEntities) {
-    for (_, entity) in sections.entities.drain() {
-        commands.entity(entity).despawn();
-    }
-}
-
 /// Keep the render origin near the camera, and keep everything placed correctly
 /// when it moves.
 ///
@@ -154,7 +154,7 @@ pub fn clear_section_entities(commands: &mut Commands, sections: &mut SectionEnt
 pub fn maintain_render_origin(
     mut origin: ResMut<RenderOriginRes>,
     sections: Res<SectionEntities>,
-    geometry: Res<crate::GeometryRes>,
+    geometry: Res<GeometryRes>,
     camera: Option<Single<(&mut Transform, &crate::camera::FlyCamera)>>,
     mut placements: Query<&mut Transform, (With<SectionMesh>, Without<crate::camera::FlyCamera>)>,
 ) {

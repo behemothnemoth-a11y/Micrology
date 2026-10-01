@@ -15,4 +15,5 @@ engine_volume = { workspace = true }
 engine_world = { workspace = true }
 engine_geometry = { workspace = true }
 engine_io = { workspace = true }
+engine_stream = { workspace = true }
 bevy = "0.19"

@@ -212,6 +212,23 @@ impl SectionMeshCache {
         updates
     }
 
+    /// Install geometry compiled elsewhere.
+    ///
+    /// Used when a mesh job completes on a worker thread: the cache did not
+    /// compile it, but it owns it from here.
+    pub fn insert(&mut self, section: RenderSectionId, cached: CachedSection) {
+        self.entries.insert(section, cached);
+    }
+
+    /// Forget a section's geometry, returning it.
+    ///
+    /// Called when a region is evicted. Leaving the entry behind would keep the
+    /// CPU mesh alive for cells that are gone, which is how travel leaves a
+    /// trail of dead meshes.
+    pub fn remove(&mut self, section: RenderSectionId) -> Option<CachedSection> {
+        self.entries.remove(&section)
+    }
+
     /// Drop everything, e.g. when a different world is loaded.
     pub fn clear(&mut self) {
         self.entries.clear();

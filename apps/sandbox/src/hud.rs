@@ -10,7 +10,8 @@
 
 use crate::camera::FlyCamera;
 use crate::edit::Palette;
-use crate::render::RenderOriginRes;
+use crate::render::{RenderOriginRes, SectionEntities};
+use crate::streaming::{StreamRes, StreamTasks};
 use crate::{GeometryRes, StatusLine, WorldRes};
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::ecs::system::SystemParam;
@@ -21,7 +22,7 @@ pub struct StatsText;
 
 const CONTROLS: &str = "click grab · esc release · wasd+space/ctrl fly · shift fast\n\
                         lmb carve · rmb place · f paint · 1-5 / wheel material\n\
-                        f5 save · f9 load · g toggle mesher";
+                        f5 flush dirty regions · f9 drop and restream · g toggle mesher";
 
 /// A crosshair at the exact centre of the viewport.
 ///
@@ -104,6 +105,9 @@ pub struct Diagnostics<'w> {
     pub status: Res<'w, StatusLine>,
     pub frame: Res<'w, DiagnosticsStore>,
     pub origin: Res<'w, RenderOriginRes>,
+    pub stream: Res<'w, StreamRes>,
+    pub tasks: Res<'w, StreamTasks>,
+    pub sections: Res<'w, SectionEntities>,
 }
 
 pub fn update(
@@ -118,6 +122,9 @@ pub fn update(
         status,
         frame: diagnostics,
         origin,
+        stream,
+        tasks,
+        sections,
     } = sources;
     let Some(text) = text else {
         return;
@@ -139,33 +146,78 @@ pub fn update(
     let global = camera.map(|c| c.global).unwrap_or_default();
     let anchor = origin.0.anchor();
 
+    let residency = stream.streamer.residency().counts();
+    let streaming = stream.streamer.counts();
+    let jobs = stream.scheduler.counts();
+    let (loads, saves, meshing) = tasks.counts();
+    let footprint = world.footprint();
+    let camera_region = global.cell().region();
+
     **text.into_inner() = format!(
         "Micrology · DROP 0002 · mesher: {mesher}\n\
-         camera {cx:.0} {cy:.0} {cz:.0}   origin {ox} {oy} {oz}\n\
-         volumes {volumes} (sections {meshed})   cells {cells}\n\
-         exposed faces {faces}   quads {quads}  ({ratio:.1}x merged)\n\
-         vertices {vertices}   triangles {triangles}\n\
-         last rebuild: {rebuilt} section(s) in {rebuild_ms:.2} ms\n\
-         material: {material}   fps {fps:.0}\n\
+         camera {cx:.0} {cy:.0} {cz:.0}  region {rx} {ry} {rz}  origin {ox} {oy} {oz}\n\
+         regions: wanted {wanted}  resident {resident}  ready {ready}  dirty {dirty_regions}\n\
+         io: loading {loading}  saving {saving}  tasks {loads}L/{saves}S/{meshing}M\n\
+         volumes {volumes}  cells {cells}  dirty sections {dirty_sections}\n\
+         mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
+         faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
+         bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
+         last rebuild {rebuilt} section(s)   material: {material}   fps {fps:.0}\n\
          {status}",
         mesher = geometry.compiler.name(),
         cx = global.x,
         cy = global.y,
         cz = global.z,
+        rx = camera_region.x,
+        ry = camera_region.y,
+        rz = camera_region.z,
         ox = anchor.x,
         oy = anchor.y,
         oz = anchor.z,
+        wanted = streaming.wanted_regions,
+        resident = world_stats.regions,
+        ready = residency.ready,
+        dirty_regions = world.dirty_regions().count(),
+        loading = streaming.active_loads,
+        saving = streaming.active_saves,
+        loads = loads,
+        saves = saves,
+        meshing = meshing,
         volumes = world_stats.volumes,
-        meshed = stats.sections,
         cells = world_stats.occupied_cells,
+        dirty_sections = world.dirty_count(),
+        pending = jobs.pending,
+        active = jobs.active,
+        applied = jobs.applied,
+        stale = jobs.discarded_stale,
         faces = stats.exposed_faces,
         quads = stats.quads,
         ratio = merge_ratio,
-        vertices = stats.vertices,
-        triangles = stats.triangles,
+        tris = stats.triangles,
+        entities = sections.len(),
+        cell_bytes = human_bytes(footprint.cell_bytes),
+        palette_bytes = human_bytes(footprint.palette_bytes),
+        mesh_bytes = human_bytes(stats.mesh_bytes),
+        inflight = human_bytes(stream.scheduler.awaiting_apply_bytes()),
         rebuilt = geometry.cache.last_rebuild_sections(),
-        rebuild_ms = geometry.cache.last_rebuild_time().as_secs_f64() * 1000.0,
         material = palette.current_name(),
+        fps = fps,
         status = status.0,
     );
+}
+
+/// Bytes in a form a person can read at a glance.
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes}B")
+    } else {
+        format!("{value:.1}{}", UNITS[unit])
+    }
 }

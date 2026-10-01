@@ -349,6 +349,49 @@ pub fn save_dirty_regions(
     Ok(dirty)
 }
 
+/// What a world's manifest says, without reading a single region.
+#[derive(Clone, Debug)]
+pub struct Manifest {
+    pub meta: WorldMeta,
+    pub materials: MaterialRegistry,
+    /// Which region shards the manifest lists, ascending.
+    pub regions: Vec<RegionPos>,
+}
+
+/// Read only the manifest.
+///
+/// A streaming host needs the material registry and the region index before it
+/// loads anything, and must not pay for the whole world to get them.
+pub fn load_manifest(dir: impl AsRef<Path>) -> Result<Manifest, IoError> {
+    let dir = dir.as_ref();
+    let path = manifest_path(dir);
+    let json = std::fs::read_to_string(&path).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            IoError::NotAWorldDirectory {
+                path: dir.to_path_buf(),
+            }
+        } else {
+            IoError::File { path, source }
+        }
+    })?;
+
+    let file: ManifestFile = serde_json::from_str(&json)?;
+    if file.format != FORMAT_TAG {
+        return Err(IoError::WrongFormat { found: file.format });
+    }
+    if file.version != FORMAT_VERSION_V2 {
+        return Err(IoError::UnsupportedVersion {
+            found: file.version,
+            supported: FORMAT_VERSION_V2,
+        });
+    }
+    Ok(Manifest {
+        meta: file.meta,
+        materials: file.materials.into_iter().collect(),
+        regions: file.regions,
+    })
+}
+
 /// Read a whole world from a v2 directory.
 pub fn load_world_v2(dir: impl AsRef<Path>) -> Result<LoadedWorld, IoError> {
     let dir = dir.as_ref();

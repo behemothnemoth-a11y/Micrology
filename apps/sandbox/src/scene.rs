@@ -1,10 +1,14 @@
 //! The world the sandbox starts with, and the camera and light that view it.
 
+use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes, world_from_args};
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use engine_core::{CellPos, GlobalPos, MaterialId, MaterialRegistry, Rgb};
+use engine_io::{WorldMeta, v2};
 use engine_world::World as EngineWorld;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Material ids the demo scene and the edit palette share.
 pub const STONE: MaterialId = MaterialId(1);
@@ -23,25 +27,66 @@ pub fn materials() -> MaterialRegistry {
     registry
 }
 
+/// Where the sandbox keeps its streamed world when none is named.
+pub const DEFAULT_WORLD_DIR: &str = "saves/world";
+
 pub fn setup_world(mut commands: Commands, mut status: ResMut<StatusLine>) {
-    let world = match world_from_args() {
-        Some(path) => match engine_io::load_world(&path) {
+    // A world directory, so the sandbox streams rather than holding everything
+    // resident. A single v1 file given on the command line is still readable,
+    // but it cannot stream — there is nothing to load a region from.
+    if let Some(path) = world_from_args()
+        && path.is_file()
+    {
+        let world = match engine_io::load_world(&path) {
             Ok(world) => {
-                status.0 = format!("loaded {}", path.display());
+                status.0 = format!("loaded {} (resident, not streamed)", path.display());
                 world
             }
             Err(error) => {
-                // Starting with the demo scene beats refusing to open a window.
                 status.0 = format!("could not load {}: {error}", path.display());
                 demo_world()
             }
-        },
-        None => {
-            status.0 = "demo scene".to_string();
-            demo_world()
+        };
+        commands.insert_resource(WorldRes(world));
+        commands.insert_resource(StreamRes::resident_only(
+            path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            WorldMeta::default(),
+        ));
+        return;
+    }
+
+    let dir = world_from_args().unwrap_or_else(|| PathBuf::from(DEFAULT_WORLD_DIR));
+
+    // First run: write the demo world out so there is something to stream.
+    if v2::load_manifest(&dir).is_err() {
+        let meta = WorldMeta::new("micrology-sandbox")
+            .with_name("Sandbox demo")
+            .with_spawn([46.0, 38.0, 54.0]);
+        match v2::save_world_v2(&demo_world(), &meta, &dir) {
+            Ok(()) => status.0 = format!("generated {}", dir.display()),
+            Err(error) => {
+                status.0 = format!("could not write {}: {error}", dir.display());
+                commands.insert_resource(WorldRes(demo_world()));
+                commands.insert_resource(StreamRes::resident_only(dir, WorldMeta::default()));
+                return;
+            }
         }
-    };
-    commands.insert_resource(WorldRes(world));
+    }
+
+    match v2::load_manifest(&dir) {
+        Ok(manifest) => {
+            // The world starts empty: streaming brings regions in around the
+            // camera, which is the whole point.
+            status.0 = format!("streaming {}", dir.display());
+            commands.insert_resource(WorldRes(EngineWorld::with_materials(manifest.materials)));
+            commands.insert_resource(StreamRes::new(dir, manifest.meta));
+        }
+        Err(error) => {
+            status.0 = format!("could not read {}: {error}", dir.display());
+            commands.insert_resource(WorldRes(demo_world()));
+            commands.insert_resource(StreamRes::resident_only(dir, WorldMeta::default()));
+        }
+    }
 }
 
 /// A small hand-built scene that exercises the renderer: a rolling ground plane
