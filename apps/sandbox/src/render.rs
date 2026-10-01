@@ -10,13 +10,19 @@
 //! compute pool, in `streaming.rs`.
 
 use crate::GeometryRes;
+use crate::physics::DynamicFragments;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use bevy::render::render_resource::PrimitiveTopology;
-use engine_core::{RenderOrigin, RenderSectionId};
-use engine_geometry::{CachedSection, MeshData, MeshIndices};
+use engine_core::{CellPos, RenderOrigin, RenderSectionId};
+use engine_destruction::{Fragment, FragmentDerivedFootprint, FragmentId};
+use engine_geometry::{
+    CachedSection, GreedyCompiler, MeshData, MeshIndices, QuadSet, SurfaceCompiler,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Where global coordinates are currently rendered relative to.
 ///
@@ -133,7 +139,7 @@ pub struct SectionMesh;
 /// Convert engine mesh data into a Bevy mesh.
 ///
 /// This is the only place in the project where engine geometry meets a renderer.
-fn to_bevy_mesh(data: &MeshData) -> Mesh {
+pub(crate) fn to_bevy_mesh(data: &MeshData) -> Mesh {
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
@@ -179,4 +185,184 @@ pub fn maintain_render_origin(
     }
 
     camera_transform.translation = Vec3::from_array(origin.0.to_render(fly.global));
+}
+
+
+const MAX_ACTIVE_FRAGMENT_MESH_JOBS: usize = 4;
+
+struct FragmentMeshJob {
+    bytes: u64,
+    task: Task<MeshData>,
+}
+
+/// Render entities for moving volumetric fragments.
+///
+/// They are deliberately separate from Avian bodies. Rendering stays
+/// camera-relative f32, while physics stays global f64.
+#[derive(Resource, Default)]
+pub struct FragmentEntities {
+    entities: BTreeMap<FragmentId, Entity>,
+    mesh_bytes: BTreeMap<FragmentId, u64>,
+    active: BTreeMap<FragmentId, FragmentMeshJob>,
+    material: Option<Handle<StandardMaterial>>,
+}
+
+impl FragmentEntities {
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
+    pub fn has(&self, id: FragmentId) -> bool {
+        self.entities.contains_key(&id)
+    }
+
+    pub fn active_jobs(&self) -> usize {
+        self.active.len()
+    }
+
+    pub fn in_flight_bytes(&self) -> u64 {
+        self.active.values().map(|job| job.bytes).sum()
+    }
+
+    pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
+        FragmentDerivedFootprint {
+            mesh_bytes: self.mesh_bytes.values().sum(),
+            ..FragmentDerivedFootprint::default()
+        }
+    }
+
+    fn shared_material(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+    ) -> Handle<StandardMaterial> {
+        self.material
+            .get_or_insert_with(|| {
+                materials.add(StandardMaterial {
+                    base_color: Color::WHITE,
+                    perceptual_roughness: 0.92,
+                    ..default()
+                })
+            })
+            .clone()
+    }
+
+    fn despawn(&mut self, commands: &mut Commands, id: FragmentId) {
+        if let Some(entity) = self.entities.remove(&id) {
+            commands.entity(entity).despawn();
+        }
+        self.mesh_bytes.remove(&id);
+        self.active.remove(&id);
+    }
+}
+
+#[derive(Component)]
+pub struct FragmentMesh(FragmentId);
+
+fn compile_fragment_mesh(fragment: &Fragment, materials: &engine_core::MaterialRegistry) -> MeshData {
+    let mut quads = QuadSet::default();
+    for volume in fragment.volume_positions() {
+        quads.extend(GreedyCompiler.compile(fragment, volume));
+    }
+    MeshData::from_quads(&quads, materials, CellPos::ZERO)
+}
+
+/// Compile missing fragment meshes off-thread, upload finished geometry, and
+/// keep every fragment entity aligned with its engine-owned f64 pose.
+pub fn sync_fragment_rendering(
+    mut commands: Commands,
+    fragments: Res<DynamicFragments>,
+    world: Res<crate::WorldRes>,
+    origin: Res<RenderOriginRes>,
+    mut renders: ResMut<FragmentEntities>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut transforms: Query<&mut Transform, With<FragmentMesh>>,
+) {
+    let wanted: BTreeSet<_> = fragments.iter().map(|(id, _)| id).collect();
+    let gone: Vec<_> = renders
+        .entities
+        .keys()
+        .chain(renders.active.keys())
+        .filter(|id| !wanted.contains(id))
+        .copied()
+        .collect();
+    for id in gone {
+        renders.despawn(&mut commands, id);
+    }
+
+    let mut completed = Vec::new();
+    renders.active.retain(|id, job| {
+        if let Some(mesh) = check_ready(&job.task) {
+            completed.push((*id, mesh));
+            false
+        } else {
+            true
+        }
+    });
+
+    for (id, mesh) in completed {
+        let Some(fragment) = fragments.get(id) else {
+            continue;
+        };
+        if mesh.is_empty() {
+            continue;
+        }
+        let bytes = mesh.cpu_bytes() as u64;
+        let handle = meshes.add(to_bevy_mesh(&mesh));
+        let material = renders.shared_material(&mut materials);
+        let translation = Vec3::from_array(origin.0.to_render(fragment.pose.translation));
+        let q = fragment.pose.rotation.0;
+        let rotation = Quat::from_xyzw(q[0] as f32, q[1] as f32, q[2] as f32, q[3] as f32)
+            .normalize();
+        let entity = commands
+            .spawn((
+                Mesh3d(handle),
+                MeshMaterial3d(material),
+                Transform {
+                    translation,
+                    rotation,
+                    ..default()
+                },
+                FragmentMesh(id),
+            ))
+            .id();
+        renders.entities.insert(id, entity);
+        renders.mesh_bytes.insert(id, bytes);
+    }
+
+    let pool = AsyncComputeTaskPool::get();
+    let available = MAX_ACTIVE_FRAGMENT_MESH_JOBS.saturating_sub(renders.active.len());
+    if available > 0 {
+        let material_registry = world.materials().clone();
+        let candidates: Vec<_> = fragments
+            .iter()
+            .filter(|(id, _)| !renders.entities.contains_key(id) && !renders.active.contains_key(id))
+            .take(available)
+            .map(|(id, fragment)| (id, fragment.clone()))
+            .collect();
+        for (id, fragment) in candidates {
+            let bytes = fragment.footprint_bytes();
+            let registry = material_registry.clone();
+            renders.active.insert(
+                id,
+                FragmentMeshJob {
+                    bytes,
+                    task: pool.spawn(async move { compile_fragment_mesh(&fragment, &registry) }),
+                },
+            );
+        }
+    }
+
+    for (id, entity) in renders.entities.clone() {
+        let Some(fragment) = fragments.get(id) else {
+            continue;
+        };
+        let Ok(mut transform) = transforms.get_mut(entity) else {
+            continue;
+        };
+        transform.translation = Vec3::from_array(origin.0.to_render(fragment.pose.translation));
+        let q = fragment.pose.rotation.0;
+        transform.rotation =
+            Quat::from_xyzw(q[0] as f32, q[1] as f32, q[2] as f32, q[3] as f32).normalize();
+    }
 }
