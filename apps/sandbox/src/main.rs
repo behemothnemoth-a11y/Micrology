@@ -126,6 +126,7 @@ fn main() {
     .init_resource::<physics::StaticColliders>()
     .init_resource::<physics::DynamicFragments>()
     .init_resource::<physics::FragmentBodies>()
+    .init_resource::<physics::FragmentBudgetRes>()
     .init_resource::<physics::FragmentSmoke>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
