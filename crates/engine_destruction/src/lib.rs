@@ -40,6 +40,7 @@ pub mod connectivity;
 pub mod detach;
 pub mod fragment;
 pub mod jobs;
+pub mod physics;
 
 pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
@@ -48,6 +49,7 @@ pub use collision::{
 
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
+pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
 
 pub use jobs::{
     Occupancy, ResultDisposition, SnapshotLimits, StructureFingerprint, StructureJobInput,

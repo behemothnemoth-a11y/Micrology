@@ -17,12 +17,17 @@
 
 use crate::WorldRes;
 use crate::camera::FlyCamera;
+use avian3d::math::{Quaternion, Vector};
 use avian3d::prelude::{
-    Collider, PhysicsPlugins, Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation,
+    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
+    RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::prelude::*;
 use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
-use engine_destruction::{CollisionCompiler, CollisionShape, GreedyCollisionCompiler};
+use engine_destruction::{
+    CollisionCompiler, CollisionShape, Fragment, FragmentId, FragmentPhysicsDescriptor,
+    FragmentPhysicsState, FragmentPose, GreedyCollisionCompiler, Rotation as FragmentRotation,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Collision is active only near the simulation focus.
@@ -310,4 +315,266 @@ mod tests {
             u64::from(u32::MAX) - 15
         );
     }
+}
+
+/// Engine-owned fragment state currently active in the sandbox.
+///
+/// Persistence and spatial streaming arrive in 0003.13. Until then this is a
+/// deliberately small host-side owner that proves a fragment can enter and
+/// leave simulation without making Avian the source of truth.
+#[derive(Resource, Default)]
+pub struct DynamicFragments {
+    fragments: BTreeMap<FragmentId, Fragment>,
+}
+
+impl DynamicFragments {
+    pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
+        self.fragments.insert(fragment.id, fragment)
+    }
+
+    #[expect(
+        dead_code,
+        reason = "consumed by fragment lifecycle/streaming in 0003.12-13"
+    )]
+    pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
+        self.fragments.remove(&id)
+    }
+
+    pub fn get_mut(&mut self, id: FragmentId) -> Option<&mut Fragment> {
+        self.fragments.get_mut(&id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.fragments.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
+        self.fragments.iter().map(|(id, fragment)| (*id, fragment))
+    }
+}
+
+/// Backend entities corresponding to engine-owned fragments.
+#[derive(Resource, Default)]
+pub struct FragmentBodies {
+    entities: BTreeMap<FragmentId, Entity>,
+}
+
+impl FragmentBodies {
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+}
+
+/// Identifies the fragment an Avian body represents.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct DynamicFragmentBody(FragmentId);
+
+type FragmentBodyQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static PhysicsPosition,
+        &'static PhysicsRotation,
+        &'static LinearVelocity,
+        &'static AngularVelocity,
+        Has<Sleeping>,
+    ),
+    With<DynamicFragmentBody>,
+>;
+
+/// Reconcile engine-owned fragments with Avian bodies.
+///
+/// Creation/destruction happens in the ordinary host update. Physics then steps
+/// in Avian's fixed schedule, and `readback_fragment_bodies` copies the result
+/// back into the engine-owned fragment afterwards.
+pub fn sync_fragment_bodies(
+    mut commands: Commands,
+    fragments: Res<DynamicFragments>,
+    mut bodies: ResMut<FragmentBodies>,
+) {
+    let wanted: BTreeSet<_> = fragments.fragments.keys().copied().collect();
+
+    let gone: Vec<_> = bodies
+        .entities
+        .keys()
+        .filter(|id| !wanted.contains(id))
+        .copied()
+        .collect();
+    for id in gone {
+        if let Some(entity) = bodies.entities.remove(&id) {
+            commands.entity(entity).despawn();
+        }
+    }
+
+    for (id, fragment) in fragments.iter() {
+        if bodies.entities.contains_key(&id) {
+            continue;
+        }
+
+        let descriptor = FragmentPhysicsDescriptor::from_fragment(fragment);
+        let Some(collider) = collider_from_shape(&descriptor.collider, CellPos::ZERO) else {
+            continue;
+        };
+        let q = descriptor.pose.rotation.0;
+        let linear = descriptor.linear_velocity;
+        let angular = descriptor.angular_velocity;
+
+        let mut entity = commands.spawn((
+            RigidBody::Dynamic,
+            PhysicsPosition::from_xyz(
+                descriptor.pose.translation.x,
+                descriptor.pose.translation.y,
+                descriptor.pose.translation.z,
+            ),
+            PhysicsRotation(Quaternion::from_xyzw(q[0], q[1], q[2], q[3]).normalize()),
+            LinearVelocity(Vector::new(
+                f64::from(linear[0]),
+                f64::from(linear[1]),
+                f64::from(linear[2]),
+            )),
+            AngularVelocity(Vector::new(
+                f64::from(angular[0]),
+                f64::from(angular[1]),
+                f64::from(angular[2]),
+            )),
+            collider,
+            DynamicFragmentBody(id),
+        ));
+        if descriptor.sleeping {
+            entity.insert(Sleeping);
+        }
+        bodies.entities.insert(id, entity.id());
+    }
+}
+
+/// Copy backend simulation state back into Micrology fragments.
+///
+/// Avian's default physics schedule is `FixedPostUpdate`; this system is wired
+/// after `PhysicsSystems::Last` so it observes the completed step rather than
+/// the state that entered it.
+pub fn readback_fragment_bodies(
+    mut fragments: ResMut<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    query: FragmentBodyQuery,
+) {
+    for (id, entity) in &bodies.entities {
+        let Some(fragment) = fragments.get_mut(*id) else {
+            continue;
+        };
+        let Ok((position, rotation, linear, angular, sleeping)) = query.get(*entity) else {
+            continue;
+        };
+
+        let q = rotation.0.to_array();
+        let state = FragmentPhysicsState {
+            pose: FragmentPose {
+                translation: engine_core::GlobalPos::new(position.x, position.y, position.z),
+                rotation: FragmentRotation(q),
+            },
+            linear_velocity: [linear.x as f32, linear.y as f32, linear.z as f32],
+            angular_velocity: [angular.x as f32, angular.y as f32, angular.z as f32],
+            sleeping,
+        };
+
+        if FragmentPhysicsState::from_fragment(fragment) != state {
+            state.apply_to(fragment);
+        }
+    }
+}
+
+/// State for the opt-in runtime smoke used by CI and local diagnosis.
+///
+/// The normal sandbox never enables this. When `MICROLOGY_FRAGMENT_SMOKE=1` is
+/// present, one small fragment is spawned above the origin and this state proves
+/// that Avian advanced it and that the result returned to the engine-owned
+/// fragment.
+#[derive(Resource, Default)]
+pub struct FragmentSmoke {
+    enabled: bool,
+    fixed_ticks: u32,
+    verified: bool,
+}
+
+const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
+    sequence: u64::MAX,
+    index: 0,
+};
+
+pub fn seed_fragment_smoke(
+    mut fragments: ResMut<DynamicFragments>,
+    mut smoke: ResMut<FragmentSmoke>,
+) {
+    if std::env::var_os("MICROLOGY_FRAGMENT_SMOKE").is_none() {
+        return;
+    }
+
+    let mut source = engine_world::World::new();
+    let mut cells = BTreeSet::new();
+    for y in 0..4 {
+        for z in 0..4 {
+            for x in 0..4 {
+                let cell = CellPos::new(x, y, z);
+                source.set(cell, Some(engine_core::MaterialId(1)));
+                cells.insert(cell);
+            }
+        }
+    }
+    source.take_dirty();
+
+    let mut fragment =
+        Fragment::from_cells(SMOKE_FRAGMENT_ID, &source, &cells).expect("smoke fragment");
+    fragment.pose.translation = engine_core::GlobalPos::new(1_050_000.25, 32.0, -750_000.5);
+    fragments.insert(fragment);
+    smoke.enabled = true;
+}
+
+/// Prove the opt-in smoke fragment was simulated and read back.
+///
+/// Five fixed ticks is enough for gravity to produce a measurable f64 position
+/// change while remaining independent of frame rate. A panic here makes the
+/// runtime smoke fail loudly instead of merely proving that the window stayed
+/// open.
+pub fn verify_fragment_smoke(
+    fragments: Res<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    mut smoke: ResMut<FragmentSmoke>,
+) {
+    if !smoke.enabled || smoke.verified {
+        return;
+    }
+
+    smoke.fixed_ticks += 1;
+    if smoke.fixed_ticks < 5 {
+        return;
+    }
+
+    assert!(
+        bodies.entities.contains_key(&SMOKE_FRAGMENT_ID),
+        "fragment smoke body was never created"
+    );
+    let fragment = fragments
+        .fragments
+        .get(&SMOKE_FRAGMENT_ID)
+        .expect("fragment smoke engine object disappeared");
+    assert!(
+        fragment.pose.translation.y < 32.0,
+        "fragment smoke body did not fall: y={}",
+        fragment.pose.translation.y
+    );
+    assert!(
+        (fragment.pose.translation.x - 1_050_000.25).abs() < 1e-9,
+        "far-origin X drifted: {}",
+        fragment.pose.translation.x
+    );
+    assert!(
+        (fragment.pose.translation.z + 750_000.5).abs() < 1e-9,
+        "far-origin Z drifted: {}",
+        fragment.pose.translation.z
+    );
+    assert!(
+        fragment.linear_velocity[1] < 0.0,
+        "fragment smoke velocity was not read back: {:?}",
+        fragment.linear_velocity
+    );
+    smoke.verified = true;
 }

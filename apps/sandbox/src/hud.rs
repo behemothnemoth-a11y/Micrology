@@ -10,7 +10,7 @@
 
 use crate::camera::FlyCamera;
 use crate::edit::Palette;
-use crate::physics::{PHYSICS_RADIUS_CELLS, StaticColliders};
+use crate::physics::{DynamicFragments, FragmentBodies, PHYSICS_RADIUS_CELLS, StaticColliders};
 use crate::render::{RenderOriginRes, SectionEntities};
 use crate::streaming::{StreamRes, StreamTasks};
 use crate::{GeometryRes, StatusLine, WorldRes};
@@ -159,6 +159,8 @@ pub struct Diagnostics<'w> {
     pub tasks: Res<'w, StreamTasks>,
     pub sections: Res<'w, SectionEntities>,
     pub physics: Res<'w, StaticColliders>,
+    pub fragments: Res<'w, DynamicFragments>,
+    pub fragment_bodies: Res<'w, FragmentBodies>,
 }
 
 pub fn update(
@@ -177,6 +179,8 @@ pub fn update(
         tasks,
         sections,
         physics,
+        fragments,
+        fragment_bodies,
     } = sources;
     let Some(text) = text else {
         return;
@@ -209,7 +213,7 @@ pub fn update(
     let physics_stats = physics.stats();
 
     **text.into_inner() = format!(
-        "Micrology · DROP 0002 · mesher: {mesher}\n\
+        "Micrology · DROP 0003 · mesher: {mesher}\n\
          camera {cx:.0} {cy:.0} {cz:.0}  region {rx} {ry} {rz}  origin {ox} {oy} {oz}\n\
          regions: wanted {wanted}  resident {resident}  ready {ready}  dirty {dirty_regions}\n\
          io: loading {loading}  saving {saving}  tasks {loads}L/{saves}S/{meshing}M\n\
@@ -217,6 +221,7 @@ pub fn update(
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
+         fragments: owned {fragment_count}  bodies {fragment_body_count}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -259,6 +264,8 @@ pub fn update(
         physics_pending = physics_stats.pending_volumes,
         physics_built = physics_stats.rebuilt_this_frame,
         physics_radius = PHYSICS_RADIUS_CELLS,
+        fragment_count = fragments.len(),
+        fragment_body_count = fragment_bodies.len(),
         cell_bytes = human_bytes(footprint.cell_bytes),
         palette_bytes = human_bytes(footprint.palette_bytes),
         mesh_bytes = human_bytes(stats.mesh_bytes),
