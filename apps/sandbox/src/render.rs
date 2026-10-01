@@ -292,7 +292,7 @@ pub fn sync_fragment_rendering(
 
     let mut completed = Vec::new();
     renders.active.retain(|id, job| {
-        if let Some(mesh) = check_ready(&job.task) {
+        if let Some(mesh) = check_ready(&mut job.task) {
             completed.push((*id, mesh));
             false
         } else {
