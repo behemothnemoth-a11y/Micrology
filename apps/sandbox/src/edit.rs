@@ -18,6 +18,7 @@ use crate::render::SectionEntities;
 use crate::scene;
 use crate::streaming::StreamRes;
 use crate::{GeometryRes, StatusLine, WorldRes};
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
@@ -86,17 +87,30 @@ pub fn select_material(
     }
 }
 
+#[derive(SystemParam)]
+pub struct EditResources<'w> {
+    mouse: Res<'w, ButtonInput<MouseButton>>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    palette: Res<'w, Palette>,
+    world: ResMut<'w, WorldRes>,
+    destruction: ResMut<'w, DestructionHost>,
+    status: ResMut<'w, StatusLine>,
+}
+
 /// Left click carves, right click places, `F` repaints.
 pub fn edit_cells(
     cursor: Option<Single<&CursorOptions>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
     camera: Option<Single<(&Transform, &FlyCamera)>>,
-    palette: Res<Palette>,
-    mut world: ResMut<WorldRes>,
-    mut destruction: ResMut<DestructionHost>,
-    mut status: ResMut<StatusLine>,
+    mut resources: EditResources,
 ) {
+    let EditResources {
+        mouse,
+        keys,
+        palette,
+        mut world,
+        mut destruction,
+        mut status,
+    } = resources;
     // Edits only happen while looking around; the first click grabs the cursor.
     if !cursor.map(|c| cursor_grabbed(&c)).unwrap_or(false) {
         return;
@@ -158,19 +172,34 @@ pub fn edit_cells(
     }
 }
 
+#[derive(SystemParam)]
+pub struct SaveLoadResources<'w> {
+    stream: ResMut<'w, StreamRes>,
+    world: ResMut<'w, WorldRes>,
+    geometry: ResMut<'w, GeometryRes>,
+    sections: ResMut<'w, SectionEntities>,
+    fragments: ResMut<'w, DynamicFragments>,
+    fragment_renders: ResMut<'w, FragmentEntities>,
+    destruction: ResMut<'w, DestructionHost>,
+    status: ResMut<'w, StatusLine>,
+}
+
 /// `F5` flushes unsaved regions, `F9` drops everything and streams it back.
 pub fn save_and_load(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
-    mut stream: ResMut<StreamRes>,
-    mut world: ResMut<WorldRes>,
-    mut geometry: ResMut<GeometryRes>,
-    mut sections: ResMut<SectionEntities>,
-    mut fragments: ResMut<DynamicFragments>,
-    mut fragment_renders: ResMut<FragmentEntities>,
-    mut destruction: ResMut<DestructionHost>,
-    mut status: ResMut<StatusLine>,
+    resources: SaveLoadResources,
 ) {
+    let SaveLoadResources {
+        mut stream,
+        mut world,
+        mut geometry,
+        mut sections,
+        mut fragments,
+        mut fragment_renders,
+        mut destruction,
+        mut status,
+    } = resources;
     if keys.just_pressed(KeyCode::F5) {
         // Only the regions with unsaved edits are written, which is what makes
         // a flush affordable on a large world.
