@@ -1,0 +1,31 @@
+name: DROP 0003.10 lockfile refresh
+
+on:
+  push:
+    branches: [drop-0003-10-static-collision]
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    name: refresh Cargo.lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: drop-0003-10-static-collision
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate exact lockfile
+        run: cargo generate-lockfile
+      - name: Commit lockfile if changed
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "build: lock Avian host dependencies [skip ci]"
+          git push origin HEAD:drop-0003-10-static-collision
