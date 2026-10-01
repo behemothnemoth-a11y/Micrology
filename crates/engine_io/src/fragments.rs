@@ -9,8 +9,8 @@ use crate::IoError;
 use crate::v2::{FORMAT_VERSION_V3, write_atomic};
 use engine_core::{CellPos, MaterialId, RegionPos, Revision, VolumePos};
 use engine_destruction::{
-    DestructionSequence, Fragment, FragmentId, FragmentPose, FragmentSpatialIndex, FragmentState,
-    FragmentStore, Rotation,
+    DestructionSequence, Fragment, FragmentId, FragmentPhysicsState, FragmentPose,
+    FragmentSpatialIndex, FragmentState, FragmentStore, Rotation,
 };
 use engine_volume::{SlotRun, Volume};
 use serde::{Deserialize, Serialize};
@@ -267,10 +267,12 @@ pub fn fragment_from_json(expected: FragmentId, json: &str) -> Result<Fragment, 
         expected,
         volumes,
         file.source_origin,
-        pose,
-        file.linear_velocity,
-        file.angular_velocity,
-        file.state.into(),
+        FragmentPhysicsState {
+            pose,
+            linear_velocity: file.linear_velocity,
+            angular_velocity: file.angular_velocity,
+            sleeping: matches!(file.state, FragmentStateFile::Sleeping),
+        },
         file.revision,
     )
     .ok_or_else(|| IoError::BadFragment {
