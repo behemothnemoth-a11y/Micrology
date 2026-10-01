@@ -8,6 +8,7 @@
 use crate::WorldRes;
 use crate::physics::DynamicFragments;
 use crate::render::{RenderOriginRes, to_bevy_mesh};
+use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use engine_core::CellPos;
@@ -81,16 +82,30 @@ impl FragmentEntities {
 #[derive(Component)]
 pub struct FragmentMesh;
 
+#[derive(SystemParam)]
+pub struct FragmentRenderSources<'w, 's> {
+    fragments: Res<'w, DynamicFragments>,
+    world: Res<'w, WorldRes>,
+    origin: Res<'w, RenderOriginRes>,
+    renders: ResMut<'w, FragmentEntities>,
+    meshes: ResMut<'w, Assets<Mesh>>,
+    materials: ResMut<'w, Assets<StandardMaterial>>,
+    transforms: Query<'w, 's, &'static mut Transform, With<FragmentMesh>>,
+}
+
 pub fn sync_fragment_render(
     mut commands: Commands,
-    fragments: Res<DynamicFragments>,
-    world: Res<WorldRes>,
-    origin: Res<RenderOriginRes>,
-    mut renders: ResMut<FragmentEntities>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut transforms: Query<&mut Transform, With<FragmentMesh>>,
+    sources: FragmentRenderSources,
 ) {
+    let FragmentRenderSources {
+        fragments,
+        world,
+        origin,
+        mut renders,
+        mut meshes,
+        mut materials,
+        mut transforms,
+    } = sources;
     renders.stats.pending_uploads = 0;
     renders.stats.uploaded_this_frame = 0;
 
