@@ -25,8 +25,10 @@ use avian3d::prelude::{
 use bevy::prelude::*;
 use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
 use engine_destruction::{
-    CollisionCompiler, CollisionShape, Fragment, FragmentId, FragmentPhysicsDescriptor,
-    FragmentPhysicsState, FragmentPose, GreedyCollisionCompiler, Rotation as FragmentRotation,
+    CollisionCompiler, CollisionShape, Fragment, FragmentAccount, FragmentBudget,
+    FragmentDerivedFootprint, FragmentId, FragmentPhysicsDescriptor, FragmentPhysicsState,
+    FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
+    Rotation as FragmentRotation,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -324,45 +326,116 @@ mod tests {
 /// leave simulation without making Avian the source of truth.
 #[derive(Resource, Default)]
 pub struct DynamicFragments {
-    fragments: BTreeMap<FragmentId, Fragment>,
+    store: FragmentStore,
 }
 
 impl DynamicFragments {
     pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
-        self.fragments.insert(fragment.id, fragment)
+        self.store.insert(fragment)
     }
 
     #[expect(
         dead_code,
-        reason = "consumed by fragment lifecycle/streaming in 0003.12-13"
+        reason = "consumed by fragment lifecycle/streaming in 0003.13"
     )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
-        self.fragments.remove(&id)
+        self.store.remove(id)
+    }
+
+    pub fn get(&self, id: FragmentId) -> Option<&Fragment> {
+        self.store.get(id)
     }
 
     pub fn get_mut(&mut self, id: FragmentId) -> Option<&mut Fragment> {
-        self.fragments.get_mut(&id)
+        self.store.get_mut(id)
     }
 
     pub fn len(&self) -> usize {
-        self.fragments.len()
+        self.store.len()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
-        self.fragments.iter().map(|(id, fragment)| (*id, fragment))
+        self.store.iter()
     }
+
+    pub fn account(&self) -> FragmentAccount {
+        FragmentAccount::from_store(&self.store)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FragmentBodyEntry {
+    entity: Entity,
+    collision_boxes: u64,
+    collision_bytes: u64,
 }
 
 /// Backend entities corresponding to engine-owned fragments.
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
-    entities: BTreeMap<FragmentId, Entity>,
+    entries: BTreeMap<FragmentId, FragmentBodyEntry>,
 }
 
 impl FragmentBodies {
     pub fn len(&self) -> usize {
-        self.entities.len()
+        self.entries.len()
     }
+
+    pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
+        FragmentDerivedFootprint {
+            collision_bytes: self.entries.values().map(|entry| entry.collision_bytes).sum(),
+            collision_boxes: self.entries.values().map(|entry| entry.collision_boxes).sum(),
+            physics_bodies: self.entries.len() as u64,
+            ..FragmentDerivedFootprint::default()
+        }
+    }
+}
+
+/// Explicit sandbox fragment limits.
+///
+/// These are host policy, not engine truth. The defaults are deliberately well
+/// above the committed fragment-storm fixture (about 2.4 MiB tracked geometry
+/// across 256 tiny fragments) and can be overridden without rebuilding.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FragmentBudgetRes(pub FragmentBudget);
+
+impl Default for FragmentBudgetRes {
+    fn default() -> Self {
+        let soft_mb = env_u64("MICROLOGY_FRAGMENT_SOFT_MB").unwrap_or(32);
+        let hard_mb = env_u64("MICROLOGY_FRAGMENT_HARD_MB").unwrap_or(64);
+        let max_bodies = env_u64("MICROLOGY_FRAGMENT_MAX_BODIES").unwrap_or(512);
+        let max_boxes = env_u64("MICROLOGY_FRAGMENT_MAX_BOXES").unwrap_or(65_536);
+        Self(FragmentBudget::new(
+            soft_mb.saturating_mul(1024 * 1024),
+            hard_mb.saturating_mul(1024 * 1024),
+            max_bodies,
+            max_boxes,
+        ))
+    }
+}
+
+impl FragmentBudgetRes {
+    pub fn account(
+        &self,
+        fragments: &DynamicFragments,
+        bodies: &FragmentBodies,
+    ) -> FragmentAccount {
+        let mut account = fragments.account();
+        account.add_derived(bodies.derived_footprint());
+        account
+    }
+
+    pub fn pressure(
+        &self,
+        fragments: &DynamicFragments,
+        bodies: &FragmentBodies,
+    ) -> FragmentPressure {
+        self.0.pressure(self.account(fragments, bodies))
+    }
+}
+
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name).ok()?.parse().ok()
 }
 
 /// Identifies the fragment an Avian body represents.
@@ -392,22 +465,22 @@ pub fn sync_fragment_bodies(
     fragments: Res<DynamicFragments>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
-    let wanted: BTreeSet<_> = fragments.fragments.keys().copied().collect();
+    let wanted: BTreeSet<_> = fragments.store.ids().collect();
 
     let gone: Vec<_> = bodies
-        .entities
+        .entries
         .keys()
         .filter(|id| !wanted.contains(id))
         .copied()
         .collect();
     for id in gone {
-        if let Some(entity) = bodies.entities.remove(&id) {
-            commands.entity(entity).despawn();
+        if let Some(entry) = bodies.entries.remove(&id) {
+            commands.entity(entry.entity).despawn();
         }
     }
 
     for (id, fragment) in fragments.iter() {
-        if bodies.entities.contains_key(&id) {
+        if bodies.entries.contains_key(&id) {
             continue;
         }
 
@@ -443,7 +516,14 @@ pub fn sync_fragment_bodies(
         if descriptor.sleeping {
             entity.insert(Sleeping);
         }
-        bodies.entities.insert(id, entity.id());
+        bodies.entries.insert(
+            id,
+            FragmentBodyEntry {
+                entity: entity.id(),
+                collision_boxes: descriptor.collision_boxes() as u64,
+                collision_bytes: descriptor.collision_bytes(),
+            },
+        );
     }
 }
 
@@ -457,11 +537,11 @@ pub fn readback_fragment_bodies(
     bodies: Res<FragmentBodies>,
     query: FragmentBodyQuery,
 ) {
-    for (id, entity) in &bodies.entities {
+    for (id, entry) in &bodies.entries {
         let Some(fragment) = fragments.get_mut(*id) else {
             continue;
         };
-        let Ok((position, rotation, linear, angular, sleeping)) = query.get(*entity) else {
+        let Ok((position, rotation, linear, angular, sleeping)) = query.get(entry.entity) else {
             continue;
         };
 
@@ -549,12 +629,11 @@ pub fn verify_fragment_smoke(
     }
 
     assert!(
-        bodies.entities.contains_key(&SMOKE_FRAGMENT_ID),
+        bodies.entries.contains_key(&SMOKE_FRAGMENT_ID),
         "fragment smoke body was never created"
     );
     let fragment = fragments
-        .fragments
-        .get(&SMOKE_FRAGMENT_ID)
+        .get(SMOKE_FRAGMENT_ID)
         .expect("fragment smoke engine object disappeared");
     assert!(
         fragment.pose.translation.y < 32.0,
