@@ -1,0 +1,87 @@
+name: Weakpoint break diagnostic
+
+on:
+  push:
+    branches: [diagnostic/weakpoint-break-video-20261001]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diagnostic/weakpoint-break-video-20261001
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install sandbox and video dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev ffmpeg python3-pip
+          python3 -m pip install --break-system-packages pillow
+
+      - name: Run Micrology weak-point simulation
+        run: |
+          mkdir -p docs/diagnostics/weakpoint_break
+          cargo run --release -p sandbox --bin break_sim -- \
+            docs/diagnostics/weakpoint_break/report.json
+
+      - name: Render diagnostic frames
+        run: |
+          python3 scripts/render_break_sim.py \
+            docs/diagnostics/weakpoint_break/report.json \
+            docs/diagnostics/weakpoint_break
+
+      - name: Encode MP4
+        run: |
+          ffmpeg -y -framerate 30 \
+            -i docs/diagnostics/weakpoint_break/frames/%05d.png \
+            -c:v libx264 -pix_fmt yuv420p -crf 19 \
+            docs/diagnostics/weakpoint_break/weakpoint_break.mp4
+          rm -rf docs/diagnostics/weakpoint_break/frames
+
+      - name: Print summary
+        run: |
+          python3 - <<'PY'
+          import json
+          p='docs/diagnostics/weakpoint_break/report.json'
+          r=json.load(open(p))
+          print('weak_axis_x=',r['weak_axis_x'])
+          print('weak_cut_cells=',r['weak_cut_cells'])
+          print('last_cell_cliff=',r['last_cell_cliff'])
+          print('fragment_count=',len(r['fragments']))
+          print('fragment_cells=',len(r['fragments'][0]['local_cells']))
+          print('fragment_collision_boxes=',r['fragments'][0]['collision_boxes'])
+          print('static_collision_boxes=',r['static_collision_boxes_after_detach'])
+          f=r['physics_frames']
+          print('physics_start_y=',f[0]['translation'][1])
+          print('physics_end_y=',f[-1]['translation'][1])
+          print('physics_end_sleeping=',f[-1]['sleeping'])
+          PY
+
+      - name: Commit diagnostic outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/weakpoint_break
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "diagnostic: actual weak-point break outputs [skip ci]"
+          git push origin HEAD:diagnostic/weakpoint-break-video-20261001
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: micrology-weakpoint-break
+          path: |
+            docs/diagnostics/weakpoint_break/report.json
+            docs/diagnostics/weakpoint_break/weakpoint_break.mp4
+            docs/diagnostics/weakpoint_break/weakpoint_break_contact_sheet.png
