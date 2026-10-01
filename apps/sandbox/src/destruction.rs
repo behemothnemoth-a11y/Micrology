@@ -125,9 +125,6 @@ pub fn load_fragment_state(
     stream: Res<StreamRes>,
     mut host: ResMut<DestructionHost>,
     mut fragments: ResMut<DynamicFragments>,
-    bodies: Res<FragmentBodies>,
-    renders: Res<FragmentEntities>,
-    budget: Res<FragmentBudgetRes>,
     mut status: ResMut<StatusLine>,
 ) {
     match engine_io::load_fragment_store(&stream.dir) {
@@ -230,6 +227,9 @@ pub fn poll_structural_jobs(
     mut stream: ResMut<StreamRes>,
     mut host: ResMut<DestructionHost>,
     mut fragments: ResMut<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    renders: Res<FragmentEntities>,
+    budget: Res<FragmentBudgetRes>,
     mut status: ResMut<StatusLine>,
 ) {
     let mut finished = Vec::new();
