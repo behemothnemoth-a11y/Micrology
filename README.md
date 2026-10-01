@@ -12,8 +12,8 @@ The engine is in **DROP 0003 — Destruction Foundation**. The world kernel and
 scale foundation are complete: Micrology owns, streams, edits, saves and renders
 its own bounded-memory volumetric world. DROP 0003 is now through **0003.10**:
 support topology, structural connectivity, native fragments, exact/greedy
-collision compilation and streamed static-world physics are implemented; dynamic
-fragment simulation is next.
+collision compilation, streamed static-world physics, and the dynamic fragment
+physics adapter are implemented; fragment lifecycle/budgeting is next.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -152,7 +152,7 @@ wrong by that factor. Verified on a 153 MiB world held inside a 24 MiB ceiling.
 
 ## What does not exist yet
 
-Still not implemented: dynamic fragment rigid bodies, fragment lifecycle/budgets
+Still not implemented: live detachment feeding dynamic fragment bodies, fragment lifecycle/budgets
 and persistence, the interactive structural-destruction pipeline, LOD, an editor,
 procedural generation, scripting, networking, multiplayer, Minecraft or
 Litematica import/export, GIS ingestion, volume transforms, and any actual game.
