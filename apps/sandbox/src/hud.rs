@@ -228,7 +228,7 @@ pub fn update(
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
-         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  cells {fragment_cells}\n\
+         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  withheld {fragment_withheld}  cells {fragment_cells}\n\
          fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
@@ -276,6 +276,7 @@ pub fn update(
         fragment_dynamic = fragment_stats.dynamic,
         fragment_sleeping = fragment_stats.sleeping,
         fragment_body_count = fragment_bodies.len(),
+        fragment_withheld = fragment_bodies.withheld_current(),
         fragment_cells = fragment_stats.cells,
         fragment_bytes = human_bytes(fragment_account.footprint.tracked_bytes()),
         fragment_soft = human_bytes(fragment_budget.0.soft_bytes),
