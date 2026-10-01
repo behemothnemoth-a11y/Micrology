@@ -10,3 +10,6 @@ authors.workspace = true
 
 [dependencies]
 engine_core = { workspace = true }
+engine_geometry = { workspace = true }
+engine_volume = { workspace = true }
+engine_world = { workspace = true }

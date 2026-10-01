@@ -2432,6 +2432,9 @@ name = "engine_stream"
 version = "0.1.0"
 dependencies = [
  "engine_core",
+ "engine_geometry",
+ "engine_volume",
+ "engine_world",
 ]
 
 [[package]]

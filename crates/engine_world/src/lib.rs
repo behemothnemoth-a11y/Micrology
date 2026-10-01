@@ -90,6 +90,17 @@ impl World {
             .get(local)
     }
 
+    /// The revision of the volume at `pos`, or `None` if there is no volume
+    /// there.
+    ///
+    /// `None` is meaningfully different from `Some(Revision::ZERO)`: a volume
+    /// that does not exist and one that exists untouched produce different
+    /// geometry for their neighbours, so a mesh job's fingerprint must be able
+    /// to tell them apart.
+    pub fn volume_revision(&self, pos: VolumePos) -> Option<Revision> {
+        self.volume(pos).map(|volume| volume.revision())
+    }
+
     /// Whether a populated volume exists at `pos`.
     pub fn has_volume(&self, pos: VolumePos) -> bool {
         self.regions
