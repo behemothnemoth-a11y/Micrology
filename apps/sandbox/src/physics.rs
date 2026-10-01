@@ -370,6 +370,15 @@ impl DynamicFragments {
         self.store = store;
     }
 
+    /// Clone the persistent subset of the store. The opt-in smoke fragment uses
+    /// a reserved diagnostic id and must never reach disk or influence the
+    /// world's destruction sequence.
+    pub fn persistent_store(&self) -> FragmentStore {
+        let mut store = self.store.clone();
+        store.remove(SMOKE_FRAGMENT_ID);
+        store
+    }
+
     pub fn account(&self) -> FragmentAccount {
         FragmentAccount::from_store(&self.store)
     }
@@ -413,7 +422,7 @@ impl FragmentBodies {
     }
 
     pub fn clear(&mut self, commands: &mut Commands) {
-        for (_, entry) in self.entries.drain() {
+        for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
         }
         self.withheld_current = 0;
