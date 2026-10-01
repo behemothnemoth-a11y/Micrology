@@ -94,7 +94,16 @@ impl WorldEditBatch {
                 for dx in -radius..=radius {
                     let (fx, fy, fz) = (i64::from(dx), i64::from(dy), i64::from(dz));
                     if fx * fx + fy * fy + fz * fz <= limit {
-                        self.remove(CellPos::new(centre.x + dx, centre.y + dy, centre.z + dz));
+                        let Some(x) = centre.x.checked_add(dx) else {
+                            continue;
+                        };
+                        let Some(y) = centre.y.checked_add(dy) else {
+                            continue;
+                        };
+                        let Some(z) = centre.z.checked_add(dz) else {
+                            continue;
+                        };
+                        self.remove(CellPos::new(x, y, z));
                     }
                 }
             }
@@ -263,7 +272,9 @@ impl World {
             outcome.dirtied_volumes.insert(volume_pos);
 
             for dir in boundary_dirs {
-                let neighbour = volume_pos.step(dir);
+                let Some(neighbour) = volume_pos.checked_step(dir) else {
+                    continue;
+                };
                 // A volume that does not exist has no faces to revise.
                 if self.has_volume(neighbour) {
                     self.dirty.insert(neighbour);
@@ -288,7 +299,9 @@ impl World {
     fn gather_structural_candidates(&self, outcome: &mut EditOutcome) {
         for removed in &outcome.removed_cells {
             for dir in FaceDir::ALL {
-                let neighbour = removed.step(dir);
+                let Some(neighbour) = removed.checked_step(dir) else {
+                    continue;
+                };
                 let region = neighbour.region();
                 if self.regions.contains_key(&region) {
                     if self.get(neighbour).is_some() {
