@@ -248,19 +248,70 @@ fn each_scenario_pressures_what_it_claims_to() {
 }
 
 #[test]
+fn every_scenario_detaches_exactly_what_it_says_it_will() {
+    // The assertion the whole harness was built to make. Each scenario states
+    // its expected detachment count up front, and the classifier has to meet
+    // it — a baseline that drifted while still looking plausible is the failure
+    // this prevents.
+    for scenario in all_structural_scenarios() {
+        let report = scenario.run();
+        assert_eq!(
+            report.counters.detached_components,
+            scenario.expected_detached(),
+            "`{}` expects {} ({}) but detached {}",
+            scenario.name(),
+            scenario.expected_detached(),
+            scenario.expectation(),
+            report.counters.detached_components
+        );
+        // And nothing may be left unresolved: these worlds are entirely in
+        // memory, so an indeterminate result would mean the classifier
+        // invented an unknown.
+        assert_eq!(
+            report.counters.indeterminate_components,
+            0,
+            "`{}` is fully resident and must not be indeterminate",
+            scenario.name()
+        );
+    }
+}
+
+#[test]
+fn redundancy_is_not_the_same_as_support() {
+    // `two_support_bridge` is the scenario a naive classifier passes everything
+    // else and still fails: it removes an entire anchored pier, which *looks*
+    // like removing support, and the deck must stay up because the other pier
+    // is still there.
+    let report = StructuralScenario::TwoSupportBridge.run();
+    assert!(report.counters.cells_removed > 700, "a whole pier");
+    assert_eq!(report.counters.detached_components, 0);
+    assert_eq!(report.counters.fragment_cells, 0);
+    assert_eq!(report.counters.supported_components, 1);
+}
+
+#[test]
+fn proving_support_is_the_expensive_case() {
+    // The cost shape worth knowing before optimising anything: a structure that
+    // stays up is visited in full, because there is no way to know an anchor is
+    // absent without looking everywhere. `large_supported_structure` is the
+    // scenario that will answer whether that ever needs fixing.
+    let large = StructuralScenario::LargeSupportedStructure.run().counters;
+    assert_eq!(large.detached_components, 0);
+    assert!(
+        large.cells_visited > large.structure_cells * 9 / 10,
+        "proving support visited {} of {} cells",
+        large.cells_visited,
+        large.structure_cells
+    );
+}
+
+#[test]
 fn analysis_counters_stay_zero_until_their_pass_lands() {
     // These fields exist from the first baseline so later passes show up as a
     // reviewable diff rather than as a new file. Until then they must be zero,
     // so a baseline diff points at real work.
     for (name, c) in &measured() {
-        assert_eq!(c.cells_visited, 0, "{name}");
-        assert_eq!(c.components_discovered, 0, "{name}");
-        assert_eq!(c.supported_components, 0, "{name}");
-        assert_eq!(c.detached_components, 0, "{name}");
-        assert_eq!(c.indeterminate_components, 0, "{name}");
         assert_eq!(c.fragment_count, 0, "{name}");
-        assert_eq!(c.fragment_cells, 0, "{name}");
-        assert_eq!(c.largest_fragment_cells, 0, "{name}");
         assert_eq!(c.fragment_mesh_bytes, 0, "{name}");
         assert_eq!(c.collision_boxes_exact, 0, "{name}");
         assert_eq!(c.collision_boxes_merged, 0, "{name}");

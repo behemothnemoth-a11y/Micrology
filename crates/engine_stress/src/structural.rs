@@ -37,7 +37,11 @@
 //! later connectivity change can be told apart from a later fixture change.
 
 use crate::rng::Rng;
-use engine_core::{CellPos, MaterialId, REGION_EDGE_CELLS, SectionGrid, VOLUME_EDGE, VolumePos};
+use engine_core::{
+    CellPos, CellSource, MaterialId, REGION_EDGE_CELLS, SectionGrid, SupportSource, VOLUME_EDGE,
+    VolumePos,
+};
+use engine_destruction::{AllResident, StructuralLimits, classify_from_roots};
 use engine_geometry::{GreedyCompiler, SectionMeshCache};
 use engine_world::{World, WorldEditBatch};
 use serde::{Deserialize, Serialize};
@@ -253,6 +257,27 @@ impl StructuralScenario {
         }
     }
 
+    /// How many components this scenario must detach.
+    ///
+    /// The expectation is a *number*, not prose, so a test can hold the
+    /// classifier to it. A baseline that drifted while still "looking right"
+    /// is the failure this prevents: `two_support_bridge` detaching one
+    /// component would be a plausible-looking diff and a broken engine.
+    pub fn expected_detached(self) -> u64 {
+        match self {
+            StructuralScenario::SupportedColumn => 0,
+            StructuralScenario::Cantilever => 1,
+            StructuralScenario::TwoSupportBridge => 0,
+            StructuralScenario::CutColumn => 1,
+            StructuralScenario::MultiIsland => 4,
+            StructuralScenario::VolumeBoundaryBreak => 1,
+            StructuralScenario::RegionBoundaryBreak => 1,
+            StructuralScenario::MaterialNoiseStructure => 1,
+            StructuralScenario::LargeSupportedStructure => 0,
+            StructuralScenario::FragmentStorm => 256,
+        }
+    }
+
     /// What this scenario expects to happen, as prose.
     ///
     /// Recorded so a baseline diff can be read against intent rather than
@@ -268,7 +293,7 @@ impl StructuralScenario {
             StructuralScenario::RegionBoundaryBreak => "1 detached component across the seam",
             StructuralScenario::MaterialNoiseStructure => "1 detached component",
             StructuralScenario::LargeSupportedStructure => "0 detached",
-            StructuralScenario::FragmentStorm => "many detached components",
+            StructuralScenario::FragmentStorm => "256 detached components, one per stub",
         }
     }
 
@@ -519,6 +544,25 @@ impl StructuralScenario {
         let outcome = built.world.apply(&batch);
         let batch_edit = started.elapsed();
 
+        // Classify from exactly the roots the edit handed back. The scenarios
+        // are entirely in memory, so residency is not the question here — the
+        // streamed case is the torture suite's job, and conflating the two
+        // would make every fixture inconclusive for the wrong reason.
+        let started = Instant::now();
+        let components = {
+            let cells: &dyn CellSource = &built.world;
+            let support: &dyn SupportSource = &built.world;
+            classify_from_roots(
+                cells,
+                support,
+                &AllResident,
+                outcome.structural_candidates.iter().copied(),
+                StructuralLimits::UNLIMITED,
+            )
+        };
+        let connectivity = started.elapsed();
+        let counts = components.counts(outcome.structural_candidates.len() as u64);
+
         // Static geometry after the damage. Destruction changes how the world
         // looks whether or not anything detaches, so this is measured for every
         // scenario rather than only the ones that drop something.
@@ -541,7 +585,14 @@ impl StructuralScenario {
                 structure_volumes,
                 structure_regions,
                 cells_removed: outcome.removed_cells.len() as u64,
-                candidate_roots: outcome.structural_candidates.len() as u64,
+                candidate_roots: counts.roots,
+                cells_visited: counts.cells_visited,
+                components_discovered: counts.components,
+                supported_components: counts.supported,
+                detached_components: counts.detached,
+                indeterminate_components: counts.indeterminate,
+                fragment_cells: counts.detached_cells,
+                largest_fragment_cells: counts.largest_detached_cells,
                 static_quads: geometry.quads,
                 static_mesh_bytes: geometry.mesh_bytes,
                 // Everything else lands as its pass does.
@@ -550,6 +601,7 @@ impl StructuralScenario {
             timings: StructuralTimings {
                 world_build,
                 batch_edit,
+                connectivity,
                 ..StructuralTimings::default()
             },
         }

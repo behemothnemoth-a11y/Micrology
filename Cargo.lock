@@ -2407,6 +2407,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_destruction"
+version = "0.1.0"
+dependencies = [
+ "engine_core",
+ "engine_geometry",
+ "engine_volume",
+ "engine_world",
+]
+
+[[package]]
 name = "engine_geometry"
 version = "0.1.0"
 dependencies = [
@@ -2442,6 +2452,7 @@ name = "engine_stress"
 version = "0.1.0"
 dependencies = [
  "engine_core",
+ "engine_destruction",
  "engine_geometry",
  "engine_io",
  "engine_stream",

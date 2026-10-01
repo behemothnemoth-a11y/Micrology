@@ -1,0 +1,15 @@
+[package]
+name = "engine_destruction"
+description = "Structural connectivity, volumetric fragments and collision compilation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+engine_core = { workspace = true }
+engine_geometry = { workspace = true }
+engine_volume = { workspace = true }
+engine_world = { workspace = true }
