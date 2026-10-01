@@ -12,6 +12,7 @@ authors.workspace = true
 engine_core = { workspace = true }
 engine_volume = { workspace = true }
 engine_world = { workspace = true }
+engine_destruction = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
