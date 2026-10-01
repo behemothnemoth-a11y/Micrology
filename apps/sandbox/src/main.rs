@@ -126,13 +126,20 @@ fn main() {
     .init_resource::<physics::StaticColliders>()
     .init_resource::<physics::DynamicFragments>()
     .init_resource::<physics::FragmentBodies>()
+    .init_resource::<physics::FragmentSmoke>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
     // `setup_world` has inserted the stream resource that holds it.
     .add_systems(
         Startup,
-        (scene::setup_world, scene::setup_view, hud::setup).chain(),
+        (
+            scene::setup_world,
+            physics::seed_fragment_smoke,
+            scene::setup_view,
+            hud::setup,
+        )
+            .chain(),
     )
     .add_systems(
         Update,
@@ -170,7 +177,12 @@ fn main() {
     // Avian's fixed step instead of making the backend authoritative.
     .add_systems(
         FixedPostUpdate,
-        physics::readback_fragment_bodies.after(avian3d::prelude::PhysicsSystems::Last),
+        (
+            physics::readback_fragment_bodies,
+            physics::verify_fragment_smoke,
+        )
+            .chain()
+            .after(avian3d::prelude::PhysicsSystems::Last),
     )
     // Unsaved edits must reach disk before the process does, so this runs in
     // `Last`, after the exit message exists and before the app stops.
