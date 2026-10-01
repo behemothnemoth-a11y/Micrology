@@ -181,10 +181,7 @@ impl FragmentAccount {
 
     /// Add renderer/physics costs measured by the host.
     pub fn add_derived(&mut self, derived: FragmentDerivedFootprint) {
-        self.footprint.mesh_bytes = self
-            .footprint
-            .mesh_bytes
-            .saturating_add(derived.mesh_bytes);
+        self.footprint.mesh_bytes = self.footprint.mesh_bytes.saturating_add(derived.mesh_bytes);
         self.footprint.collision_bytes = self
             .footprint
             .collision_bytes
@@ -256,7 +253,11 @@ impl FragmentBudget {
     }
 
     /// Pressure if `next` were admitted, without mutating any store or account.
-    pub fn pressure_with(self, account: FragmentAccount, next: FragmentFootprint) -> FragmentPressure {
+    pub fn pressure_with(
+        self,
+        account: FragmentAccount,
+        next: FragmentFootprint,
+    ) -> FragmentPressure {
         self.pressure(account.with_next(next))
     }
 }
