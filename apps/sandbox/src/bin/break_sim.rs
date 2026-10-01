@@ -3,6 +3,7 @@ use avian3d::prelude::{
     AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
     RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
+use bevy::app::PluginGroup;
 use bevy::prelude::{App, DefaultPlugins, Entity};
 use bevy::window::WindowPlugin;
 use bevy::time::TimeUpdateStrategy;
