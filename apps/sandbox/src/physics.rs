@@ -466,9 +466,12 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        mesh_bytes: u64,
     ) -> FragmentAccount {
         let mut account = fragments.account();
-        account.add_derived(bodies.derived_footprint());
+        let mut derived = bodies.derived_footprint();
+        derived.mesh_bytes = mesh_bytes;
+        account.add_derived(derived);
         account
     }
 
@@ -476,8 +479,9 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        mesh_bytes: u64,
     ) -> FragmentPressure {
-        self.0.pressure(self.account(fragments, bodies))
+        self.0.pressure(self.account(fragments, bodies, mesh_bytes))
     }
 }
 
@@ -510,6 +514,7 @@ type FragmentBodyQuery<'w, 's> = Query<
 pub fn sync_fragment_bodies(
     mut commands: Commands,
     fragments: Res<DynamicFragments>,
+    renders: Res<crate::fragment_render::FragmentEntities>,
     budget: Res<FragmentBudgetRes>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
@@ -529,7 +534,7 @@ pub fn sync_fragment_bodies(
         }
     }
 
-    let mut account = budget.account(&fragments, &bodies);
+    let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
     let mut spawned_this_frame = 0usize;
     for (id, fragment) in fragments.iter() {
         if bodies.entries.contains_key(&id) {
