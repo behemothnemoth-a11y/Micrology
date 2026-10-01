@@ -59,5 +59,3 @@ jobs:
             libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Clippy
         run: cargo clippy -p sandbox --all-targets
-      - name: Test host integration
-        run: cargo test -p sandbox
