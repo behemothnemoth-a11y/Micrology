@@ -176,7 +176,6 @@ fn saving_store_removes_orphaned_fragment_payloads() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-
 #[test]
 fn index_rejects_next_sequence_that_can_reuse_an_existing_id() {
     let mut store = FragmentStore::default();
