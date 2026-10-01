@@ -523,7 +523,7 @@ pub fn seed_fragment_smoke(
 
     let mut fragment =
         Fragment::from_cells(SMOKE_FRAGMENT_ID, &source, &cells).expect("smoke fragment");
-    fragment.pose.translation = engine_core::GlobalPos::new(0.0, 32.0, 0.0);
+    fragment.pose.translation = engine_core::GlobalPos::new(1_050_000.25, 32.0, -750_000.5);
     fragments.insert(fragment);
     smoke.enabled = true;
 }
@@ -560,6 +560,16 @@ pub fn verify_fragment_smoke(
         fragment.pose.translation.y < 32.0,
         "fragment smoke body did not fall: y={}",
         fragment.pose.translation.y
+    );
+    assert!(
+        (fragment.pose.translation.x - 1_050_000.25).abs() < 1e-9,
+        "far-origin X drifted: {}",
+        fragment.pose.translation.x
+    );
+    assert!(
+        (fragment.pose.translation.z + 750_000.5).abs() < 1e-9,
+        "far-origin Z drifted: {}",
+        fragment.pose.translation.z
     );
     assert!(
         fragment.linear_velocity[1] < 0.0,
