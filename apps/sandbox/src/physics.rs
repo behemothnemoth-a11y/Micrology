@@ -328,10 +328,6 @@ pub struct DynamicFragments {
 }
 
 impl DynamicFragments {
-    #[expect(
-        dead_code,
-        reason = "consumed by the interactive detachment host in 0003.14"
-    )]
     pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
         self.fragments.insert(fragment.id, fragment)
     }
@@ -484,4 +480,91 @@ pub fn readback_fragment_bodies(
             state.apply_to(fragment);
         }
     }
+}
+
+
+/// State for the opt-in runtime smoke used by CI and local diagnosis.
+///
+/// The normal sandbox never enables this. When `MICROLOGY_FRAGMENT_SMOKE=1` is
+/// present, one small fragment is spawned above the origin and this state proves
+/// that Avian advanced it and that the result returned to the engine-owned
+/// fragment.
+#[derive(Resource, Default)]
+pub struct FragmentSmoke {
+    enabled: bool,
+    fixed_ticks: u32,
+    verified: bool,
+}
+
+const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
+    sequence: u64::MAX,
+    index: 0,
+};
+
+pub fn seed_fragment_smoke(
+    mut fragments: ResMut<DynamicFragments>,
+    mut smoke: ResMut<FragmentSmoke>,
+) {
+    if std::env::var_os("MICROLOGY_FRAGMENT_SMOKE").is_none() {
+        return;
+    }
+
+    let mut source = engine_world::World::new();
+    let mut cells = BTreeSet::new();
+    for y in 0..4 {
+        for z in 0..4 {
+            for x in 0..4 {
+                let cell = CellPos::new(x, y, z);
+                source.set(cell, Some(engine_core::MaterialId(1)));
+                cells.insert(cell);
+            }
+        }
+    }
+    source.take_dirty();
+
+    let mut fragment =
+        Fragment::from_cells(SMOKE_FRAGMENT_ID, &source, &cells).expect("smoke fragment");
+    fragment.pose.translation = engine_core::GlobalPos::new(0.0, 32.0, 0.0);
+    fragments.insert(fragment);
+    smoke.enabled = true;
+}
+
+/// Prove the opt-in smoke fragment was simulated and read back.
+///
+/// Five fixed ticks is enough for gravity to produce a measurable f64 position
+/// change while remaining independent of frame rate. A panic here makes the
+/// runtime smoke fail loudly instead of merely proving that the window stayed
+/// open.
+pub fn verify_fragment_smoke(
+    fragments: Res<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    mut smoke: ResMut<FragmentSmoke>,
+) {
+    if !smoke.enabled || smoke.verified {
+        return;
+    }
+
+    smoke.fixed_ticks += 1;
+    if smoke.fixed_ticks < 5 {
+        return;
+    }
+
+    assert!(
+        bodies.entities.contains_key(&SMOKE_FRAGMENT_ID),
+        "fragment smoke body was never created"
+    );
+    let fragment = fragments
+        .get(SMOKE_FRAGMENT_ID)
+        .expect("fragment smoke engine object disappeared");
+    assert!(
+        fragment.pose.translation.y < 32.0,
+        "fragment smoke body did not fall: y={}",
+        fragment.pose.translation.y
+    );
+    assert!(
+        fragment.linear_velocity[1] < 0.0,
+        "fragment smoke velocity was not read back: {:?}",
+        fragment.linear_velocity
+    );
+    smoke.verified = true;
 }
