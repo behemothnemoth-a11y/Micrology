@@ -248,7 +248,7 @@ fn triangles_wind_counter_clockwise_about_the_outward_normal() {
     assert_eq!(mesh.stats.triangles, g.len() as u32 * 2);
     assert_eq!(mesh.indices.len() % 3, 0);
 
-    for triangle in mesh.indices.chunks(3) {
+    for triangle in mesh.indices.to_vec().chunks(3) {
         let [a, b, c] = [
             mesh.positions[triangle[0] as usize],
             mesh.positions[triangle[1] as usize],

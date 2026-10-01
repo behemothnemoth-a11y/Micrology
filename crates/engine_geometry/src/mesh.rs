@@ -27,6 +27,82 @@ pub struct MeshStats {
 /// precision stays excellent however far the section is from the world origin,
 /// and a floating-origin rebase costs one transform update per section instead
 /// of rebuilding every mesh.
+/// Vertices a section may hold before it needs 32-bit indices.
+///
+/// A `u16` index addresses 0..=65535, so a mesh with 65,536 vertices is the
+/// first that cannot be addressed by one. At the shipped granularity — one
+/// 16³ volume per section — the worst case is a 3D checkerboard: 2,048 solid
+/// cells, every face exposed, 4 unshared vertices each, so 49,152 vertices.
+/// Every section therefore fits in `u16` today. The choice is still made per
+/// mesh rather than assumed, because coarsening `SectionGrid` would break that
+/// assumption silently and a silently wrong index buffer draws garbage.
+pub const U16_INDEX_LIMIT: usize = u16::MAX as usize + 1;
+
+/// A triangle index buffer, as narrow as the mesh allows.
+///
+/// Indices are 1.5 per vertex (6 per quad's 4), so halving their width is worth
+/// about 6.5% of a mesh. The variant is chosen from the vertex count at build
+/// time and never guessed at by a reader: `MeshData::indices` is the only
+/// constructor, and it is impossible to build a `U16` buffer that cannot
+/// address its own mesh.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum MeshIndices {
+    U16(Vec<u16>),
+    U32(Vec<u32>),
+}
+
+impl Default for MeshIndices {
+    fn default() -> Self {
+        MeshIndices::U16(Vec::new())
+    }
+}
+
+impl MeshIndices {
+    /// Build the narrowest buffer that can address `vertex_count` vertices.
+    fn narrowest(indices: Vec<u32>, vertex_count: usize) -> Self {
+        if vertex_count < U16_INDEX_LIMIT {
+            MeshIndices::U16(indices.into_iter().map(|i| i as u16).collect())
+        } else {
+            MeshIndices::U32(indices)
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            MeshIndices::U16(v) => v.len(),
+            MeshIndices::U32(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Bytes one index occupies.
+    pub fn width(&self) -> usize {
+        match self {
+            MeshIndices::U16(_) => size_of::<u16>(),
+            MeshIndices::U32(_) => size_of::<u32>(),
+        }
+    }
+
+    pub fn cpu_bytes(&self) -> usize {
+        self.len() * self.width()
+    }
+
+    /// Every index, widened. For tests and for callers that do not care.
+    pub fn iter(&self) -> Box<dyn Iterator<Item = u32> + '_> {
+        match self {
+            MeshIndices::U16(v) => Box::new(v.iter().map(|&i| u32::from(i))),
+            MeshIndices::U32(v) => Box::new(v.iter().copied()),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<u32> {
+        self.iter().collect()
+    }
+}
+
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct MeshData {
     /// The global cell these positions are measured from.
@@ -35,7 +111,7 @@ pub struct MeshData {
     pub normals: Vec<[f32; 3]>,
     /// Linear-space RGBA vertex colours taken from each quad's material.
     pub colors: Vec<[f32; 4]>,
-    pub indices: Vec<u32>,
+    pub indices: MeshIndices,
     pub stats: MeshStats,
 }
 
@@ -57,9 +133,12 @@ impl MeshData {
             positions: Vec::with_capacity(quad_count * 4),
             normals: Vec::with_capacity(quad_count * 4),
             colors: Vec::with_capacity(quad_count * 4),
-            indices: Vec::with_capacity(quad_count * 6),
+            indices: MeshIndices::default(),
             stats: MeshStats::default(),
         };
+        // Built wide and narrowed once at the end: the final vertex count is
+        // what decides the width, and it is not known until the last quad.
+        let mut indices: Vec<u32> = Vec::with_capacity(quad_count * 6);
 
         for quad in &quads.quads {
             let base = mesh.positions.len() as u32;
@@ -80,10 +159,10 @@ impl MeshData {
             }
             // Corners are counter-clockwise from outside, so both triangles wind
             // counter-clockwise and face outward.
-            mesh.indices
-                .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }
 
+        mesh.indices = MeshIndices::narrowest(indices, mesh.positions.len());
         mesh.stats = MeshStats {
             quads: quad_count as u32,
             vertices: mesh.positions.len() as u32,
@@ -107,6 +186,6 @@ impl MeshData {
         self.positions.len() * size_of::<[f32; 3]>()
             + self.normals.len() * size_of::<[f32; 3]>()
             + self.colors.len() * size_of::<[f32; 4]>()
-            + self.indices.len() * size_of::<u32>()
+            + self.indices.cpu_bytes()
     }
 }

@@ -34,5 +34,5 @@ pub use cache::{CacheStats, CachedSection, SectionMeshCache, SectionMeshUpdate};
 pub use compiler::SurfaceCompiler;
 pub use exact::ExactCompiler;
 pub use greedy::GreedyCompiler;
-pub use mesh::{MeshData, MeshStats};
+pub use mesh::{MeshData, MeshIndices, MeshStats, U16_INDEX_LIMIT};
 pub use quad::{CompileStats, Quad, QuadSet, UnitFace};

@@ -16,7 +16,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 use engine_core::{RenderOrigin, RenderSectionId};
-use engine_geometry::{CachedSection, MeshData};
+use engine_geometry::{CachedSection, MeshData, MeshIndices};
 
 /// Where global coordinates are currently rendered relative to.
 ///
@@ -141,7 +141,10 @@ fn to_bevy_mesh(data: &MeshData) -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, data.positions.clone())
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.clone())
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, data.colors.clone())
-    .with_inserted_indices(Indices::U32(data.indices.clone()))
+    .with_inserted_indices(match &data.indices {
+        MeshIndices::U16(v) => Indices::U16(v.clone()),
+        MeshIndices::U32(v) => Indices::U32(v.clone()),
+    })
 }
 
 /// Keep the render origin near the camera, and keep everything placed correctly

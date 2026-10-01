@@ -37,8 +37,8 @@ fn audits(scenario: Scenario) -> Vec<GridAudit> {
 #[test]
 fn the_surface_is_identical_at_every_granularity() {
     // Sections group quads by concatenation and never merge across a volume
-    // boundary, so quad, vertex, index and byte totals must be bit-identical.
-    // If a coarser grid ever produced fewer quads, it would mean the mesher had
+    // boundary, so quad, vertex and index counts must be bit-identical. If a
+    // coarser grid ever produced fewer quads it would mean the mesher had
     // started merging across volumes — which would make an edit in one volume
     // able to change geometry in another, and incremental rebuilds unsound.
     for scenario in all_scenarios() {
@@ -46,12 +46,41 @@ fn the_surface_is_identical_at_every_granularity() {
         let first = &measured[0];
         for other in &measured[1..] {
             assert_eq!(
-                (first.quads, first.vertices, first.indices, first.mesh_bytes),
-                (other.quads, other.vertices, other.indices, other.mesh_bytes),
+                (first.quads, first.vertices, first.indices),
+                (other.quads, other.vertices, other.indices),
                 "`{}` changed its surface between grid {} and grid {}",
                 scenario.name(),
                 first.grid,
                 other.grid
+            );
+        }
+    }
+}
+
+#[test]
+fn coarsening_costs_memory_only_where_it_widens_an_index() {
+    // Identical geometry does *not* mean identical bytes, and the one reason is
+    // index width: a section with 65,536 or more vertices cannot use u16
+    // indices. `checker` at grid 1 is eight sections of 49,152 vertices, every
+    // one narrow; at grid 2 it is one section of 393,216, which is wide.
+    //
+    // So coarsening can *cost* memory, which is the opposite of the intuition
+    // that fewer, larger buffers are cheaper, and another reason the 0002.11
+    // verdict went the way it did. Any byte difference that is not exactly the
+    // index buffer widening is a real regression.
+    for scenario in all_scenarios() {
+        let measured = audits(scenario);
+        let first = &measured[0];
+        for other in &measured[1..] {
+            let grew = other.mesh_bytes as i64 - first.mesh_bytes as i64;
+            let widened = (other.indices * 2) as i64;
+            assert!(
+                grew == 0 || grew == widened,
+                "`{}` grid {} vs {}: {grew} bytes is neither nothing nor an \
+                 index widening ({widened})",
+                scenario.name(),
+                other.grid,
+                first.grid
             );
         }
     }
