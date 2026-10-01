@@ -15,8 +15,8 @@
 //! face merging but do not block collision merging), which 0003.9 measured
 //! explicitly.
 
-use crate::camera::FlyCamera;
 use crate::WorldRes;
+use crate::camera::FlyCamera;
 use avian3d::prelude::{
     Collider, PhysicsPlugins, Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation,
 };
