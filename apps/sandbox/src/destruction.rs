@@ -26,6 +26,7 @@ const MAX_ACTIVE_STRUCTURAL_JOBS: usize = 2;
 const MAX_STRUCTURAL_DISPATCH_PER_FRAME: usize = 1;
 const DEFAULT_MAX_IN_FLIGHT_SNAPSHOT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_RETRIES: u8 = 4;
+const MAX_PENDING_DESTRUCTION_REQUESTS: usize = 64;
 
 fn snapshot_byte_cap() -> u64 {
     std::env::var("MICROLOGY_STRUCTURE_SNAPSHOT_MB")
@@ -63,6 +64,8 @@ pub struct DestructionStats {
     pub fragments_created: u64,
     pub cells_detached: u64,
     pub retries: u64,
+    pub retry_exhausted: u64,
+    pub coalesced_requests: u64,
     pub pending_requests: usize,
     pub active_jobs: usize,
     pub waiting_for_regions: usize,
@@ -108,6 +111,21 @@ impl DestructionHost {
             return;
         }
 
+        if self.requests.len() >= MAX_PENDING_DESTRUCTION_REQUESTS {
+            // Preserve the question rather than dropping it: merge overflow
+            // roots into the newest queued request. The next classification can
+            // resolve several disconnected components in one pass.
+            if let Some(last) = self.requests.back_mut() {
+                last.roots.extend(roots);
+                last.waiting_for.extend(outcome.unresolved_regions.iter().copied());
+                last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
+                last.retries = 0;
+                self.stats.coalesced_requests += 1;
+                self.stats.requested += 1;
+                return;
+            }
+        }
+
         self.requests.push_back(DestructionRequest {
             roots,
             snapshot_volumes: INITIAL_SNAPSHOT_VOLUMES,
@@ -119,6 +137,7 @@ impl DestructionHost {
 
     fn requeue(&mut self, mut request: DestructionRequest) {
         if request.retries >= MAX_RETRIES {
+            self.stats.retry_exhausted += 1;
             return;
         }
         request.retries += 1;
@@ -314,12 +333,19 @@ pub fn dispatch_structural_jobs(world: Res<WorldRes>, mut host: ResMut<Destructi
     }
 
     let mut dispatched = 0usize;
+    // Examine each request that existed at frame start at most once. Waiting
+    // requests rotate to the back so one unloaded boundary cannot consume the
+    // only dispatch opportunity while unrelated work is ready.
+    let mut examined = 0usize;
+    let examine_limit = host.requests.len();
     while dispatched < MAX_STRUCTURAL_DISPATCH_PER_FRAME
         && host.tasks.len() < MAX_ACTIVE_STRUCTURAL_JOBS
+        && examined < examine_limit
     {
         let Some(mut request) = host.requests.pop_front() else {
             break;
         };
+        examined += 1;
 
         if !request.waiting_for.is_empty() {
             request
@@ -327,7 +353,7 @@ pub fn dispatch_structural_jobs(world: Res<WorldRes>, mut host: ResMut<Destructi
                 .retain(|region| world.0.region(*region).is_none());
             if !request.waiting_for.is_empty() {
                 host.requests.push_back(request);
-                break;
+                continue;
             }
         }
 
