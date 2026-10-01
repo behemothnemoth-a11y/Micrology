@@ -254,10 +254,12 @@ pub fn fragment_from_json(expected: FragmentId, json: &str) -> Result<Fragment, 
     };
     if !file.translation.into_iter().all(f64::is_finite)
         || !file.rotation.into_iter().all(f64::is_finite)
+        || !file.linear_velocity.into_iter().all(f32::is_finite)
+        || !file.angular_velocity.into_iter().all(f32::is_finite)
     {
         return Err(IoError::BadFragment {
             fragment: expected,
-            reason: "pose contains a non-finite value".to_string(),
+            reason: "pose or velocity contains a non-finite value".to_string(),
         });
     }
 
@@ -340,6 +342,14 @@ pub fn fragment_index_from_json(json: &str) -> Result<FragmentIndex, IoError> {
     }
 
     let fragments: BTreeSet<FragmentId> = file.fragments.into_iter().map(Into::into).collect();
+    if let Some(max_existing) = fragments.iter().map(|id| id.sequence).max()
+        && file.next_destruction_sequence <= max_existing
+    {
+        return Err(IoError::FragmentSequenceRegression {
+            next: file.next_destruction_sequence,
+            max_existing,
+        });
+    }
     let mut spatial = FragmentSpatialIndex::default();
     for region in file.regions {
         for id in region.fragments.into_iter().map(FragmentId::from) {
