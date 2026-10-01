@@ -541,6 +541,31 @@ mod tests {
     }
 
     #[test]
+    fn checked_step_refuses_to_wrap_at_address_limits() {
+        assert_eq!(
+            CellPos::new(i32::MAX, 0, 0).checked_step(FaceDir::PosX),
+            None
+        );
+        assert_eq!(
+            CellPos::new(i32::MIN, 0, 0).checked_step(FaceDir::NegX),
+            None
+        );
+        assert_eq!(
+            CellPos::new(i32::MAX - 1, 0, 0).checked_step(FaceDir::PosX),
+            Some(CellPos::new(i32::MAX, 0, 0))
+        );
+
+        assert_eq!(
+            VolumePos::new(i32::MAX, 0, 0).checked_step(FaceDir::PosX),
+            None
+        );
+        assert_eq!(
+            VolumePos::new(i32::MIN, 0, 0).checked_step(FaceDir::NegX),
+            None
+        );
+    }
+
+    #[test]
     fn from_axes_assigns_each_component() {
         for dir in FaceDir::ALL {
             let (n, u, v) = dir.axes();
