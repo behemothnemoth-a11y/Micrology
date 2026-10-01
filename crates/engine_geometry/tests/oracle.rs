@@ -137,8 +137,8 @@ fn compilation_is_deterministic() {
         let exact_first = exact(&w, volume);
         assert_eq!(exact_first.quads, exact(&w, volume).quads);
 
-        let mesh_a = MeshData::from_quads(&first, w.materials());
-        let mesh_b = MeshData::from_quads(&second, w.materials());
+        let mesh_a = MeshData::from_quads(&first, w.materials(), volume.origin());
+        let mesh_b = MeshData::from_quads(&second, w.materials(), volume.origin());
         assert_eq!(mesh_a.positions, mesh_b.positions);
         assert_eq!(mesh_a.indices, mesh_b.indices);
         assert_eq!(mesh_a.colors, mesh_b.colors);

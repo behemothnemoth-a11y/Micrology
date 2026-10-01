@@ -242,7 +242,7 @@ fn triangles_wind_counter_clockwise_about_the_outward_normal() {
     w.fill_box(CellPos::new(6, 6, 6), CellPos::new(9, 7, 9), Some(BRASS));
 
     let g = greedy(&w, VolumePos::ZERO);
-    let mesh = MeshData::from_quads(&g, &materials());
+    let mesh = MeshData::from_quads(&g, &materials(), CellPos::ZERO);
 
     assert_eq!(mesh.stats.vertices, g.len() as u32 * 4);
     assert_eq!(mesh.stats.triangles, g.len() as u32 * 2);
@@ -293,7 +293,7 @@ fn mesh_colours_come_from_the_material_registry() {
     let mut w = world();
     w.set(CellPos::new(0, 0, 0), Some(DIRT));
 
-    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials());
+    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials(), CellPos::ZERO);
     let expected = engine_core::Rgb::new(120, 72, 40).to_linear_f32();
     assert!(
         mesh.colors.iter().all(|c| c[0] == expected[0]
@@ -308,7 +308,7 @@ fn an_unregistered_material_renders_as_the_missing_colour() {
     let mut w = world();
     w.set(CellPos::new(0, 0, 0), Some(engine_core::MaterialId(999)));
 
-    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials());
+    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials(), CellPos::ZERO);
     let missing = engine_core::Rgb::MISSING.to_linear_f32();
     assert_eq!(mesh.colors[0], [missing[0], missing[1], missing[2], 1.0]);
 }
@@ -316,7 +316,7 @@ fn an_unregistered_material_renders_as_the_missing_colour() {
 #[test]
 fn an_empty_quad_set_makes_an_empty_mesh() {
     let w = world();
-    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials());
+    let mesh = MeshData::from_quads(&greedy(&w, VolumePos::ZERO), &materials(), CellPos::ZERO);
     assert!(mesh.is_empty());
     assert_eq!(mesh.stats, engine_geometry::MeshStats::default());
 }

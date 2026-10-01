@@ -3,7 +3,7 @@
 use crate::{StatusLine, WorldRes, world_from_args};
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
-use engine_core::{CellPos, MaterialId, MaterialRegistry, Rgb};
+use engine_core::{CellPos, GlobalPos, MaterialId, MaterialRegistry, Rgb};
 use engine_world::World as EngineWorld;
 
 /// Material ids the demo scene and the edit palette share.
@@ -96,12 +96,19 @@ fn ground_height(x: i32, z: i32) -> i32 {
 }
 
 pub fn setup_view(mut commands: Commands) {
+    // Far enough back to frame the whole demo scene rather than opening with the
+    // brick room filling the view. The transform supplies the initial rotation;
+    // its translation is recomputed every frame from the camera's global
+    // position, which is the authoritative one.
+    const START: [f64; 3] = [46.0, 38.0, 54.0];
     commands.spawn((
         Camera3d::default(),
-        // Far enough back to frame the whole demo scene rather than opening
-        // with the brick room filling the view.
-        Transform::from_xyz(46.0, 38.0, 54.0).looking_at(Vec3::new(0.0, 8.0, 0.0), Vec3::Y),
-        crate::camera::FlyCamera::default(),
+        Transform::from_xyz(START[0] as f32, START[1] as f32, START[2] as f32)
+            .looking_at(Vec3::new(0.0, 8.0, 0.0), Vec3::Y),
+        crate::camera::FlyCamera {
+            global: GlobalPos::new(START[0], START[1], START[2]),
+            ..default()
+        },
     ));
 
     commands.spawn((

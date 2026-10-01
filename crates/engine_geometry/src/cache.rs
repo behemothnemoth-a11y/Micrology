@@ -31,6 +31,16 @@ pub struct CachedSection {
     pub mesh: MeshData,
 }
 
+impl CachedSection {
+    /// The global cell this section's vertex positions are measured from.
+    ///
+    /// A renderer places the section at `render_origin.cell_to_render(origin)`
+    /// and never bakes a global position into a vertex buffer.
+    pub fn origin(&self) -> engine_core::CellPos {
+        self.mesh.origin
+    }
+}
+
 /// What a rebuild pass did to one section.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SectionMeshUpdate {
@@ -190,7 +200,9 @@ impl SectionMeshCache {
                 }
                 continue;
             }
-            let mesh = MeshData::from_quads(&quads, materials);
+            // Section-local vertex positions: see MeshData::origin.
+            let origin = self.grid.cell_bounds(section).min;
+            let mesh = MeshData::from_quads(&quads, materials, origin);
             self.entries.insert(section, CachedSection { quads, mesh });
             updates.push(SectionMeshUpdate::Built(section));
         }

@@ -8,9 +8,12 @@
 //! Frame time is shown separately and deliberately is not presented as a
 //! consequence of the geometry counts.
 
+use crate::camera::FlyCamera;
 use crate::edit::Palette;
+use crate::render::RenderOriginRes;
 use crate::{GeometryRes, StatusLine, WorldRes};
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -88,14 +91,34 @@ pub fn setup(mut commands: Commands) {
     ));
 }
 
+/// Everything the stats line reads, grouped so the system stays readable.
+///
+/// The plan for DROP 0002 asks for these to be available independently enough
+/// that a future editor could consume them, which is why they are gathered here
+/// rather than formatted inline.
+#[derive(SystemParam)]
+pub struct Diagnostics<'w> {
+    pub world: Res<'w, WorldRes>,
+    pub geometry: Res<'w, GeometryRes>,
+    pub palette: Res<'w, Palette>,
+    pub status: Res<'w, StatusLine>,
+    pub frame: Res<'w, DiagnosticsStore>,
+    pub origin: Res<'w, RenderOriginRes>,
+}
+
 pub fn update(
-    world: Res<WorldRes>,
-    geometry: Res<GeometryRes>,
-    palette: Res<Palette>,
-    status: Res<StatusLine>,
-    diagnostics: Res<DiagnosticsStore>,
+    sources: Diagnostics,
+    camera: Option<Single<&FlyCamera>>,
     text: Option<Single<&mut Text, With<StatsText>>>,
 ) {
+    let Diagnostics {
+        world,
+        geometry,
+        palette,
+        status,
+        frame: diagnostics,
+        origin,
+    } = sources;
     let Some(text) = text else {
         return;
     };
@@ -113,8 +136,12 @@ pub fn update(
         stats.exposed_faces as f64 / stats.quads as f64
     };
 
+    let global = camera.map(|c| c.global).unwrap_or_default();
+    let anchor = origin.0.anchor();
+
     **text.into_inner() = format!(
-        "Micrology · DROP 0001 · mesher: {mesher}\n\
+        "Micrology · DROP 0002 · mesher: {mesher}\n\
+         camera {cx:.0} {cy:.0} {cz:.0}   origin {ox} {oy} {oz}\n\
          volumes {volumes} (sections {meshed})   cells {cells}\n\
          exposed faces {faces}   quads {quads}  ({ratio:.1}x merged)\n\
          vertices {vertices}   triangles {triangles}\n\
@@ -122,6 +149,12 @@ pub fn update(
          material: {material}   fps {fps:.0}\n\
          {status}",
         mesher = geometry.compiler.name(),
+        cx = global.x,
+        cy = global.y,
+        cz = global.z,
+        ox = anchor.x,
+        oy = anchor.y,
+        oz = anchor.z,
         volumes = world_stats.volumes,
         meshed = stats.sections,
         cells = world_stats.occupied_cells,

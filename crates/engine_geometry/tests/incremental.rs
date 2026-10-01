@@ -375,3 +375,106 @@ fn several_dirty_volumes_in_one_section_collapse_to_one_rebuild() {
         "one section covers them all, so it is rebuilt once"
     );
 }
+
+// --- section-local vertex positions -----------------------------------------
+
+#[test]
+fn vertex_positions_are_section_local_not_global() {
+    // A section a long way from the world origin must still emit small vertex
+    // coordinates, or f32 precision degrades with distance travelled.
+    let far = VolumePos::new(250_000, 0, -250_000);
+    let mut w = world();
+    solid_volume(&mut w, far, STONE);
+
+    let mut cache = one_volume_cache();
+    rebuild(&mut cache, &mut w);
+
+    let cached = cache.get(section(far.x, far.y, far.z)).unwrap();
+    assert_eq!(
+        cached.origin(),
+        far.origin(),
+        "a section records the cell its positions are measured from"
+    );
+    for position in &cached.mesh.positions {
+        for axis in position {
+            assert!(
+                axis.abs() <= 16.0,
+                "vertex {position:?} is not section-local; coordinates this \
+                 large lose precision far from the origin"
+            );
+        }
+    }
+}
+
+#[test]
+fn identical_geometry_far_from_the_origin_is_bit_identical_to_geometry_at_it() {
+    // The same shape built in two places must produce the same vertex data,
+    // differing only in the section origin. If positions were global this would
+    // fail outright at large coordinates.
+    let build = |volume: VolumePos| {
+        let mut w = world();
+        solid_volume(&mut w, volume, STONE);
+        w.set(
+            CellPos::new(
+                volume.origin().x + 4,
+                volume.origin().y + 4,
+                volume.origin().z + 4,
+            ),
+            None,
+        );
+        let mut cache = one_volume_cache();
+        rebuild(&mut cache, &mut w);
+        cache
+            .get(section(volume.x, volume.y, volume.z))
+            .unwrap()
+            .clone()
+    };
+
+    let near = build(VolumePos::new(0, 0, 0));
+    let far = build(VolumePos::new(500_000, 0, 500_000));
+
+    assert_eq!(near.mesh.positions, far.mesh.positions);
+    assert_eq!(near.mesh.normals, far.mesh.normals);
+    assert_eq!(near.mesh.indices, far.mesh.indices);
+    assert_ne!(near.origin(), far.origin());
+}
+
+#[test]
+fn a_section_places_correctly_under_a_render_origin() {
+    use engine_core::{GlobalPos, RenderOrigin};
+
+    let far = VolumePos::new(120_000, 0, -90_000);
+    let mut w = world();
+    solid_volume(&mut w, far, STONE);
+    let mut cache = one_volume_cache();
+    rebuild(&mut cache, &mut w);
+    let cached = cache.get(section(far.x, far.y, far.z)).unwrap();
+
+    let mut origin = RenderOrigin::ZERO;
+    origin.rebase_to(GlobalPos::of_cell(far.origin()));
+
+    // Placing the section at its render-space origin and adding a local vertex
+    // must reproduce that vertex's true global position.
+    let placement = origin.cell_to_render(cached.origin());
+    let local = cached.mesh.positions[0];
+    let rendered = [
+        placement[0] + local[0],
+        placement[1] + local[1],
+        placement[2] + local[2],
+    ];
+    let global = origin.to_global(rendered);
+    let expected = far.origin();
+    assert!(
+        (global.x - f64::from(expected.x)).abs() <= 16.0
+            && (global.z - f64::from(expected.z)).abs() <= 16.0,
+        "section landed at {global:?}, expected near {expected:?}"
+    );
+
+    // And the placement itself stays small, which is the entire point.
+    for axis in placement {
+        assert!(
+            axis.abs() <= 256.0,
+            "placement {placement:?} is too far out"
+        );
+    }
+}

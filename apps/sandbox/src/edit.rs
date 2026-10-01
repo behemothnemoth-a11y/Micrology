@@ -13,7 +13,7 @@ use crate::{GeometryRes, SavePath, StatusLine, WorldRes};
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
-use engine_core::{CellPos, CellSource, FaceDir, MaterialId};
+use engine_core::{CellPos, CellSource, FaceDir, GlobalPos, MaterialId};
 use engine_geometry::{ExactCompiler, GreedyCompiler};
 
 /// How far the edit ray reaches, in cells.
@@ -65,9 +65,14 @@ pub struct Hit {
 /// visits every cell the ray passes through, in order, and never misses one.
 /// Working in cell space means no mesh intersection and no physics engine — the
 /// world data itself is the collision representation.
+///
+/// The ray starts from a [`GlobalPos`], and only the *fraction within the start
+/// cell* is ever converted to `f32`. Casting from an absolute f32 position would
+/// quietly lose sub-cell accuracy far from the world origin, which is where
+/// picking a cell has to stay exact.
 pub fn raycast(
     source: &dyn CellSource,
-    origin: Vec3,
+    from: GlobalPos,
     direction: Vec3,
     max_distance: f32,
 ) -> Option<Hit> {
@@ -76,12 +81,14 @@ pub fn raycast(
         return None;
     }
 
-    let mut cell = [
-        origin.x.floor() as i32,
-        origin.y.floor() as i32,
-        origin.z.floor() as i32,
+    let start = from.cell();
+    let mut cell = [start.x, start.y, start.z];
+    // Position within the start cell, in 0.0..1.0.
+    let fraction = [
+        (from.x - f64::from(start.x)) as f32,
+        (from.y - f64::from(start.y)) as f32,
+        (from.z - f64::from(start.z)) as f32,
     ];
-    let origin = [origin.x, origin.y, origin.z];
     let dir = [dir.x, dir.y, dir.z];
 
     // Starting inside solid material counts as an immediate hit, facing back
@@ -104,11 +111,11 @@ pub fn raycast(
         if dir[axis] > 0.0 {
             step[axis] = 1;
             t_delta[axis] = 1.0 / dir[axis];
-            t_max[axis] = (cell[axis] as f32 + 1.0 - origin[axis]) / dir[axis];
+            t_max[axis] = (1.0 - fraction[axis]) / dir[axis];
         } else if dir[axis] < 0.0 {
             step[axis] = -1;
             t_delta[axis] = -1.0 / dir[axis];
-            t_max[axis] = (cell[axis] as f32 - origin[axis]) / dir[axis];
+            t_max[axis] = -fraction[axis] / dir[axis];
         }
     }
 
@@ -178,7 +185,7 @@ pub fn edit_cells(
     cursor: Option<Single<&CursorOptions>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    camera: Option<Single<&Transform, With<FlyCamera>>>,
+    camera: Option<Single<(&Transform, &FlyCamera)>>,
     palette: Res<Palette>,
     mut world: ResMut<WorldRes>,
     mut status: ResMut<StatusLine>,
@@ -198,9 +205,9 @@ pub fn edit_cells(
         return;
     }
 
-    let origin = camera.translation;
-    let direction = *camera.forward();
-    let Some(hit) = raycast(&world.0, origin, direction, REACH) else {
+    let (transform, fly) = camera.into_inner();
+    let direction = *transform.forward();
+    let Some(hit) = raycast(&world.0, fly.global, direction, REACH) else {
         status.0 = "nothing in reach".to_string();
         return;
     };

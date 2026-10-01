@@ -16,8 +16,15 @@ use bevy::mesh::Indices;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
-use engine_core::RenderSectionId;
+use engine_core::{RenderOrigin, RenderSectionId};
 use engine_geometry::{MeshData, SectionMeshUpdate};
+
+/// Where global coordinates are currently rendered relative to.
+///
+/// Shifted only on coarse, region-aligned boundaries, and only when the camera
+/// has drifted far enough to need it.
+#[derive(Resource, Default)]
+pub struct RenderOriginRes(pub RenderOrigin);
 
 /// Maps each render section to the entity drawing it.
 #[derive(Resource, Default)]
@@ -25,6 +32,13 @@ pub struct SectionEntities {
     entities: HashMap<RenderSectionId, Entity>,
     /// Shared material; colour comes from the mesh's vertex colours.
     material: Option<Handle<StandardMaterial>>,
+}
+
+impl SectionEntities {
+    /// Every drawn section and the entity drawing it.
+    pub fn iter(&self) -> impl Iterator<Item = (RenderSectionId, Entity)> + '_ {
+        self.entities.iter().map(|(id, entity)| (*id, *entity))
+    }
 }
 
 /// Rebuild the geometry of every section the world's dirty volumes touch, and
@@ -36,6 +50,7 @@ pub fn rebuild_dirty_chunks(
     mut sections: ResMut<SectionEntities>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    origin: Res<RenderOriginRes>,
 ) {
     let dirty = world.take_dirty();
     if dirty.is_empty() {
@@ -82,9 +97,9 @@ pub fn rebuild_dirty_chunks(
                             .spawn((
                                 Mesh3d(handle),
                                 MeshMaterial3d(material.clone()),
-                                // Compiled positions are already in world
-                                // space: one cell is one world unit.
-                                Transform::IDENTITY,
+                                Transform::from_translation(Vec3::from_array(
+                                    origin.0.cell_to_render(cached.origin()),
+                                )),
                                 SectionMesh,
                             ))
                             .id();
@@ -128,4 +143,38 @@ pub fn clear_section_entities(commands: &mut Commands, sections: &mut SectionEnt
     for (_, entity) in sections.entities.drain() {
         commands.entity(entity).despawn();
     }
+}
+
+/// Keep the render origin near the camera, and keep everything placed correctly
+/// when it moves.
+///
+/// Vertex positions are section-local, so a rebase never touches a mesh: it
+/// updates the camera transform and one transform per section. That is the
+/// whole reason the mesher emits section-local coordinates.
+pub fn maintain_render_origin(
+    mut origin: ResMut<RenderOriginRes>,
+    sections: Res<SectionEntities>,
+    geometry: Res<crate::GeometryRes>,
+    camera: Option<Single<(&mut Transform, &crate::camera::FlyCamera)>>,
+    mut placements: Query<&mut Transform, (With<SectionMesh>, Without<crate::camera::FlyCamera>)>,
+) {
+    let Some(camera) = camera else {
+        return;
+    };
+    let (mut camera_transform, fly) = camera.into_inner();
+
+    if origin.0.maintain(fly.global).is_some() {
+        // The anchor moved: re-place every section from its own origin rather
+        // than translating by the delta, so a placement can never drift.
+        for (id, entity) in sections.iter() {
+            let Some(cached) = geometry.cache.get(id) else {
+                continue;
+            };
+            if let Ok(mut transform) = placements.get_mut(entity) {
+                transform.translation = Vec3::from_array(origin.0.cell_to_render(cached.origin()));
+            }
+        }
+    }
+
+    camera_transform.translation = Vec3::from_array(origin.0.to_render(fly.global));
 }

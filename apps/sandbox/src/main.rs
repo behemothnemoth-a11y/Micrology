@@ -86,6 +86,7 @@ fn main() {
     .init_resource::<GeometryRes>()
     .init_resource::<StatusLine>()
     .init_resource::<render::SectionEntities>()
+    .init_resource::<render::RenderOriginRes>()
     .init_resource::<edit::Palette>()
     .add_systems(Startup, (scene::setup_world, scene::setup_view, hud::setup))
     .add_systems(
@@ -93,6 +94,9 @@ fn main() {
         (
             camera::grab_cursor,
             camera::fly,
+            // The origin follows the camera before anything is placed, so a
+            // section spawned this frame is positioned against the new anchor.
+            render::maintain_render_origin,
             edit::select_material,
             edit::edit_cells,
             edit::save_and_load,

@@ -1,13 +1,21 @@
 //! A free-fly camera and cursor grabbing.
+//!
+//! The camera's authoritative position is a [`GlobalPos`] in f64 cell space, not
+//! its Bevy `Transform`. The transform is derived from it each frame relative to
+//! the render origin. Accumulating movement onto an f32 transform would lose
+//! precision exactly where a large world needs it most.
 
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
+use engine_core::GlobalPos;
 use std::f32::consts::FRAC_PI_2;
 
-/// Marks the camera this module drives, and holds its tuning.
+/// Marks the camera this module drives, and holds its tuning and true position.
 #[derive(Component)]
 pub struct FlyCamera {
+    /// Authoritative global position, in cells. The `Transform` is derived.
+    pub global: GlobalPos,
     /// Radians of rotation per pixel of mouse movement.
     pub sensitivity: f32,
     /// Cells per second at a walk.
@@ -19,6 +27,7 @@ pub struct FlyCamera {
 impl Default for FlyCamera {
     fn default() -> Self {
         Self {
+            global: GlobalPos::ZERO,
             sensitivity: 0.0022,
             speed: 14.0,
             boost: 4.0,
@@ -61,12 +70,12 @@ pub fn fly(
     mouse_motion: Res<AccumulatedMouseMotion>,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    camera: Option<Single<(&mut Transform, &FlyCamera)>>,
+    camera: Option<Single<(&mut Transform, &mut FlyCamera)>>,
 ) {
     let Some(camera) = camera else {
         return;
     };
-    let (mut transform, settings) = camera.into_inner();
+    let (mut transform, mut settings) = camera.into_inner();
     let grabbed = cursor.map(|c| cursor_grabbed(&c)).unwrap_or(false);
 
     if grabbed {
@@ -105,6 +114,9 @@ pub fn fly(
         } else {
             1.0
         };
-        transform.translation += direction.normalize() * settings.speed * boost * time.delta_secs();
+        // Movement accumulates on the authoritative global position. The
+        // transform follows in `maintain_render_origin`; the world never moves.
+        let step = direction.normalize() * settings.speed * boost * time.delta_secs();
+        settings.global = settings.global.offset_f32(step.to_array());
     }
 }
