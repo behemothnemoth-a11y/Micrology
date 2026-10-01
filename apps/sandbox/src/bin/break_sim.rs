@@ -3,8 +3,8 @@ use avian3d::prelude::{
     AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
     RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
-use bevy::prelude::{App, Entity, MinimalPlugins};
-use bevy::transform::TransformPlugin;
+use bevy::prelude::{App, DefaultPlugins, Entity};
+use bevy::window::WindowPlugin;
 use bevy::time::TimeUpdateStrategy;
 use engine_core::{CellBounds, CellPos, CellSource, MaterialId};
 use engine_destruction::{
@@ -13,10 +13,8 @@ use engine_destruction::{
 };
 use engine_world::{EditOutcome, World, WorldEditBatch};
 use serde::Serialize;
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
 
 const STONE: MaterialId = MaterialId(1);
 const BRACE: MaterialId = MaterialId(2);
@@ -269,7 +267,13 @@ fn run_physics(static_world: &World, fragment: &Fragment) -> (u64, Vec<PhysicsFr
         collider_from_shape(&static_shape, CellPos::ZERO).expect("static collider");
 
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()));
+    app.add_plugins((
+        DefaultPlugins.set(WindowPlugin {
+            primary_window: None,
+            ..Default::default()
+        }),
+        PhysicsPlugins::default(),
+    ));
     app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
     app.world_mut().spawn((
