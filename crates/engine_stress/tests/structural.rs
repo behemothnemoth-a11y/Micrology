@@ -306,16 +306,47 @@ fn proving_support_is_the_expensive_case() {
 }
 
 #[test]
-fn analysis_counters_stay_zero_until_their_pass_lands() {
-    // These fields exist from the first baseline so later passes show up as a
-    // reviewable diff rather than as a new file. Until then they must be zero,
-    // so a baseline diff points at real work.
+fn collision_merging_beats_one_box_per_cell_everywhere_it_can() {
+    // The merge invariant is checked against the oracle in `engine_destruction`.
+    // This is the question the harness answers instead: whether merging is
+    // worth having on the shapes destruction actually produces.
     for (name, c) in &measured() {
-        assert_eq!(c.fragment_mesh_bytes, 0, "{name}");
-        assert_eq!(c.collision_boxes_exact, 0, "{name}");
-        assert_eq!(c.collision_boxes_merged, 0, "{name}");
-        assert_eq!(c.collision_bytes, 0, "{name}");
+        if c.collision_boxes_exact == 0 {
+            assert_eq!(c.fragment_cells, 0, "{name}: fragments with no collider");
+            continue;
+        }
+        assert!(
+            c.collision_boxes_merged <= c.collision_boxes_exact,
+            "{name}: merging made the collider worse"
+        );
+        assert!(c.collision_bytes > 0, "{name}");
+        assert_eq!(
+            c.collision_boxes_exact, c.fragment_cells,
+            "{name}: the exact compiler emits one box per occupied cell, by definition"
+        );
+        assert!(
+            c.fragment_mesh_bytes > 0,
+            "{name}: a fragment with no surface"
+        );
     }
+}
+
+#[test]
+fn collision_and_rendering_are_different_problems() {
+    // `material_noise_structure` is the proof. Scrambled materials block mesh
+    // merging almost completely while leaving collision merging untouched,
+    // because a collider has no material. Same 592 cells, two orders of
+    // magnitude apart — which is why the two are measured separately and why
+    // neither number predicts the other.
+    let measured = measured();
+    let noise = measured.get("material_noise_structure").expect("present");
+    assert_eq!(noise.collision_boxes_merged, 1, "one solid obstacle");
+    assert!(
+        noise.fragment_mesh_bytes > noise.collision_bytes * 100,
+        "mesh {} B against collider {} B",
+        noise.fragment_mesh_bytes,
+        noise.collision_bytes
+    );
 }
 
 #[test]

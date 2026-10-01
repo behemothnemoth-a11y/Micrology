@@ -42,9 +42,10 @@ use engine_core::{
     VolumePos,
 };
 use engine_destruction::{
-    AllResident, DestructionSequence, Fragment, FragmentId, StructuralLimits, classify_from_roots,
+    AllResident, CollisionCompiler, DestructionSequence, ExactCollisionCompiler, Fragment,
+    FragmentId, GreedyCollisionCompiler, StructuralLimits, classify_from_roots,
 };
-use engine_geometry::{GreedyCompiler, SectionMeshCache};
+use engine_geometry::{GreedyCompiler, SectionMeshCache, SurfaceCompiler};
 use engine_world::{World, WorldEditBatch};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -583,6 +584,39 @@ impl StructuralScenario {
             .collect();
         let fragment_extraction = started.elapsed();
 
+        // Mesh and collide every fragment, through the same compilers the
+        // static world uses. Measured here rather than guessed at: a shell is
+        // cheap to draw and expensive to collide, and a solid block is the
+        // reverse, so neither number predicts the other.
+        let started = Instant::now();
+        let mut fragment_mesh_bytes = 0u64;
+        for fragment in &fragments {
+            let mut quads = engine_geometry::QuadSet::default();
+            for volume in fragment.volume_positions() {
+                quads.extend(GreedyCompiler.compile(fragment, volume));
+            }
+            let mesh = engine_geometry::MeshData::from_quads(
+                &quads,
+                built.world.materials(),
+                CellPos::ZERO,
+            );
+            fragment_mesh_bytes += mesh.cpu_bytes() as u64;
+        }
+        let fragment_mesh_compile = started.elapsed();
+
+        let started = Instant::now();
+        let mut collision_boxes_exact = 0u64;
+        let mut collision_boxes_merged = 0u64;
+        let mut collision_bytes = 0u64;
+        for fragment in &fragments {
+            let bounds = engine_core::CellBounds::new(fragment.bounds.min, fragment.bounds.max);
+            collision_boxes_exact += ExactCollisionCompiler.compile(fragment, bounds).len() as u64;
+            let merged = GreedyCollisionCompiler.compile(fragment, bounds);
+            collision_boxes_merged += merged.len() as u64;
+            collision_bytes += merged.bytes();
+        }
+        let collision_compile = started.elapsed();
+
         // Static geometry after the damage. Destruction changes how the world
         // looks whether or not anything detaches, so this is measured for every
         // scenario rather than only the ones that drop something.
@@ -615,17 +649,20 @@ impl StructuralScenario {
                 largest_fragment_cells: counts.largest_detached_cells,
                 fragment_count: fragments.len() as u64,
                 fragment_bytes: fragments.iter().map(|f| f.footprint_bytes()).sum(),
+                fragment_mesh_bytes,
+                collision_boxes_exact,
+                collision_boxes_merged,
+                collision_bytes,
                 static_quads: geometry.quads,
                 static_mesh_bytes: geometry.mesh_bytes,
-                // Everything else lands as its pass does.
-                ..StructuralCounters::default()
             },
             timings: StructuralTimings {
                 world_build,
                 batch_edit,
                 connectivity,
                 fragment_extraction,
-                ..StructuralTimings::default()
+                fragment_mesh_compile,
+                collision_compile,
             },
         }
     }

@@ -35,10 +35,16 @@
 //!    oracle beside it — the same discipline that made the greedy mesher
 //!    trustworthy.
 
+pub mod collision;
 pub mod connectivity;
 pub mod detach;
 pub mod fragment;
 pub mod jobs;
+
+pub use collision::{
+    CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
+    GreedyCollisionCompiler,
+};
 
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
