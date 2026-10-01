@@ -12,11 +12,14 @@
 
 pub mod mesh_jobs;
 pub mod residency;
+pub mod scheduler;
 
-pub use mesh_jobs::{
-    MeshJobCounts, MeshJobInput, MeshJobQueue, MeshJobResult, ResultDisposition, SectionFingerprint,
-};
+pub use mesh_jobs::{MeshJobInput, MeshJobResult, ResultDisposition, SectionFingerprint};
 pub use residency::{
     EvictionReason, RegionResidency, ResidencyCounts, ResidencyState, ResidencyTable,
     TransitionError,
+};
+pub use scheduler::{
+    MeshScheduler, MeshUrgency, PendingMeshRequest, SchedulerCounts, SchedulerLimits,
+    SectionPriority,
 };

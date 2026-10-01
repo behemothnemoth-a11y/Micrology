@@ -11,13 +11,30 @@ use engine_core::{
     VOLUME_EDGE, VolumePos,
 };
 use engine_geometry::{GreedyCompiler, SurfaceCompiler};
-use engine_stream::{MeshJobInput, MeshJobQueue, ResultDisposition, SectionFingerprint};
+use engine_stream::{
+    MeshJobInput, MeshScheduler, ResultDisposition, SchedulerLimits, SectionFingerprint,
+    SectionPriority,
+};
 use engine_volume::Volume;
 use engine_world::World;
 
 const STONE: MaterialId = MaterialId(1);
 const DIRT: MaterialId = MaterialId(2);
 const GRID: SectionGrid = SectionGrid::ONE_VOLUME;
+const PRIORITY: SectionPriority = SectionPriority {
+    urgency: engine_stream::MeshUrgency::RequiredDirty,
+    distance_squared: 0,
+};
+
+/// A scheduler with generous bounds; the bounds themselves are tested in
+/// `scheduler.rs`.
+fn scheduler() -> MeshScheduler {
+    MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 16,
+        max_results_applied_per_tick: 16,
+        ..SchedulerLimits::default()
+    })
+}
 
 fn world() -> World {
     let mut materials = MaterialRegistry::new();
@@ -35,8 +52,8 @@ fn section_of(volume: VolumePos) -> engine_core::RenderSectionId {
 }
 
 /// Take exactly one job for a section.
-fn take_one(queue: &mut MeshJobQueue, w: &World) -> MeshJobInput {
-    let mut jobs = queue.take_jobs(w, GRID, 1, 8);
+fn take_one(queue: &mut MeshScheduler, w: &World) -> MeshJobInput {
+    let mut jobs = queue.take_jobs(w, GRID);
     assert_eq!(jobs.len(), 1, "expected exactly one job");
     jobs.pop().unwrap()
 }
@@ -45,8 +62,8 @@ fn take_one(queue: &mut MeshJobQueue, w: &World) -> MeshJobInput {
 fn a_fresh_result_is_applied() {
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
 
     let job = take_one(&mut queue, &w);
     let result = job.compile(&GreedyCompiler);
@@ -56,7 +73,7 @@ fn a_fresh_result_is_applied() {
         ResultDisposition::Applied
     );
     assert!(queue.is_idle());
-    assert_eq!(queue.counts().completed, 1);
+    assert_eq!(queue.counts().applied, 1);
     assert_eq!(result.quads.stats.quads, 6, "a lone solid volume");
 }
 
@@ -65,19 +82,19 @@ fn a_hundred_edits_before_the_mesher_runs_produce_one_job() {
     // The deduplication requirement, stated directly.
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
+    let mut queue = scheduler();
 
     for i in 0..100 {
         w.set(CellPos::new(i % 16, 1, 1), None);
-        queue.request_volumes(GRID, w.take_dirty());
+        queue.request_volumes(GRID, w.take_dirty(), PRIORITY);
     }
 
     assert_eq!(
-        queue.counts().queued,
+        queue.counts().pending,
         1,
         "one pending rebuild, not a hundred"
     );
-    let jobs = queue.take_jobs(&w, GRID, 16, 16);
+    let jobs = queue.take_jobs(&w, GRID);
     assert_eq!(jobs.len(), 1);
 }
 
@@ -85,8 +102,8 @@ fn a_hundred_edits_before_the_mesher_runs_produce_one_job() {
 fn an_edit_during_a_job_makes_its_result_stale() {
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
 
     // The job snapshots the world...
     let job = take_one(&mut queue, &w);
@@ -101,9 +118,9 @@ fn an_edit_during_a_job_makes_its_result_stale() {
         "an old result must never overwrite newer geometry"
     );
     assert_eq!(queue.counts().discarded_stale, 1);
-    assert_eq!(queue.counts().completed, 0);
+    assert_eq!(queue.counts().applied, 0);
     assert_eq!(
-        queue.counts().queued,
+        queue.counts().pending,
         1,
         "and the section must be rescheduled, or it keeps stale geometry forever"
     );
@@ -113,8 +130,8 @@ fn an_edit_during_a_job_makes_its_result_stale() {
 fn several_edits_before_the_first_result_still_leave_one_pending_job() {
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
 
     let job = take_one(&mut queue, &w);
     for i in 0..5 {
@@ -126,7 +143,7 @@ fn several_edits_before_the_first_result_still_leave_one_pending_job() {
         queue.complete(&w, GRID, &result),
         ResultDisposition::DiscardedStale
     );
-    assert_eq!(queue.counts().queued, 1);
+    assert_eq!(queue.counts().pending, 1);
 
     // The rescheduled job sees the final state and is accepted.
     let redo = take_one(&mut queue, &w);
@@ -149,8 +166,8 @@ fn an_edit_in_a_neighbouring_volume_makes_a_result_stale() {
     solid(&mut w, target);
     solid(&mut w, neighbour);
 
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(target));
+    let mut queue = scheduler();
+    queue.request(section_of(target), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     // Carve the neighbour, on the far side of the seam. The target's own cells
@@ -178,8 +195,8 @@ fn a_neighbour_appearing_or_vanishing_makes_a_result_stale() {
     let target = VolumePos::new(0, 0, 0);
     solid(&mut w, target);
 
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(target));
+    let mut queue = scheduler();
+    queue.request(section_of(target), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     // A neighbour arrives, hiding one of the target's faces.
@@ -198,8 +215,8 @@ fn a_result_for_a_cancelled_section_is_dropped() {
     // waiting for the worker; the result simply is not wanted.
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     queue.cancel(section_of(VolumePos::new(0, 0, 0)));
@@ -217,8 +234,8 @@ fn a_result_for_a_cancelled_section_is_dropped() {
 fn a_result_arriving_twice_is_dropped_the_second_time() {
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
     let job = take_one(&mut queue, &w);
     let result = job.compile(&GreedyCompiler);
 
@@ -230,7 +247,7 @@ fn a_result_arriving_twice_is_dropped_the_second_time() {
         queue.complete(&w, GRID, &result),
         ResultDisposition::DiscardedUnwanted
     );
-    assert_eq!(queue.counts().completed, 1, "applied exactly once");
+    assert_eq!(queue.counts().applied, 1, "applied exactly once");
 }
 
 #[test]
@@ -238,8 +255,8 @@ fn a_region_evicted_mid_job_does_not_resurrect_its_cells() {
     let mut w = world();
     let volume = VolumePos::new(0, 0, 0);
     solid(&mut w, volume);
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(volume));
+    let mut queue = scheduler();
+    queue.request(section_of(volume), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     // The whole region goes away while the job runs.
@@ -263,8 +280,8 @@ fn the_same_region_reloaded_at_a_newer_revision_invalidates_an_old_job() {
     let mut w = world();
     let volume = VolumePos::new(0, 0, 0);
     solid(&mut w, volume);
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(volume));
+    let mut queue = scheduler();
+    queue.request(section_of(volume), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     // Evict and reload with different contents at the same address.
@@ -288,10 +305,10 @@ fn jobs_completing_out_of_order_are_each_judged_on_their_own() {
     solid(&mut w, a);
     solid(&mut w, b);
 
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(a));
-    queue.request(section_of(b));
-    let jobs = queue.take_jobs(&w, GRID, 8, 8);
+    let mut queue = scheduler();
+    queue.request(section_of(a), PRIORITY);
+    queue.request(section_of(b), PRIORITY);
+    let jobs = queue.take_jobs(&w, GRID);
     assert_eq!(jobs.len(), 2);
 
     // Edit only `a` while both are in flight.
@@ -311,7 +328,7 @@ fn jobs_completing_out_of_order_are_each_judged_on_their_own() {
         ResultDisposition::DiscardedStale,
         "a's did, so a is not"
     );
-    assert_eq!(queue.counts().completed, 1);
+    assert_eq!(queue.counts().applied, 1);
     assert_eq!(queue.counts().discarded_stale, 1);
 }
 
@@ -322,29 +339,28 @@ fn work_in_flight_is_bounded() {
         solid(&mut w, VolumePos::new(x, 0, 0));
         w.take_dirty();
     }
-    let mut queue = MeshJobQueue::new();
+    let mut queue = MeshScheduler::new(SchedulerLimits {
+        max_active_mesh_jobs: 3,
+        ..SchedulerLimits::default()
+    });
     for x in 0..10 {
-        queue.request(section_of(VolumePos::new(x, 0, 0)));
+        queue.request(section_of(VolumePos::new(x, 0, 0)), PRIORITY);
     }
-    assert_eq!(queue.counts().queued, 10);
+    assert_eq!(queue.counts().pending, 10);
 
-    // At most three in flight, at most two taken per call.
-    let first = queue.take_jobs(&w, GRID, 2, 3);
-    assert_eq!(first.len(), 2);
-    let second = queue.take_jobs(&w, GRID, 2, 3);
-    assert_eq!(
-        second.len(),
-        1,
-        "the active bound caps it, not the per-call limit"
+    let first = queue.take_jobs(&w, GRID);
+    assert_eq!(first.len(), 3, "the active bound caps dispatch");
+    assert!(
+        queue.take_jobs(&w, GRID).is_empty(),
+        "nothing more may start while three are in flight"
     );
-    let third = queue.take_jobs(&w, GRID, 2, 3);
-    assert!(third.is_empty(), "nothing more may start");
     assert_eq!(queue.counts().active, 3);
+    assert_eq!(queue.counts().pending, 7);
 
     // Completing one frees exactly one slot.
     let result = first[0].compile(&GreedyCompiler);
     queue.complete(&w, GRID, &result);
-    assert_eq!(queue.take_jobs(&w, GRID, 2, 3).len(), 1);
+    assert_eq!(queue.take_jobs(&w, GRID).len(), 1);
 }
 
 #[test]
@@ -353,8 +369,8 @@ fn a_job_is_independent_enough_to_compile_on_another_thread() {
     // lock and no borrow of the live world.
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     let handle = std::thread::spawn(move || job.compile(&GreedyCompiler));
@@ -457,8 +473,8 @@ fn a_grouped_grid_fingerprints_every_member_and_its_shell() {
 fn clearing_abandons_everything_in_flight() {
     let mut w = world();
     solid(&mut w, VolumePos::new(0, 0, 0));
-    let mut queue = MeshJobQueue::new();
-    queue.request(section_of(VolumePos::new(0, 0, 0)));
+    let mut queue = scheduler();
+    queue.request(section_of(VolumePos::new(0, 0, 0)), PRIORITY);
     let job = take_one(&mut queue, &w);
 
     queue.clear();

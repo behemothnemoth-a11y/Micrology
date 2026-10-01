@@ -48,6 +48,14 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Covers the section's own volumes and every volume touching them, each as
 /// `Some(revision)` when present and `None` when absent — a missing volume and
 /// an untouched one produce different geometry for their neighbours.
+///
+/// Deliberately **conservative**: because it records a neighbour's whole-volume
+/// revision, an edit deep inside a neighbour invalidates this section even
+/// though it could not have changed the shared boundary. Over-invalidating
+/// costs a recompile; under-invalidating leaves a wall standing where the player
+/// carved a hole. A per-face or boundary-shell revision would be tighter and is
+/// a later optimisation, to be made only if measurement shows the wasted
+/// recompiles matter.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct SectionFingerprint {
     revisions: Vec<(VolumePos, Option<Revision>)>,
@@ -171,140 +179,4 @@ pub struct MeshJobCounts {
     pub completed: u64,
     pub discarded_stale: u64,
     pub discarded_unwanted: u64,
-}
-
-/// Pending and in-flight mesh work.
-///
-/// Deliberately does not run anything: it decides what should be compiled and
-/// judges what comes back. The host owns the threads.
-#[derive(Clone, Default, Debug)]
-pub struct MeshJobQueue {
-    /// Sections waiting to be compiled. A set, so requesting the same section a
-    /// hundred times before a worker reaches it produces one job.
-    queued: BTreeSet<RenderSectionId>,
-    /// Sections currently being compiled.
-    active: BTreeSet<RenderSectionId>,
-    counts: MeshJobCounts,
-}
-
-impl MeshJobQueue {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Ask for a section to be compiled.
-    ///
-    /// Returns `true` if this added new work. Repeated requests for the same
-    /// section collapse into one pending job: editing a section a hundred times
-    /// before the mesher reaches it must produce one rebuild at the newest
-    /// revision, not a hundred rebuilds of stale states.
-    pub fn request(&mut self, section: RenderSectionId) -> bool {
-        self.queued.insert(section)
-    }
-
-    /// Request the sections owning a set of dirty volumes.
-    pub fn request_volumes(
-        &mut self,
-        grid: SectionGrid,
-        volumes: impl IntoIterator<Item = VolumePos>,
-    ) -> usize {
-        let mut added = 0;
-        for volume in volumes {
-            if self.request(grid.section_for(volume)) {
-                added += 1;
-            }
-        }
-        added
-    }
-
-    /// Stop caring about a section — it was evicted or the world was replaced.
-    ///
-    /// A job already in flight is left to finish and will be discarded as
-    /// unwanted when it returns; nothing ever blocks waiting for a worker.
-    pub fn cancel(&mut self, section: RenderSectionId) {
-        self.queued.remove(&section);
-        self.active.remove(&section);
-    }
-
-    /// Take up to `limit` jobs to compile, respecting the number already in
-    /// flight.
-    ///
-    /// Jobs come out in ascending section order, which keeps a given world and
-    /// camera path reproducible.
-    pub fn take_jobs(
-        &mut self,
-        world: &World,
-        grid: SectionGrid,
-        limit: usize,
-        max_active: usize,
-    ) -> Vec<MeshJobInput> {
-        let capacity = max_active.saturating_sub(self.active.len()).min(limit);
-        if capacity == 0 {
-            return Vec::new();
-        }
-
-        let taking: Vec<RenderSectionId> = self.queued.iter().take(capacity).copied().collect();
-        taking
-            .into_iter()
-            .map(|section| {
-                self.queued.remove(&section);
-                self.active.insert(section);
-                MeshJobInput::snapshot(world, grid, section)
-            })
-            .collect()
-    }
-
-    /// Judge a returning result against the world as it is now.
-    ///
-    /// This is the stale-result rule. A result whose fingerprint no longer
-    /// matches is discarded and its section is requeued; one nobody is waiting
-    /// for is dropped.
-    pub fn complete(
-        &mut self,
-        world: &World,
-        grid: SectionGrid,
-        result: &MeshJobResult,
-    ) -> ResultDisposition {
-        if !self.active.remove(&result.section) {
-            self.counts.discarded_unwanted += 1;
-            return ResultDisposition::DiscardedUnwanted;
-        }
-
-        let current = SectionFingerprint::of(world, grid, result.section);
-        if current != result.fingerprint {
-            self.counts.discarded_stale += 1;
-            // The section still needs geometry, so put it back.
-            self.queued.insert(result.section);
-            return ResultDisposition::DiscardedStale;
-        }
-
-        self.counts.completed += 1;
-        ResultDisposition::Applied
-    }
-
-    pub fn counts(&self) -> MeshJobCounts {
-        MeshJobCounts {
-            queued: self.queued.len(),
-            active: self.active.len(),
-            ..self.counts
-        }
-    }
-
-    pub fn queued(&self) -> impl Iterator<Item = RenderSectionId> + '_ {
-        self.queued.iter().copied()
-    }
-
-    pub fn active(&self) -> impl Iterator<Item = RenderSectionId> + '_ {
-        self.active.iter().copied()
-    }
-
-    pub fn is_idle(&self) -> bool {
-        self.queued.is_empty() && self.active.is_empty()
-    }
-
-    /// Forget all pending and in-flight work.
-    pub fn clear(&mut self) {
-        self.queued.clear();
-        self.active.clear();
-    }
 }
