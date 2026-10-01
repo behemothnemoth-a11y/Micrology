@@ -553,7 +553,8 @@ pub fn verify_fragment_smoke(
         "fragment smoke body was never created"
     );
     let fragment = fragments
-        .get(SMOKE_FRAGMENT_ID)
+        .fragments
+        .get(&SMOKE_FRAGMENT_ID)
         .expect("fragment smoke engine object disappeared");
     assert!(
         fragment.pose.translation.y < 32.0,
