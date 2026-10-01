@@ -19,11 +19,7 @@ fn fragment() -> Fragment {
     world.take_dirty();
 
     let cells: BTreeSet<_> = (100..=107)
-        .flat_map(|x| {
-            (40..=43).flat_map(move |y| {
-                (-20..=-13).map(move |z| CellPos::new(x, y, z))
-            })
-        })
+        .flat_map(|x| (40..=43).flat_map(move |y| (-20..=-13).map(move |z| CellPos::new(x, y, z))))
         .collect();
     Fragment::from_cells(FragmentId::new(9, 2), &world, &cells).expect("fragment")
 }
