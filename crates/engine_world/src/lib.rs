@@ -21,8 +21,10 @@
 //! [`SectionGrid`](engine_core::SectionGrid). The world must never assume one
 //! volume is one unit of rendering.
 
+pub mod pick;
 pub mod region;
 
+pub use pick::{RayHit, raycast};
 pub use region::{Region, RegionFootprint, RegionSummary};
 
 use engine_core::{
