@@ -184,6 +184,10 @@ pub struct RegionStreamer {
     active_loads: BTreeMap<RegionPos, u64>,
     active_saves: BTreeMap<RegionPos, Revision>,
     wanted: BTreeSet<RegionPos>,
+    /// Non-camera residency requirements, such as structural analysis that
+    /// reached support across a region boundary. Pins use the same load,
+    /// staleness and eviction machinery as ordinary streaming.
+    pinned: BTreeSet<RegionPos>,
     last_camera: Option<RegionPos>,
     budget: MemoryBudget,
     account: MemoryAccount,
@@ -200,6 +204,7 @@ impl RegionStreamer {
             active_loads: BTreeMap::new(),
             active_saves: BTreeMap::new(),
             wanted: BTreeSet::new(),
+            pinned: BTreeSet::new(),
             last_camera: None,
             budget: MemoryBudget::default(),
             account: MemoryAccount::default(),
@@ -280,9 +285,22 @@ impl RegionStreamer {
         &mut self.residency
     }
 
-    /// Regions the camera currently wants resident.
+    /// Regions currently wanted resident, from the camera or external pins.
     pub fn wanted(&self) -> impl Iterator<Item = RegionPos> + '_ {
         self.wanted.iter().copied()
+    }
+
+    /// Replace the host's non-camera residency requirements.
+    ///
+    /// Pins are deliberately a set rather than reference counts: the host owns
+    /// the policy and supplies the complete desired set each update. Removing a
+    /// pin makes an out-of-range region ordinarily evictable again.
+    pub fn set_pinned_regions(&mut self, regions: impl IntoIterator<Item = RegionPos>) {
+        self.pinned = regions.into_iter().collect();
+    }
+
+    pub fn pinned(&self) -> impl Iterator<Item = RegionPos> + '_ {
+        self.pinned.iter().copied()
     }
 
     pub fn counts(&self) -> StreamCounts {
@@ -350,6 +368,7 @@ impl RegionStreamer {
         self.last_camera = Some(camera);
 
         self.wanted = self.desired_set(camera);
+        self.wanted.extend(self.pinned.iter().copied());
         let mut actions = Vec::new();
 
         // Anything wanted is not leaving, whatever was decided before.
@@ -363,21 +382,27 @@ impl RegionStreamer {
         // Start loads for wanted regions that are not here yet, nearest first so
         // a bounded budget is spent where it matters.
         let reach = self.effective_load_radius();
-        let mut candidates: Vec<(i32, RegionPos)> = self
+        let mut candidates: Vec<(bool, i32, RegionPos)> = self
             .wanted
             .iter()
             .filter(|region| self.residency.state(**region) == ResidencyState::Unloaded)
-            .map(|region| (camera.chebyshev_distance(*region), *region))
+            .map(|region| {
+                let pinned = self.pinned.contains(region);
+                (pinned, camera.chebyshev_distance(*region), *region)
+            })
             .collect();
-        candidates.sort();
+        // Pinned work first, then ordinary camera distance, then coordinate.
+        candidates.sort_by_key(|(pinned, distance, region)| (!*pinned, *distance, *region));
 
-        for (distance, region) in candidates {
+        for (pinned, distance, region) in candidates {
             if self.active_loads.len() >= self.config.max_active_loads {
                 break;
             }
-            if distance > reach {
+            if !pinned && distance > reach {
                 // Wanted, but memory says not yet. It stays wanted, so it will
-                // be fetched once there is room.
+                // be fetched once there is room. Explicit pins are correctness
+                // dependencies and are allowed through the camera-radius gate;
+                // the ordinary active-load and memory budgets still bound them.
                 self.counts.loads_withheld += 1;
                 continue;
             }
@@ -399,6 +424,9 @@ impl RegionStreamer {
         let over_budget = self.pressure() != Pressure::Comfortable;
         let resident: Vec<RegionPos> = self.resident_regions(world);
         for region in resident {
+            if self.wanted.contains(&region) {
+                continue;
+            }
             if camera.chebyshev_distance(region) <= keep {
                 continue;
             }
