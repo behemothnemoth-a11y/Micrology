@@ -22,7 +22,9 @@
 //! meshes; Bevy types do not appear anywhere below `apps/`.
 
 mod camera;
+mod destruction;
 mod edit;
+mod fragment_render;
 mod hud;
 mod physics;
 mod render;
@@ -128,6 +130,8 @@ fn main() {
     .init_resource::<physics::FragmentBodies>()
     .init_resource::<physics::FragmentBudgetRes>()
     .init_resource::<physics::FragmentSmoke>()
+    .init_resource::<fragment_render::FragmentEntities>()
+    .init_resource::<destruction::DestructionHost>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -136,6 +140,7 @@ fn main() {
         Startup,
         (
             scene::setup_world,
+            destruction::load_fragment_state,
             physics::seed_fragment_smoke,
             scene::setup_view,
             hud::setup,
@@ -155,6 +160,10 @@ fn main() {
             edit::save_and_load,
             edit::toggle_compiler,
             edit::quit,
+            // Structural classification is async. A returning result is
+            // validated before it can remove cells or create fragments.
+            destruction::dispatch_structural_jobs,
+            destruction::poll_structural_jobs,
             // Streaming: decide residency, start I/O, dispatch compiles, and
             // apply whatever came back that is still current.
             streaming::drive_streaming,
@@ -166,6 +175,7 @@ fn main() {
             // Rebuild only nearby static colliders, from the live cell world.
             physics::sync_static_colliders,
             physics::sync_fragment_bodies,
+            fragment_render::sync_fragment_render,
             hud::toggle,
             hud::apply_visibility,
             hud::update,
@@ -187,7 +197,13 @@ fn main() {
     )
     // Unsaved edits must reach disk before the process does, so this runs in
     // `Last`, after the exit message exists and before the app stops.
-    .add_systems(Last, streaming::flush_on_exit);
+    .add_systems(
+        Last,
+        (
+            streaming::flush_on_exit,
+            destruction::flush_fragments_on_exit,
+        ),
+    );
 
     app.run();
 }
