@@ -1,4 +1,4 @@
-//! The DROP 0001 standalone sandbox.
+//! The Micrology standalone sandbox.
 //!
 //! Opens a window, flies a camera through an engine-native world, renders it
 //! with compiled surface geometry, lets you carve and place cells, and saves and
@@ -24,6 +24,7 @@
 mod camera;
 mod edit;
 mod hud;
+mod physics;
 mod render;
 mod scene;
 mod streaming;
@@ -103,13 +104,14 @@ fn main() {
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            title: "Micrology — DROP 0001 sandbox".into(),
+            title: "Micrology — DROP 0003 sandbox".into(),
             present_mode: PresentMode::AutoVsync,
             ..default()
         }),
         ..default()
     }))
     .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
+    .add_plugins(physics::physics_plugins())
     // Enough fill that cavity interiors and shaded faces stay readable, but
     // low enough that the directional light still shapes the scene.
     .insert_resource(GlobalAmbientLight {
@@ -121,6 +123,7 @@ fn main() {
     .init_resource::<hud::OverlayVisible>()
     .init_resource::<render::SectionEntities>()
     .init_resource::<render::RenderOriginRes>()
+    .init_resource::<physics::StaticColliders>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -149,6 +152,9 @@ fn main() {
             streaming::queue_dirty_sections,
             streaming::dispatch_mesh_jobs,
             streaming::apply_mesh_results,
+            // Physics residency is deliberately smaller than render residency.
+            // Rebuild only nearby static colliders, from the live cell world.
+            physics::sync_static_colliders,
             hud::toggle,
             hud::apply_visibility,
             hud::update,
