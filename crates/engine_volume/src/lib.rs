@@ -20,7 +20,7 @@
 
 pub mod anchor;
 
-pub use anchor::AnchorField;
+pub use anchor::{AnchorError, AnchorField, AnchorRun};
 
 use engine_core::{LocalPos, MaterialId, Revision, VOLUME_CELLS};
 use std::collections::BTreeSet;

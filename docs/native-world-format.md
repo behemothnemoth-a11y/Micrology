@@ -1,10 +1,10 @@
 # Native world format
 
-**Format tag:** `micrology.world` · **Current version:** `2` · **Encoding:** UTF-8 JSON
+**Format tag:** `micrology.world` · **Current version:** `3` · **Encoding:** UTF-8 JSON
 
-Two versions exist and both load. **v2** is a sharded directory and is what the
-engine writes; **v1** is a single file, still readable, and migratable with
-`engine_io::migrate_v1_to_v2`.
+Three versions exist and all load. **v3** is what the engine writes: a sharded
+directory with support. **v2** is the same directory without support. **v1** is a
+single file, still readable, and migratable with `engine_io::migrate_v1_to_v2`.
 
 The engine's own save format. Not NBT, not a schematic, not anything Minecraft
 reads. Import and export of foreign formats will be adapters that translate into
@@ -159,6 +159,58 @@ Everything v1 guaranteed still holds and is still tested: canonical byte-identic
 output for equal worlds, atomic writes via a `.tmp` sibling and a rename, unknown
 keys ignored at every level, and unregistered materials rendering as magenta
 rather than failing.
+
+## Version 3: support
+
+v3 adds **one optional field per region shard** and changes nothing else:
+
+```json
+{
+  "format": "micrology.region",
+  "version": 3,
+  "pos": { "x": 0, "y": 0, "z": 0 },
+  "volumes": [ … ],
+  "anchors": [
+    { "pos": { "x": 0, "y": 0, "z": 0 }, "anchors": [[true, 256], [false, 3840]] },
+    { "pos": { "x": 1, "y": 0, "z": 0 }, "anchors": [[true, 4096]] }
+  ]
+}
+```
+
+`anchors` records which cells are **structurally fixed to the world** — see
+[`drop-0003.md`](drop-0003.md) for why that is world topology rather than a
+material property.
+
+### Migration is a reading rule, not a rewrite
+
+A v2 shard is already a valid v3 shard: one that anchors nothing, which is
+exactly what a world written before support existed meant. The reader accepts
+both versions and a v2 world comes back with zero anchors. Nothing has to be
+converted, and the committed `fixtures/worlds/drop0002_sample` is **frozen at
+v2** and never regenerated — a fixture rewritten with the format it is supposed
+to outlive proves nothing.
+
+### Why anchors are listed beside volumes, not inside them
+
+A volume can be anchored while holding no cells. "This is where the ground is"
+stays true after the ground has been dug out, and a world that nested support
+inside volume records would quietly heal its own foundations on reload.
+
+### The encoding
+
+Anchor bits are run-length encoded `(anchored, length)` pairs in the same
+canonical index order as cells, and lengths always sum to 4,096. That order runs
+`x` fastest and `y` slowest, which fits support unusually well: anchoring follows
+the ground, so a volume whose bottom layer is anchored is **two runs**.
+
+A uniform volume is **one run**, which is why persistence needs no separate flag
+for the uniform storage tiers — all three collapse into one wire representation
+and the format never has to know they exist. The committed v3 fixture is the same
+size on disk as the v2 one it extends.
+
+Runs that do not cover exactly 4,096 cells are rejected rather than padded:
+silently padding a truncated shard would unanchor part of a structure without
+saying so.
 
 ## Changing the format
 

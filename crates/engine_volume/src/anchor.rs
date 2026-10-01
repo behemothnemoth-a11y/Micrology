@@ -26,6 +26,34 @@
 
 use engine_core::{LocalPos, VOLUME_CELLS};
 
+/// One run of identical anchor bits: `(anchored, length)`.
+///
+/// Mirrors [`SlotRun`](crate::SlotRun) deliberately. It is also a far better
+/// fit for support than for cells: anchoring follows the ground, and the
+/// canonical index order runs `x` fastest and `y` slowest, so a volume whose
+/// bottom layer is anchored encodes as **two runs** rather than 512 bytes.
+pub type AnchorRun = (bool, u32);
+
+/// Why a persisted anchor field could not be rebuilt.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AnchorError {
+    /// The runs describe a different number of cells than a volume holds.
+    CellCountMismatch { got: usize, expected: usize },
+}
+
+impl std::fmt::Display for AnchorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AnchorError::CellCountMismatch { got, expected } => write!(
+                f,
+                "anchor runs cover {got} cells, but a volume holds {expected}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AnchorError {}
+
 /// Words in a dense anchor field: 4,096 bits at 64 bits each.
 const DENSE_WORDS: usize = VOLUME_CELLS / 64;
 
@@ -165,6 +193,71 @@ impl AnchorField {
         })
     }
 
+    /// Anchor bits as run-length encoded `(anchored, length)` pairs in
+    /// canonical index order. Lengths always sum to `VOLUME_CELLS`.
+    ///
+    /// A uniform field is one run, so persistence needs no separate flag for
+    /// it: the three storage tiers collapse into one wire representation, and
+    /// the format never has to know they exist.
+    pub fn runs(&self) -> Vec<AnchorRun> {
+        match &self.storage {
+            AnchorStorage::None => vec![(false, VOLUME_CELLS as u32)],
+            AnchorStorage::All => vec![(true, VOLUME_CELLS as u32)],
+            AnchorStorage::Dense(_) => {
+                let mut runs: Vec<AnchorRun> = Vec::new();
+                for index in 0..VOLUME_CELLS {
+                    let Ok(local) = LocalPos::from_index(index) else {
+                        continue;
+                    };
+                    let bit = self.get(local);
+                    match runs.last_mut() {
+                        Some((last, count)) if *last == bit => *count += 1,
+                        _ => runs.push((bit, 1)),
+                    }
+                }
+                runs
+            }
+        }
+    }
+
+    /// Rebuild a field from run-length encoded bits.
+    ///
+    /// The result is always compacted, so a round trip through
+    /// [`AnchorField::runs`] and back is idempotent and a field that was
+    /// persisted dense but happens to be uniform comes back free.
+    pub fn from_runs(runs: &[AnchorRun]) -> Result<Self, AnchorError> {
+        let mut field = Self {
+            storage: AnchorStorage::Dense(Box::new([0; DENSE_WORDS])),
+        };
+        let mut written = 0usize;
+        for &(anchored, length) in runs {
+            let length = length as usize;
+            let end = written + length;
+            if end > VOLUME_CELLS {
+                return Err(AnchorError::CellCountMismatch {
+                    got: end,
+                    expected: VOLUME_CELLS,
+                });
+            }
+            if anchored {
+                for index in written..end {
+                    if let Ok(local) = LocalPos::from_index(index) {
+                        field.set(local, true);
+                    }
+                }
+            }
+            written = end;
+        }
+        if written != VOLUME_CELLS {
+            return Err(AnchorError::CellCountMismatch {
+                got: written,
+                expected: VOLUME_CELLS,
+            });
+        }
+        field.compact();
+        Ok(field)
+    }
+
     /// The raw bits, for persistence. `None` for a uniform field, which the
     /// format records as a flag instead.
     pub fn dense_words(&self) -> Option<&[u64; DENSE_WORDS]> {
@@ -291,6 +384,57 @@ mod tests {
         let mut sorted: Vec<usize> = cells.iter().map(|c| c.index()).collect();
         sorted.sort_unstable();
         assert_eq!(listed.iter().map(|c| c.index()).collect::<Vec<_>>(), sorted);
+    }
+
+    #[test]
+    fn a_ground_layer_encodes_as_two_runs() {
+        // The case the encoding exists for. Canonical index order runs x
+        // fastest and y slowest, so "the bottom layer is anchored" is one run
+        // of 256 and one of 3,840 — not 512 bytes, and not 4,096 entries.
+        let mut field = AnchorField::NONE;
+        for z in 0..16u8 {
+            for x in 0..16u8 {
+                field.set(local(x, 0, z), true);
+            }
+        }
+        assert_eq!(field.runs(), vec![(true, 256), (false, 3840)]);
+    }
+
+    #[test]
+    fn uniform_fields_encode_as_a_single_run() {
+        // Which is why persistence needs no separate flag for them: the three
+        // storage tiers collapse into one wire representation.
+        assert_eq!(AnchorField::NONE.runs(), vec![(false, VOLUME_CELLS as u32)]);
+        assert_eq!(AnchorField::ALL.runs(), vec![(true, VOLUME_CELLS as u32)]);
+    }
+
+    #[test]
+    fn runs_round_trip_and_compact_on_the_way_back() {
+        for field in [AnchorField::NONE, AnchorField::ALL, {
+            let mut mixed = AnchorField::NONE;
+            mixed.set(local(0, 0, 0), true);
+            mixed.set(local(15, 15, 15), true);
+            mixed
+        }] {
+            let back = AnchorField::from_runs(&field.runs()).expect("valid runs");
+            assert_eq!(back, field);
+            assert_eq!(back.heap_bytes(), field.heap_bytes(), "and costs the same");
+        }
+
+        // A field persisted dense that happens to be uniform comes back free.
+        let uniform = AnchorField::from_runs(&[(true, VOLUME_CELLS as u32)]).unwrap();
+        assert_eq!(uniform.heap_bytes(), 0);
+        assert!(uniform.is_full());
+    }
+
+    #[test]
+    fn runs_that_do_not_cover_the_volume_are_rejected() {
+        // Truncated or overlong runs mean a corrupt shard. Silently padding
+        // them would unanchor part of a structure without saying so.
+        assert!(AnchorField::from_runs(&[(true, 10)]).is_err());
+        assert!(AnchorField::from_runs(&[(true, VOLUME_CELLS as u32 + 1)]).is_err());
+        assert!(AnchorField::from_runs(&[]).is_err());
+        assert!(AnchorField::from_runs(&[(false, 4096)]).is_ok());
     }
 
     #[test]

@@ -118,6 +118,7 @@ fn main() {
     })
     .init_resource::<GeometryRes>()
     .init_resource::<StatusLine>()
+    .init_resource::<hud::OverlayVisible>()
     .init_resource::<render::SectionEntities>()
     .init_resource::<render::RenderOriginRes>()
     .init_resource::<streaming::StreamTasks>()
@@ -143,6 +144,8 @@ fn main() {
             streaming::queue_dirty_sections,
             streaming::dispatch_mesh_jobs,
             streaming::apply_mesh_results,
+            hud::toggle,
+            hud::apply_visibility,
             hud::update,
         )
             // Edits must be applied before geometry is rebuilt, and geometry

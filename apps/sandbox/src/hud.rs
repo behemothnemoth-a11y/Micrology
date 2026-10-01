@@ -20,10 +20,55 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub struct StatsText;
 
+/// Marks every node the overlay owns, so the whole thing hides together.
+#[derive(Component)]
+pub struct Overlay;
+
+/// Whether the overlay is drawn.
+///
+/// Exists because a screenshot of the engine should be able to show the engine.
+/// Every image in the drop documentation is taken from the running sandbox, and
+/// an eleven-line stats block across the subject is the difference between a
+/// picture that demonstrates something and one that has to be described.
+#[derive(Resource)]
+pub struct OverlayVisible(pub bool);
+
+impl Default for OverlayVisible {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
+/// `H` hides the overlay and shows it again.
+pub fn toggle(keys: Res<ButtonInput<KeyCode>>, mut visible: ResMut<OverlayVisible>) {
+    if keys.just_pressed(KeyCode::KeyH) {
+        visible.0 = !visible.0;
+    }
+}
+
+/// Apply the toggle. Separate from the key handling so the resource can be set
+/// from anywhere — a future demo mode, a command-line flag — and still take.
+pub fn apply_visibility(
+    visible: Res<OverlayVisible>,
+    mut nodes: Query<&mut Visibility, With<Overlay>>,
+) {
+    if !visible.is_changed() {
+        return;
+    }
+    let wanted = if visible.0 {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut node in &mut nodes {
+        *node = wanted;
+    }
+}
+
 const CONTROLS: &str = "click grab · esc release · wasd+space/ctrl fly · shift fast\n\
                         lmb carve · rmb place · f paint · 1-5 / wheel material\n\
                         f5 flush dirty regions · f9 drop and restream · g toggle mesher\n\
-                        q quit (flushes unsaved edits)";
+                        q quit (flushes unsaved edits) · h hide this overlay";
 
 /// A crosshair at the exact centre of the viewport.
 ///
@@ -53,6 +98,7 @@ fn spawn_crosshair(commands: &mut Commands) {
                         ..default()
                     },
                     colour,
+                    Overlay,
                 ));
             }
         });
@@ -75,6 +121,7 @@ pub fn setup(mut commands: Commands) {
         },
         TextColor(Color::srgb(0.92, 0.94, 0.98)),
         StatsText,
+        Overlay,
     ));
 
     commands.spawn((
@@ -90,6 +137,7 @@ pub fn setup(mut commands: Commands) {
             ..default()
         },
         TextColor(Color::srgb(0.62, 0.66, 0.74)),
+        Overlay,
     ));
 }
 

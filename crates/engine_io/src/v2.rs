@@ -28,14 +28,26 @@
 use crate::IoError;
 use crate::format::FORMAT_TAG;
 use engine_core::{Material, MaterialId, MaterialRegistry, RegionPos, VolumePos};
-use engine_volume::{SlotRun, Volume};
+use engine_volume::{AnchorField, AnchorRun, SlotRun, Volume};
 use engine_world::{Region, World};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// The format version this module writes and reads.
+/// The sharded directory format's second version: cells only.
 pub const FORMAT_VERSION_V2: u32 = 2;
+
+/// The version this module **writes**: the sharded directory plus support.
+///
+/// v3 adds one optional field per region shard, so a v2 shard is already a
+/// valid v3 shard — one that anchors nothing, which is exactly what a world
+/// written before support existed meant. Migration is therefore not a rewrite
+/// but a *reading* rule, and the only thing that makes a v2 world different is
+/// that nothing in it is fixed to the ground.
+pub const FORMAT_VERSION_V3: u32 = 3;
+
+/// Versions this module accepts on read, newest first.
+pub const SUPPORTED_VERSIONS: [u32; 2] = [FORMAT_VERSION_V3, FORMAT_VERSION_V2];
 
 /// Identifies a region shard.
 pub const REGION_TAG: &str = "micrology.region";
@@ -125,6 +137,24 @@ struct RegionFile {
     pos: RegionPos,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     volumes: Vec<VolumeFile>,
+    /// Support, as of v3. Absent in a v2 shard, and absent in a v3 shard that
+    /// anchors nothing — which is the same thing, and is why the two versions
+    /// differ only in what they are allowed to contain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    anchors: Vec<AnchorFile>,
+}
+
+/// One volume's support.
+///
+/// Listed separately from `volumes` rather than nested inside them, because a
+/// volume can be anchored without holding any cells: "this is where the ground
+/// is" stays true after the ground has been dug out, and a world that forgot it
+/// would heal its own foundations on reload.
+#[derive(Serialize, Deserialize)]
+struct AnchorFile {
+    pos: VolumePos,
+    /// Run-length encoded anchor bits. A uniformly anchored volume is one run.
+    anchors: Vec<AnchorRun>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -166,7 +196,7 @@ pub fn manifest_path(dir: impl AsRef<Path>) -> PathBuf {
 fn region_to_file(pos: RegionPos, region: &Region) -> RegionFile {
     RegionFile {
         format: REGION_TAG.to_string(),
-        version: FORMAT_VERSION_V2,
+        version: FORMAT_VERSION_V3,
         pos,
         volumes: region
             .volumes()
@@ -180,6 +210,13 @@ fn region_to_file(pos: RegionPos, region: &Region) -> RegionFile {
                     palette: volume.palette().to_vec(),
                     cells: volume.slot_runs(),
                 }
+            })
+            .collect(),
+        anchors: region
+            .anchor_fields()
+            .map(|(volume_pos, field)| AnchorFile {
+                pos: volume_pos,
+                anchors: field.runs(),
             })
             .collect(),
     }
@@ -198,10 +235,10 @@ pub fn region_from_json(expected: RegionPos, json: &str) -> Result<Region, IoErr
     if file.format != REGION_TAG {
         return Err(IoError::WrongFormat { found: file.format });
     }
-    if file.version != FORMAT_VERSION_V2 {
+    if !SUPPORTED_VERSIONS.contains(&file.version) {
         return Err(IoError::UnsupportedVersion {
             found: file.version,
-            supported: FORMAT_VERSION_V2,
+            supported: FORMAT_VERSION_V3,
         });
     }
     if file.pos != expected {
@@ -227,14 +264,33 @@ pub fn region_from_json(expected: RegionPos, json: &str) -> Result<Region, IoErr
         })?;
         volumes.push((entry.pos, volume));
     }
-    Ok(Region::from_volumes(volumes))
+
+    let mut region = Region::from_volumes(volumes);
+    for entry in file.anchors {
+        if entry.pos.region() != expected {
+            return Err(IoError::VolumeOutsideRegion {
+                region: expected,
+                volume: entry.pos,
+            });
+        }
+        let field =
+            AnchorField::from_runs(&entry.anchors).map_err(|source| IoError::BadAnchors {
+                volume: entry.pos,
+                source,
+            })?;
+        region.set_volume_anchor(entry.pos, field);
+    }
+    // Setting support marks the region unsaved, which is right for an edit and
+    // wrong for a load: the region now matches storage exactly.
+    region.mark_clean();
+    Ok(region)
 }
 
 /// Serialize the manifest for a world.
 pub fn manifest_to_json(world: &World, meta: &WorldMeta) -> Result<String, IoError> {
     let file = ManifestFile {
         format: FORMAT_TAG.to_string(),
-        version: FORMAT_VERSION_V2,
+        version: FORMAT_VERSION_V3,
         meta: meta.clone(),
         materials: world.materials().iter().cloned().collect(),
         regions: world
@@ -265,7 +321,7 @@ pub fn write_manifest(
     let index: std::collections::BTreeSet<RegionPos> = regions.into_iter().collect();
     let file = ManifestFile {
         format: FORMAT_TAG.to_string(),
-        version: FORMAT_VERSION_V2,
+        version: FORMAT_VERSION_V3,
         meta: meta.clone(),
         materials: materials.iter().cloned().collect(),
         regions: index.into_iter().collect(),
@@ -406,10 +462,10 @@ pub fn load_manifest(dir: impl AsRef<Path>) -> Result<Manifest, IoError> {
     if file.format != FORMAT_TAG {
         return Err(IoError::WrongFormat { found: file.format });
     }
-    if file.version != FORMAT_VERSION_V2 {
+    if !SUPPORTED_VERSIONS.contains(&file.version) {
         return Err(IoError::UnsupportedVersion {
             found: file.version,
-            supported: FORMAT_VERSION_V2,
+            supported: FORMAT_VERSION_V3,
         });
     }
     Ok(Manifest {
@@ -437,10 +493,10 @@ pub fn load_world_v2(dir: impl AsRef<Path>) -> Result<LoadedWorld, IoError> {
     if file.format != FORMAT_TAG {
         return Err(IoError::WrongFormat { found: file.format });
     }
-    if file.version != FORMAT_VERSION_V2 {
+    if !SUPPORTED_VERSIONS.contains(&file.version) {
         return Err(IoError::UnsupportedVersion {
             found: file.version,
-            supported: FORMAT_VERSION_V2,
+            supported: FORMAT_VERSION_V3,
         });
     }
 

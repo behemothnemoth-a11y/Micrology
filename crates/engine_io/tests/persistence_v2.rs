@@ -2,7 +2,7 @@
 
 use engine_core::{CellPos, MaterialId, MaterialRegistry, REGION_EDGE_CELLS, RegionPos, Rgb};
 use engine_io::v2::{
-    self, FORMAT_VERSION_V2, MANIFEST_NAME, WorldMeta, manifest_path, parse_region_file_name,
+    self, FORMAT_VERSION_V3, MANIFEST_NAME, WorldMeta, manifest_path, parse_region_file_name,
     region_file_name, region_path,
 };
 use engine_io::{IoError, load_world_v2, save_world_v2};
@@ -348,12 +348,12 @@ fn a_future_version_is_refused() {
     save_world_v2(&sample(), &meta(), &dir).unwrap();
     let path = manifest_path(&dir);
     let json = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, json.replace("\"version\": 2", "\"version\": 99")).unwrap();
+    std::fs::write(&path, json.replace("\"version\": 3", "\"version\": 99")).unwrap();
 
     match load_world_v2(&dir) {
         Err(IoError::UnsupportedVersion { found, supported }) => {
             assert_eq!(found, 99);
-            assert_eq!(supported, FORMAT_VERSION_V2);
+            assert_eq!(supported, FORMAT_VERSION_V3);
         }
         other => panic!("expected a version error, got {other:?}"),
     }
@@ -448,8 +448,11 @@ fn the_manifest_names_the_world() {
 }
 
 #[test]
-fn the_committed_v2_fixture_still_loads_and_is_canonical() {
-    // Format stability for v2, matching what the v1 fixture guarantees.
+fn the_committed_v2_fixture_still_loads() {
+    // A world written before support existed must keep loading, which is the
+    // whole reason this fixture is **frozen at v2** and never regenerated. A
+    // fixture rewritten with the format it is supposed to outlive proves
+    // nothing.
     let fixture =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/worlds/drop0002_sample");
     let loaded = load_world_v2(&fixture)
@@ -460,6 +463,52 @@ fn the_committed_v2_fixture_still_loads_and_is_canonical() {
     assert_eq!(loaded.world.materials().len(), 3);
     assert_eq!(loaded.world.get(CellPos::new(6, 6, 6)), None, "the cavity");
     assert_eq!(loaded.world.get(CellPos::new(-3, -2, -1)), Some(STONE));
+
+    // It is on disk as version 2, not as whatever this build happens to write.
+    let manifest = std::fs::read_to_string(manifest_path(&fixture)).unwrap();
+    assert!(
+        manifest.contains("\"version\": 2"),
+        "the v2 fixture has been regenerated and no longer guards v2"
+    );
+
+    // And it anchors nothing — which is exactly what a pre-support world meant.
+    assert_eq!(
+        loaded.world.anchor_count(),
+        0,
+        "a v2 world cannot have had support, and must not acquire any on load"
+    );
+}
+
+#[test]
+fn the_committed_v3_fixture_round_trips_and_is_canonical() {
+    // Format stability for what this build writes, matching what the v1 and v2
+    // fixtures guarantee for what it reads.
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/worlds/drop0003_sample");
+    let loaded = load_world_v2(&fixture)
+        .unwrap_or_else(|e| panic!("fixture {} failed to load: {e}", fixture.display()));
+
+    assert_eq!(loaded.meta.id, "drop0003-sample");
+    assert_eq!(loaded.world.get(CellPos::new(6, 6, 6)), None, "the cavity");
+
+    // Support survived the round trip, in all three of its tiers.
+    assert!(
+        loaded.world.is_anchor(CellPos::new(0, 0, 0)),
+        "anchored ground"
+    );
+    assert!(
+        !loaded.world.is_anchor(CellPos::new(0, 1, 0)),
+        "and not above it"
+    );
+    assert!(
+        loaded.world.is_anchor(CellPos::new(20, 9, 9)),
+        "a uniformly anchored volume"
+    );
+    assert!(
+        loaded.world.is_anchor(CellPos::new(5, 5, 5)),
+        "a lone anchor"
+    );
+    assert!(loaded.world.anchor_count() > 0);
 
     // Re-serializing reproduces the committed bytes exactly.
     for pos in loaded.world.region_positions() {
@@ -476,4 +525,5 @@ fn the_committed_v2_fixture_still_loads_and_is_canonical() {
         manifest,
         "the manifest is no longer canonical output"
     );
+    assert!(manifest.contains("\"version\": 3"));
 }

@@ -23,19 +23,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     engine_io::save_world(&sample_world(), worlds.join("drop0001_sample.json"))?;
     engine_io::save_world(&World::new(), worlds.join("empty.json"))?;
 
-    // The same world in format v2, so the sharded format gets the same
-    // stability guarantee: an older directory must keep loading.
-    let v2_dir = worlds.join("drop0002_sample");
-    if v2_dir.exists() {
-        std::fs::remove_dir_all(&v2_dir)?;
+    // `drop0002_sample` is **frozen at v2** and deliberately not regenerated.
+    // It is the only thing proving a world written before support existed still
+    // loads, and a fixture that gets rewritten with the format it is supposed to
+    // outlive proves nothing at all.
+
+    // The v3 fixture: the same world plus support, which is the whole
+    // difference between the two versions.
+    let v3_dir = worlds.join("drop0003_sample");
+    if v3_dir.exists() {
+        std::fs::remove_dir_all(&v3_dir)?;
     }
-    let meta = engine_io::WorldMeta::new("drop0002-sample")
-        .with_name("DROP 0002 sample")
+    let meta = engine_io::WorldMeta::new("drop0003-sample")
+        .with_name("DROP 0003 sample")
         .with_spawn([8.0, 20.0, 8.0]);
-    engine_io::save_world_v2(&sample_world(), &meta, &v2_dir)?;
+    engine_io::save_world_v2(&supported_world(), &meta, &v3_dir)?;
 
     println!("wrote fixtures to {}", worlds.display());
     Ok(())
+}
+
+/// The sample world with support, exercising all three anchor tiers.
+///
+/// One volume uniformly anchored, one mixed, and the rest not anchored at all —
+/// so the fixture pins the compact encoding as well as the cells.
+fn supported_world() -> World {
+    let mut world = sample_world();
+    // The bottom slab of the volume at the origin: anchored ground, which
+    // encodes as two runs rather than 512 bytes.
+    world.set_anchor_box(CellPos::new(0, 0, 0), CellPos::new(15, 0, 15), true);
+    // One volume anchored outright.
+    world.set_anchor_box(CellPos::new(16, 0, 0), CellPos::new(31, 15, 15), true);
+    // And a single scattered anchor, to pin the sparse case too.
+    world.set_anchor(CellPos::new(5, 5, 5), true);
+    world
 }
 
 /// A small world that exercises every part of the format: several materials, a

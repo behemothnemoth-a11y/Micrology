@@ -24,6 +24,15 @@ pub enum IoError {
         chunk: VolumePos,
         source: VolumeError,
     },
+    /// A volume's support data was internally inconsistent.
+    ///
+    /// Kept apart from [`IoError::BadChunk`] because the two mean different
+    /// things to whoever is looking at the shard: bad cells lose what was
+    /// built, bad support loses what holds it up.
+    BadAnchors {
+        volume: VolumePos,
+        source: engine_volume::AnchorError,
+    },
     /// The manifest lists a region whose file is not there.
     MissingRegion { region: RegionPos, path: PathBuf },
     /// A region file does not describe the region it was loaded as.
@@ -57,6 +66,9 @@ impl fmt::Display for IoError {
                 "world format version {found} is not supported by this build \
                  (which reads version {supported})"
             ),
+            IoError::BadAnchors { volume, source } => {
+                write!(f, "volume {volume:?} holds invalid support data: {source}")
+            }
             IoError::BadChunk { chunk, source } => {
                 write!(f, "chunk {chunk:?} holds invalid cell data: {source}")
             }
@@ -85,6 +97,7 @@ impl std::error::Error for IoError {
             IoError::File { source, .. } => Some(source),
             IoError::Parse(source) => Some(source),
             IoError::BadChunk { source, .. } => Some(source),
+            IoError::BadAnchors { source, .. } => Some(source),
             IoError::WrongFormat { .. }
             | IoError::UnsupportedVersion { .. }
             | IoError::MissingRegion { .. }
