@@ -3,8 +3,9 @@ use engine_destruction::{
     DestructionSequence, Fragment, FragmentId, FragmentPhysicsState, FragmentStore,
 };
 use engine_io::{
-    FragmentIndex, fragment_index_to_json, fragment_path, load_fragment_index, load_fragment_store,
-    load_fragments_for_region, save_fragment, save_fragment_store,
+    FragmentIndex, fragment_index_from_json, fragment_index_to_json, fragment_path,
+    load_fragment_index, load_fragment_store, load_fragments_for_region, save_fragment,
+    save_fragment_store,
 };
 use engine_world::World;
 use std::collections::BTreeSet;
@@ -173,4 +174,43 @@ fn saving_store_removes_orphaned_fragment_payloads() {
     save_fragment_store(&dir, &store, DestructionSequence::new(11)).unwrap();
     assert!(!fragment_path(&dir, id).exists());
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+
+#[test]
+fn index_rejects_next_sequence_that_can_reuse_an_existing_id() {
+    let mut store = FragmentStore::default();
+    store.insert(fragment(
+        FragmentId::new(12, 0),
+        CellPos::ZERO,
+        CellPos::new(3, 3, 3),
+    ));
+
+    let json = fragment_index_to_json(&store, DestructionSequence::new(13)).unwrap();
+    let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    value["next_destruction_sequence"] = serde_json::json!(12);
+    let stale = serde_json::to_string_pretty(&value).unwrap();
+
+    let error = fragment_index_from_json(&stale).unwrap_err();
+    assert!(matches!(
+        error,
+        engine_io::IoError::FragmentSequenceRegression {
+            next: 12,
+            max_existing: 12
+        }
+    ));
+}
+
+#[test]
+fn index_accepts_sequence_strictly_after_all_existing_fragments() {
+    let mut store = FragmentStore::default();
+    store.insert(fragment(
+        FragmentId::new(12, 99),
+        CellPos::ZERO,
+        CellPos::new(3, 3, 3),
+    ));
+
+    let json = fragment_index_to_json(&store, DestructionSequence::new(13)).unwrap();
+    let index = fragment_index_from_json(&json).unwrap();
+    assert_eq!(index.next_destruction_sequence, 13);
 }
