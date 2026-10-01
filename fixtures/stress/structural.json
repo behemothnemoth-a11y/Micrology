@@ -2,6 +2,7 @@
   "cantilever": {
     "structure_cells": 1280,
     "anchor_cells": 1024,
+    "anchor_bytes": 1024,
     "structure_volumes": 4,
     "structure_regions": 1,
     "cells_removed": 8,
@@ -24,6 +25,7 @@
   "cut_column": {
     "structure_cells": 3216,
     "anchor_cells": 1024,
+    "anchor_bytes": 2048,
     "structure_volumes": 12,
     "structure_regions": 1,
     "cells_removed": 64,
@@ -46,6 +48,7 @@
   "fragment_storm": {
     "structure_cells": 10240,
     "anchor_cells": 4096,
+    "anchor_bytes": 8192,
     "structure_volumes": 16,
     "structure_regions": 1,
     "cells_removed": 1024,
@@ -68,6 +71,7 @@
   "large_supported_structure": {
     "structure_cells": 25584,
     "anchor_cells": 4096,
+    "anchor_bytes": 8192,
     "structure_volumes": 32,
     "structure_regions": 1,
     "cells_removed": 368,
@@ -90,6 +94,7 @@
   "material_noise_structure": {
     "structure_cells": 784,
     "anchor_cells": 144,
+    "anchor_bytes": 512,
     "structure_volumes": 3,
     "structure_regions": 1,
     "cells_removed": 48,
@@ -112,6 +117,7 @@
   "multi_island": {
     "structure_cells": 624,
     "anchor_cells": 16,
+    "anchor_bytes": 2048,
     "structure_volumes": 12,
     "structure_regions": 1,
     "cells_removed": 16,
@@ -134,6 +140,7 @@
   "region_boundary_break": {
     "structure_cells": 4240,
     "anchor_cells": 192,
+    "anchor_bytes": 512,
     "structure_volumes": 16,
     "structure_regions": 2,
     "cells_removed": 32,
@@ -156,6 +163,7 @@
   "supported_column": {
     "structure_cells": 416,
     "anchor_cells": 256,
+    "anchor_bytes": 512,
     "structure_volumes": 3,
     "structure_regions": 1,
     "cells_removed": 12,
@@ -178,6 +186,7 @@
   "two_support_bridge": {
     "structure_cells": 2336,
     "anchor_cells": 96,
+    "anchor_bytes": 1024,
     "structure_volumes": 5,
     "structure_regions": 1,
     "cells_removed": 784,
@@ -200,6 +209,7 @@
   "volume_boundary_break": {
     "structure_cells": 1168,
     "anchor_cells": 192,
+    "anchor_bytes": 512,
     "structure_volumes": 4,
     "structure_regions": 1,
     "cells_removed": 32,

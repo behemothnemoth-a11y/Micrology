@@ -18,6 +18,10 @@
 //! representation later (octree, RLE, bitset + palette) is a change behind this
 //! same API.
 
+pub mod anchor;
+
+pub use anchor::AnchorField;
+
 use engine_core::{LocalPos, MaterialId, Revision, VOLUME_CELLS};
 use std::collections::BTreeSet;
 use std::fmt;

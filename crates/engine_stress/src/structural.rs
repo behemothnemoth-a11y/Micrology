@@ -81,12 +81,11 @@ pub fn all_structural_scenarios() -> [StructuralScenario; 10] {
     ]
 }
 
-/// A built structure: the world, and which of its cells are anchored.
+/// A built structure, with its support recorded in the world itself.
 ///
-/// Anchors are carried as plain cell positions because world-side anchor
-/// storage arrives in 0003.3. Keeping them beside the world rather than inside
-/// it also makes the point the scope insists on: **support is not a material
-/// property**. Nothing about `STONE` says anchored; a scenario says it.
+/// The anchor set is kept alongside as well, because a scenario wants to be
+/// able to say *which* cells it anchored without re-deriving it — but the world
+/// is the authority, and [`StructuralWorld::anchored_box`] writes to both.
 #[derive(Clone, Debug)]
 pub struct StructuralWorld {
     pub world: World,
@@ -104,6 +103,7 @@ impl StructuralWorld {
     /// Fill a box and anchor every cell in it.
     fn anchored_box(&mut self, min: CellPos, max: CellPos, material: MaterialId) {
         self.world.fill_box(min, max, Some(material));
+        self.world.set_anchor_box(min, max, true);
         for y in min.y..=max.y {
             for z in min.z..=max.z {
                 for x in min.x..=max.x {
@@ -132,6 +132,9 @@ pub struct StructuralCounters {
     pub structure_cells: u64,
     /// Cells the scenario declares structurally fixed to the world.
     pub anchor_cells: u64,
+    /// Heap bytes the support sidecar costs. Zero for volumes that are
+    /// uniformly anchored or uniformly not; 512 for each mixed one.
+    pub anchor_bytes: u64,
     /// Storage volumes the structure occupies.
     pub structure_volumes: u64,
     /// Persistence regions the structure spans. More than one means the
@@ -502,7 +505,8 @@ impl StructuralScenario {
         let structure_cells = built.world.occupied_count();
         let structure_volumes = built.world.volume_count() as u64;
         let structure_regions = built.world.region_count() as u64;
-        let anchor_cells = built.anchors.len() as u64;
+        let anchor_cells = built.world.anchor_count();
+        let anchor_bytes = built.world.footprint().anchor_bytes;
         built.world.take_dirty();
 
         // The damage goes through the batch path, which is also what hands
@@ -533,6 +537,7 @@ impl StructuralScenario {
             counters: StructuralCounters {
                 structure_cells,
                 anchor_cells,
+                anchor_bytes,
                 structure_volumes,
                 structure_regions,
                 cells_removed: outcome.removed_cells.len() as u64,

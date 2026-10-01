@@ -24,6 +24,20 @@ fn main() -> std::process::ExitCode {
     let write = args.iter().any(|a| a == "--write");
     let check = args.iter().any(|a| a == "--check");
 
+    // Export a scenario as a world directory the sandbox can open. A fixture
+    // nobody has ever looked at is a fixture nobody has ever checked: the
+    // counters say a structure has 3,216 cells, and only a picture says those
+    // cells are a platform on a column rather than a pile in the corner.
+    if let Some(i) = args.iter().position(|a| a == "--export") {
+        let Some(dir) = args.get(i + 1) else {
+            eprintln!("--export needs a directory");
+            return std::process::ExitCode::FAILURE;
+        };
+        let damaged = args.iter().any(|a| a == "--damaged");
+        let show_anchors = args.iter().any(|a| a == "--show-anchors");
+        return export(dir, damaged, show_anchors);
+    }
+
     let reports: Vec<StructuralReport> = all_structural_scenarios()
         .into_iter()
         .map(|s| s.run())
@@ -173,5 +187,49 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     }
 
+    std::process::ExitCode::SUCCESS
+}
+
+/// Material the export paints anchored cells with, for the screenshot only.
+///
+/// Anchors are world topology, not a material, so nothing in the engine would
+/// ever do this. The export does it because "which cells are anchored" is the
+/// one thing about a structural fixture that a render cannot otherwise show.
+const ANCHOR_PAINT: engine_core::MaterialId = engine_core::MaterialId(7);
+
+fn export(dir: &str, damaged: bool, show_anchors: bool) -> std::process::ExitCode {
+    use engine_io::{WorldMeta, v2};
+    use engine_world::WorldEditBatch;
+
+    for scenario in all_structural_scenarios() {
+        let mut built = scenario.build();
+        if damaged {
+            let mut batch = WorldEditBatch::new();
+            for cell in scenario.damage() {
+                batch.remove(cell);
+            }
+            built.world.apply(&batch);
+        }
+        if show_anchors {
+            let mut batch = WorldEditBatch::new();
+            for anchor in &built.anchors {
+                if built.world.get(*anchor).is_some() {
+                    batch.set(*anchor, Some(ANCHOR_PAINT));
+                }
+            }
+            built.world.apply(&batch);
+        }
+
+        let suffix = if damaged { "after" } else { "before" };
+        let path = std::path::Path::new(dir).join(format!("{}-{suffix}", scenario.name()));
+        let meta = WorldMeta::new(scenario.name())
+            .with_name(scenario.description())
+            .with_spawn([32.0, 40.0, 70.0]);
+        if let Err(error) = v2::save_world_v2(&built.world, &meta, &path) {
+            eprintln!("could not write {}: {error}", path.display());
+            return std::process::ExitCode::FAILURE;
+        }
+        println!("{}", path.display());
+    }
     std::process::ExitCode::SUCCESS
 }

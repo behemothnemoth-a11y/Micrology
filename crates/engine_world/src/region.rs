@@ -21,6 +21,7 @@
 //! [`World`]: crate::World
 
 use engine_core::{CellPos, MaterialId, RegionPos, Revision, VolumePos};
+use engine_volume::AnchorField;
 use engine_volume::Volume;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,11 +30,34 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct RegionFootprint {
     pub cell_bytes: u64,
     pub palette_bytes: u64,
+    /// Dense support fields. Zero for a region that is uniformly anchored or
+    /// uniformly not, which is most of them.
+    pub anchor_bytes: u64,
 }
 
 impl RegionFootprint {
     pub fn total(&self) -> u64 {
-        self.cell_bytes + self.palette_bytes
+        self.cell_bytes + self.palette_bytes + self.anchor_bytes
+    }
+
+    /// Add another footprint into this one.
+    ///
+    /// Exists so that summing footprints has exactly one place that knows the
+    /// field list. Adding `anchor_bytes` to this struct and then forgetting it
+    /// in a hand-written sum is precisely the bug this replaces.
+    pub fn add(&mut self, other: RegionFootprint) {
+        self.cell_bytes += other.cell_bytes;
+        self.palette_bytes += other.palette_bytes;
+        self.anchor_bytes += other.anchor_bytes;
+    }
+}
+
+impl std::iter::Sum for RegionFootprint {
+    fn sum<I: Iterator<Item = RegionFootprint>>(iter: I) -> Self {
+        iter.fold(RegionFootprint::default(), |mut total, next| {
+            total.add(next);
+            total
+        })
     }
 }
 
@@ -41,6 +65,18 @@ impl RegionFootprint {
 #[derive(Clone, Debug, Default)]
 pub struct Region {
     volumes: BTreeMap<VolumePos, Volume>,
+    /// Which cells are structurally fixed to the world.
+    ///
+    /// A **sidecar**, deliberately beside the volumes rather than inside them.
+    /// Three things fall out of that: a world that anchors nothing pays nothing;
+    /// a volume's cell data and its support data can be snapshotted separately,
+    /// which is what lets a structural job carry only what it needs; and
+    /// `Volume` keeps its existing equality and serialisation, so support could
+    /// be added without rewriting how cells persist.
+    ///
+    /// Only non-empty fields are stored, so the common "nothing here is
+    /// anchored" case is an absent key rather than a value.
+    anchors: BTreeMap<VolumePos, AnchorField>,
     dirty: bool,
     revision: Revision,
 }
@@ -58,9 +94,78 @@ impl Region {
                 .into_iter()
                 .filter(|(_, volume)| !volume.is_empty())
                 .collect(),
+            anchors: BTreeMap::new(),
             dirty: false,
             revision: Revision::ZERO,
         }
+    }
+
+    // --- support --------------------------------------------------------
+
+    /// Whether `pos` is structurally fixed to the world.
+    ///
+    /// Independent of occupancy: removing a cell does not unanchor its
+    /// location. See [`AnchorField`] for why.
+    pub fn is_anchor(&self, pos: CellPos) -> bool {
+        let (volume, local) = pos.split();
+        self.anchors
+            .get(&volume)
+            .is_some_and(|field| field.get(local))
+    }
+
+    /// Set one cell's anchor bit, returning whether it changed.
+    pub fn set_anchor(&mut self, pos: CellPos, anchored: bool) -> bool {
+        let (volume, local) = pos.split();
+        if !anchored && !self.anchors.contains_key(&volume) {
+            // Nothing here is anchored, so clearing is free and must not
+            // allocate a field to record emptiness.
+            return false;
+        }
+        let field = self.anchors.entry(volume).or_default();
+        let changed = field.set(local, anchored);
+        if changed {
+            field.compact();
+            if field.is_empty() {
+                self.anchors.remove(&volume);
+            }
+            self.dirty = true;
+            self.revision.bump();
+        }
+        changed
+    }
+
+    /// Set a whole volume's support at once.
+    ///
+    /// The case terrain generation and world loading actually want: anchoring a
+    /// foundation volume cell by cell would promote it to dense and then
+    /// compact it back, for a result a single enum describes.
+    pub fn set_volume_anchor(&mut self, volume: VolumePos, field: AnchorField) {
+        if field.is_empty() {
+            self.anchors.remove(&volume);
+        } else {
+            self.anchors.insert(volume, field);
+        }
+        self.dirty = true;
+        self.revision.bump();
+    }
+
+    pub fn volume_anchors(&self, volume: VolumePos) -> Option<&AnchorField> {
+        self.anchors.get(&volume)
+    }
+
+    /// Every volume in this region with any anchored cell, in canonical order.
+    pub fn anchor_fields(&self) -> impl Iterator<Item = (VolumePos, &AnchorField)> {
+        self.anchors.iter().map(|(pos, field)| (*pos, field))
+    }
+
+    /// Anchored cells in this region.
+    pub fn anchor_count(&self) -> u64 {
+        self.anchors.values().map(|f| u64::from(f.count())).sum()
+    }
+
+    /// Whether this region records any support at all.
+    pub fn has_anchors(&self) -> bool {
+        !self.anchors.is_empty()
     }
 
     /// The material at `pos`, or `None` for an empty cell or one this region
@@ -133,6 +238,9 @@ impl Region {
         for volume in self.volumes.values() {
             footprint.cell_bytes += volume.cell_bytes() as u64;
             footprint.palette_bytes += volume.palette_bytes() as u64;
+        }
+        for field in self.anchors.values() {
+            footprint.anchor_bytes += field.heap_bytes() as u64;
         }
         footprint
     }
@@ -210,6 +318,10 @@ impl PartialEq for Region {
             && mine()
                 .zip(theirs())
                 .all(|((pa, va), (pb, vb))| pa == pb && va == vb)
+            // Support is part of the region's contents, not of its relationship
+            // with storage: a reload that lost the anchors would have lost the
+            // world's structure, so it must not compare equal.
+            && self.anchors == other.anchors
     }
 }
 

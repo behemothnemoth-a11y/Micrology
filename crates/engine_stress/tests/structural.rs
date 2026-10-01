@@ -110,6 +110,49 @@ fn damage_is_canonically_ordered() {
 }
 
 #[test]
+fn the_world_records_the_same_support_the_scenario_declares() {
+    // The scenario's anchor set and the world's anchor storage must agree. If
+    // they drifted, every structural result would be computed against support
+    // the fixture does not think it declared.
+    for scenario in all_structural_scenarios() {
+        let built = scenario.build();
+        assert_eq!(
+            built.world.anchor_count(),
+            built.anchors.len() as u64,
+            "`{}` declares {} anchors but the world holds {}",
+            scenario.name(),
+            built.anchors.len(),
+            built.world.anchor_count()
+        );
+        for anchor in &built.anchors {
+            assert!(
+                built.world.is_anchor(*anchor),
+                "`{}`: {anchor:?} is declared anchored but the world disagrees",
+                scenario.name()
+            );
+        }
+    }
+}
+
+#[test]
+fn support_storage_stays_proportional_to_the_volumes_it_touches() {
+    // 512 bytes per mixed volume, and nothing for a volume that is uniformly
+    // anchored or uniformly not. The failure this guards is a representation
+    // that quietly charges per anchored *cell*.
+    for (name, c) in &measured() {
+        assert_eq!(
+            c.anchor_bytes % 512,
+            0,
+            "{name}: not a whole number of fields"
+        );
+        assert!(
+            c.anchor_bytes <= 512 * c.structure_volumes,
+            "{name}: more anchor fields than the structure has volumes"
+        );
+    }
+}
+
+#[test]
 fn anchors_are_always_occupied_cells() {
     // An anchor on empty space anchors nothing. Support is a property of a
     // cell that exists, which is exactly why it is not a material property.

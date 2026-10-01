@@ -253,13 +253,7 @@ impl World {
 
     /// Total resident bytes across every region.
     pub fn footprint(&self) -> RegionFootprint {
-        let mut total = RegionFootprint::default();
-        for region in self.regions.values() {
-            let f = region.footprint();
-            total.cell_bytes += f.cell_bytes;
-            total.palette_bytes += f.palette_bytes;
-        }
-        total
+        self.regions.values().map(|region| region.footprint()).sum()
     }
 
     pub fn volume(&self, pos: VolumePos) -> Option<&Volume> {
@@ -354,6 +348,64 @@ impl World {
         }
     }
 
+    // --- support --------------------------------------------------------
+
+    /// Whether `pos` is structurally fixed to the world.
+    ///
+    /// Also available through [`engine_core::SupportSource`], which is what
+    /// structural analysis depends on.
+    pub fn is_anchor(&self, pos: CellPos) -> bool {
+        <Self as engine_core::SupportSource>::is_anchor(self, pos)
+    }
+
+    /// Anchor or unanchor one cell, returning whether it changed.
+    ///
+    /// Does **not** require the cell to be occupied. An anchor is a statement
+    /// about a location being fixed to the world, and connectivity only ever
+    /// consults it for cells that exist — so anchoring empty space is harmless,
+    /// and refusing to would make "anchor the foundation, then build on it"
+    /// order-dependent.
+    pub fn set_anchor(&mut self, pos: CellPos, anchored: bool) -> bool {
+        if !anchored && !self.regions.contains_key(&pos.region()) {
+            return false;
+        }
+        self.regions
+            .entry(pos.region())
+            .or_default()
+            .set_anchor(pos, anchored)
+    }
+
+    /// Anchor or unanchor an inclusive cell box, returning how many changed.
+    pub fn set_anchor_box(&mut self, min: CellPos, max: CellPos, anchored: bool) -> u64 {
+        let mut changed = 0;
+        for y in min.y.min(max.y)..=min.y.max(max.y) {
+            for z in min.z.min(max.z)..=min.z.max(max.z) {
+                for x in min.x.min(max.x)..=min.x.max(max.x) {
+                    if self.set_anchor(CellPos::new(x, y, z), anchored) {
+                        changed += 1;
+                    }
+                }
+            }
+        }
+        changed
+    }
+
+    /// Anchored cells across every resident region.
+    pub fn anchor_count(&self) -> u64 {
+        self.regions.values().map(|r| r.anchor_count()).sum()
+    }
+
+    /// Whether `pos`'s region is resident, and so whether an answer about it
+    /// means anything.
+    ///
+    /// The distinction the whole "unknown is not empty" rule rests on: a cell in
+    /// a region with no record is not unoccupied and not unanchored, it is
+    /// *unknown*, and both `get` and `is_anchor` would otherwise report it as
+    /// an ordinary negative.
+    pub fn is_resident(&self, pos: CellPos) -> bool {
+        self.regions.contains_key(&pos.region())
+    }
+
     fn mark_dirty_with_neighbours(&mut self, volume_pos: VolumePos, local: LocalPos) {
         self.dirty.insert(volume_pos);
         for dir in FaceDir::ALL {
@@ -379,6 +431,22 @@ impl CellSource for World {
     #[inline]
     fn material_at(&self, pos: CellPos) -> Option<MaterialId> {
         self.get(pos)
+    }
+}
+
+/// Support is answered by the world, but it is a **separate** question from
+/// occupancy and a separate trait.
+///
+/// A structural analysis depends on `CellSource + SupportSource`, not on
+/// `World`, which is the same trick that let the mesher compile a snapshot on a
+/// worker thread without the world: a fragment, a job snapshot or a test fixture
+/// can answer both questions without being a world.
+impl engine_core::SupportSource for World {
+    #[inline]
+    fn is_anchor(&self, pos: CellPos) -> bool {
+        self.regions
+            .get(&pos.region())
+            .is_some_and(|region| region.is_anchor(pos))
     }
 }
 

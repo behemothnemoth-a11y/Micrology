@@ -39,3 +39,58 @@ impl CellSource for EmptySource {
         None
     }
 }
+
+/// Whether a cell is structurally fixed to the world.
+///
+/// Deliberately a separate trait from [`CellSource`], and deliberately **not** a
+/// property of [`Material`](crate::Material). Stone is not automatically
+/// anchored and wood is not automatically unanchored: support is world
+/// topology, decided by whoever built the world, and a material that carried it
+/// would make "is this bedrock" a question about paint.
+///
+/// Keeping it apart from cells also means a structural analysis can be handed a
+/// snapshot of occupancy and a snapshot of support that were captured
+/// separately, which is what lets the support field be an optional sidecar
+/// rather than a column in every volume.
+///
+/// Like [`CellSource`], positions outside loaded data must answer rather than
+/// panic. `false` is the right answer there — "not known to be anchored" — and
+/// callers that care about the difference between *unanchored* and *unknown*
+/// must get that from occupancy, which does distinguish them.
+pub trait SupportSource {
+    /// Whether `pos` is anchored.
+    fn is_anchor(&self, pos: CellPos) -> bool;
+}
+
+impl<T: SupportSource + ?Sized> SupportSource for &T {
+    #[inline]
+    fn is_anchor(&self, pos: CellPos) -> bool {
+        (**self).is_anchor(pos)
+    }
+}
+
+/// A world where nothing is anchored. Everything in it is detachable.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct NoSupport;
+
+impl SupportSource for NoSupport {
+    #[inline]
+    fn is_anchor(&self, _pos: CellPos) -> bool {
+        false
+    }
+}
+
+/// A world where everything is anchored. Nothing in it can ever detach.
+///
+/// The counterpart to [`NoSupport`], and the more useful of the two in tests: a
+/// classifier that reports a detachment against this is wrong in a way that no
+/// amount of careful searching explains.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct FullySupported;
+
+impl SupportSource for FullySupported {
+    #[inline]
+    fn is_anchor(&self, _pos: CellPos) -> bool {
+        true
+    }
+}
