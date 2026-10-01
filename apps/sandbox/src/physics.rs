@@ -482,7 +482,6 @@ pub fn readback_fragment_bodies(
     }
 }
 
-
 /// State for the opt-in runtime smoke used by CI and local diagnosis.
 ///
 /// The normal sandbox never enables this. When `MICROLOGY_FRAGMENT_SMOKE=1` is
