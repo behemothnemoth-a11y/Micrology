@@ -8,9 +8,12 @@ import/export format and a test ecosystem — never the foundation. No core crat
 depends on Minecraft, Fabric, NBT, block entities or a block registry, and none
 ever will; that belongs behind import/export adapters.
 
-The engine is at **DROP 0001 — World Kernel**. One milestone is done: the engine
-owns, displays, edits, saves and reloads its own volumetric geometry. Everything
-in `docs/vision/06_FUTURE_ROADMAP.md` past phase A is deliberately not started.
+The engine is in **DROP 0003 — Destruction Foundation**. The world kernel and
+scale foundation are complete: Micrology owns, streams, edits, saves and renders
+its own bounded-memory volumetric world. DROP 0003 is now through **0003.10**:
+support topology, structural connectivity, native fragments, exact/greedy
+collision compilation and streamed static-world physics are implemented; dynamic
+fragment simulation is next.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -98,9 +101,10 @@ crates/
   engine_geometry/  surface extraction, greedy meshing, per-section mesh cache
   engine_io/        versioned save/load, v1 file and v2 sharded directory
   engine_stream/    residency, async mesh jobs, scheduling, the memory budget
+  engine_destruction/ support, connectivity, fragments, collision compilation
   engine_stress/    deterministic scenarios, granularity audit, world generator
 apps/
-  sandbox/          the desktop app: window, camera, picking, rendering, streaming
+  sandbox/          desktop host: rendering, streaming and Avian static physics
 fixtures/           committed worlds and stress baselines, to prove stability
 docs/               architecture, save format, testing, drop reports, the vision pack
 ```
@@ -148,10 +152,13 @@ wrong by that factor. Verified on a 153 MiB world held inside a 24 MiB ceiling.
 
 ## What does not exist yet
 
-Not started, by design: LOD, destruction, physics, collision,
-connectivity/island detection, an editor, procedural generation, scripting,
-networking, multiplayer, Minecraft or Litematica import/export, GIS ingestion,
-transforms on volume data, and any actual game.
+Still not implemented: dynamic fragment rigid bodies, fragment lifecycle/budgets
+and persistence, the interactive structural-destruction pipeline, LOD, an editor,
+procedural generation, scripting, networking, multiplayer, Minecraft or
+Litematica import/export, GIS ingestion, volume transforms, and any actual game.
+
+Static collision is live in the sandbox through Avian, but physics backend types
+remain outside all engine crates.
 
 DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complete**
 — see [the report](docs/drop-0002-report.md). DROP 0003 (structural destruction:
