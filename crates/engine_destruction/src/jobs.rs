@@ -208,7 +208,9 @@ impl StructureJobInput {
                 if !occupies_face(data, dir) {
                     continue;
                 }
-                let neighbour = volume.step(dir);
+                let Some(neighbour) = volume.checked_step(dir) else {
+                    continue;
+                };
                 if queued.insert(neighbour) {
                     queue.push_back(neighbour);
                 }
