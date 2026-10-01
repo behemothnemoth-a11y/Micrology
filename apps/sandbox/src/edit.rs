@@ -11,6 +11,7 @@
 //! need it, so it does not belong in an app.
 
 use crate::camera::{FlyCamera, cursor_grabbed};
+use crate::destruction::DestructionHost;
 use crate::render::SectionEntities;
 use crate::scene;
 use crate::streaming::StreamRes;
@@ -19,7 +20,7 @@ use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 use engine_core::MaterialId;
-use engine_world::raycast;
+use engine_world::{WorldEditBatch, raycast};
 
 /// How far the edit ray reaches, in cells.
 const REACH: f32 = 96.0;
@@ -91,6 +92,8 @@ pub fn edit_cells(
     camera: Option<Single<(&Transform, &FlyCamera)>>,
     palette: Res<Palette>,
     mut world: ResMut<WorldRes>,
+    mut stream: ResMut<StreamRes>,
+    mut destruction: ResMut<DestructionHost>,
     mut status: ResMut<StatusLine>,
 ) {
     // Edits only happen while looking around; the first click grabs the cursor.
@@ -115,17 +118,32 @@ pub fn edit_cells(
         return;
     };
 
-    if carve {
-        world.set(hit.cell, None);
-        status.0 = format!("removed {:?}", hit.cell);
+    let mut batch = WorldEditBatch::new();
+    let action = if carve {
+        let large = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let radius = if large { 4 } else { 2 };
+        batch.carve_sphere(hit.cell, radius);
+        format!("carved radius {radius} at {:?}", hit.cell)
     } else if place {
         let target = hit.cell.step(hit.face);
-        world.set(target, Some(palette.current()));
-        status.0 = format!("placed {} at {:?}", palette.current_name(), target);
-    } else if paint {
-        world.set(hit.cell, Some(palette.current()));
-        status.0 = format!("painted {:?} {}", hit.cell, palette.current_name());
+        batch.set(target, Some(palette.current()));
+        format!("placed {} at {:?}", palette.current_name(), target)
+    } else {
+        batch.set(hit.cell, Some(palette.current()));
+        format!("painted {:?} {}", hit.cell, palette.current_name())
+    };
+
+    let outcome = world.apply(&batch);
+    if outcome.is_empty() {
+        status.0 = "edit changed nothing".to_string();
+        return;
     }
+
+    for region in &outcome.dirtied_regions {
+        stream.streamer.note_region_edited(*region);
+    }
+    destruction.enqueue_edit(&outcome);
+    status.0 = action;
 }
 
 /// `F5` flushes unsaved regions, `F9` drops everything and streams it back.
