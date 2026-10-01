@@ -16,12 +16,12 @@
 //! explicitly.
 
 use crate::camera::FlyCamera;
-use crate::{GeometryRes, WorldRes};
+use crate::WorldRes;
 use avian3d::prelude::{
     Collider, PhysicsPlugins, Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation,
 };
 use bevy::prelude::*;
-use engine_core::{CellBounds, CellPos, RenderSectionId, Revision, SectionGrid, VolumePos};
+use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
 use engine_destruction::{CollisionCompiler, CollisionShape, GreedyCollisionCompiler};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,9 +34,10 @@ pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 
 /// Bound synchronous collider compilation work per rendered frame.
 ///
-/// A section is only 16³ cells at the shipped SectionGrid=1, so this is small,
-/// deterministic work. If renderer granularity is ever coarsened, the
-/// destruction harness must re-measure this before the bound is raised.
+/// The current physics unit is one 16³ storage volume. That choice is private to
+/// this host adapter: renderer section sizing cannot silently change collision
+/// rebuild scope. If physics granularity is ever coarsened, measure it on its
+/// own terms first.
 const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
 
 /// Avian stays a host dependency. Returning the plugin group from here keeps
@@ -45,21 +46,17 @@ pub fn physics_plugins() -> PhysicsPlugins {
     PhysicsPlugins::default()
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct StaticCollisionFingerprint(Vec<(VolumePos, Option<Revision>)>);
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct StaticCollisionFingerprint(Option<Revision>);
 
 impl StaticCollisionFingerprint {
-    /// Collision depends on the section's own cells only.
+    /// Collision depends on this volume's cells only.
     ///
     /// Unlike surface geometry, a neighbouring volume cannot hide or reveal
-    /// collision inside this section, so including neighbours would cause
+    /// collision inside this volume, so including neighbours would cause
     /// needless collider rebuilds after unrelated seam edits.
-    fn of(world: &engine_world::World, grid: SectionGrid, section: RenderSectionId) -> Self {
-        Self(
-            grid.volumes_in(section)
-                .map(|volume| (volume, world.volume_revision(volume)))
-                .collect(),
-        )
+    fn of(world: &engine_world::World, volume: VolumePos) -> Self {
+        Self(world.volume_revision(volume))
     }
 }
 
@@ -86,15 +83,15 @@ pub struct StaticColliderStats {
     pub despawned_total: u64,
 }
 
-/// Static physics bodies keyed by Micrology render section.
+/// Static physics bodies keyed by the host's current collision unit.
 ///
-/// The key is a render section because it is already the smallest independently
-/// rebuilt derived-geometry unit. It is *not* tied to the render entity: a
-/// later game can use a different render radius, hide geometry, or replace the
-/// renderer without changing physics residency.
+/// One storage volume is one static collision unit today. This is deliberately
+/// independent of `SectionGrid`: render batching, render radius and physics
+/// residency are three separate decisions. A future physics-only grouping can
+/// replace this private key without changing the renderer.
 #[derive(Resource, Default)]
 pub struct StaticColliders {
-    entries: BTreeMap<RenderSectionId, StaticColliderEntry>,
+    entries: BTreeMap<VolumePos, StaticColliderEntry>,
     stats: StaticColliderStats,
 }
 
@@ -103,8 +100,8 @@ impl StaticColliders {
         self.stats
     }
 
-    fn remove(&mut self, commands: &mut Commands, section: RenderSectionId) {
-        let Some(entry) = self.entries.remove(&section) else {
+    fn remove(&mut self, commands: &mut Commands, volume: VolumePos) {
+        let Some(entry) = self.entries.remove(&volume) else {
             return;
         };
         if let Some(entity) = entry.entity {
@@ -116,14 +113,14 @@ impl StaticColliders {
     fn install(
         &mut self,
         commands: &mut Commands,
-        section: RenderSectionId,
+        volume: VolumePos,
         fingerprint: StaticCollisionFingerprint,
         bounds: CellBounds,
         shape: CollisionShape,
     ) {
         // Replacement is rare (only after an edit) and making it all-or-nothing
         // avoids leaving an old collider behind if the new shape is empty.
-        self.remove(commands, section);
+        self.remove(commands, volume);
 
         let boxes = shape.len() as u64;
         let bytes = shape.bytes();
@@ -143,7 +140,7 @@ impl StaticColliders {
         });
 
         self.entries.insert(
-            section,
+            volume,
             StaticColliderEntry {
                 entity,
                 fingerprint,
@@ -178,7 +175,6 @@ struct StaticSectionCollider;
 pub fn sync_static_colliders(
     mut commands: Commands,
     world: Res<WorldRes>,
-    geometry: Res<GeometryRes>,
     camera: Option<Single<&FlyCamera>>,
     mut colliders: ResMut<StaticColliders>,
 ) {
@@ -188,20 +184,15 @@ pub fn sync_static_colliders(
         return;
     };
     let camera_cell = camera.global.cell();
-    let grid = geometry.cache.grid();
 
     // Populate from world storage rather than the mesh cache. A completely
     // enclosed solid volume can legitimately have no visible mesh and must
     // still remain solid to physics.
-    let mut desired = BTreeMap::<RenderSectionId, u64>::new();
+    let mut desired = BTreeMap::<VolumePos, u64>::new();
     for volume in world.volume_positions() {
-        let section = grid.section_for(volume);
-        let distance = distance_to_bounds(camera_cell, grid.cell_bounds(section));
+        let distance = distance_to_bounds(camera_cell, volume_bounds(volume));
         if distance <= PHYSICS_RADIUS_CELLS {
-            desired
-                .entry(section)
-                .and_modify(|current| *current = (*current).min(distance))
-                .or_insert(distance);
+            desired.insert(volume, distance);
         }
     }
 
@@ -209,42 +200,48 @@ pub fn sync_static_colliders(
     let leaving: Vec<_> = colliders
         .entries
         .keys()
-        .filter(|section| !wanted.contains(section))
+        .filter(|volume| !wanted.contains(volume))
         .copied()
         .collect();
-    for section in leaving {
-        colliders.remove(&mut commands, section);
+    for volume in leaving {
+        colliders.remove(&mut commands, volume);
     }
 
     // Rebuild changed or newly relevant sections nearest-first. Empty
     // colliders are cached too (entity=None), otherwise an allocated-but-empty
     // volume would be recompiled every frame until world compaction.
     let mut rebuilds = Vec::new();
-    for (section, distance) in desired {
-        let fingerprint = StaticCollisionFingerprint::of(&world.0, grid, section);
+    for (volume, distance) in desired {
+        let fingerprint = StaticCollisionFingerprint::of(&world.0, volume);
         let current = colliders
             .entries
-            .get(&section)
+            .get(&volume)
             .is_some_and(|entry| entry.fingerprint == fingerprint);
         if !current {
-            rebuilds.push((distance, section, fingerprint));
+            rebuilds.push((distance, volume, fingerprint));
         }
     }
-    rebuilds.sort_by_key(|(distance, section, _)| (*distance, *section));
+    rebuilds.sort_by_key(|(distance, volume, _)| (*distance, *volume));
 
-    for (_, section, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
-        let bounds = grid.cell_bounds(section);
+    for (_, volume, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
+        let bounds = volume_bounds(volume);
         let shape = GreedyCollisionCompiler.compile(&world.0, bounds);
-        colliders.install(&mut commands, section, fingerprint, bounds, shape);
+        colliders.install(&mut commands, volume, fingerprint, bounds, shape);
     }
 
     colliders.refresh_live_stats();
 }
 
+fn volume_bounds(volume: VolumePos) -> CellBounds {
+    let min = volume.origin();
+    let edge = VOLUME_EDGE - 1;
+    CellBounds::new(min, CellPos::new(min.x + edge, min.y + edge, min.z + edge))
+}
+
 /// Convert Micrology's canonical collision boxes into one Avian compound shape.
 ///
-/// The rigid body sits at the section origin in global f64 physics space. Child
-/// boxes are therefore section-local, just as render vertices are section-local.
+/// The rigid body sits at the volume origin in global f64 physics space. Child
+/// boxes are therefore volume-local; render-section sizing is irrelevant.
 /// Large world coordinates never enter a collider's local shape data.
 fn collider_from_shape(shape: &CollisionShape, origin: CellPos) -> Option<Collider> {
     if shape.is_empty() {
