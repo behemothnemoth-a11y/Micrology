@@ -22,7 +22,8 @@ pub struct StatsText;
 
 const CONTROLS: &str = "click grab · esc release · wasd+space/ctrl fly · shift fast\n\
                         lmb carve · rmb place · f paint · 1-5 / wheel material\n\
-                        f5 flush dirty regions · f9 drop and restream · g toggle mesher";
+                        f5 flush dirty regions · f9 drop and restream · g toggle mesher\n\
+                        q quit (flushes unsaved edits)";
 
 /// A crosshair at the exact centre of the viewport.
 ///

@@ -95,8 +95,12 @@ Honest gaps, so nobody mistakes green for complete:
 - **No performance *budgets*.** The stress harness records timings but nothing
   asserts them, by design — hardware timings are diagnostic, not correctness. What
   CI does assert is the deterministic counters.
-- **Nothing has run at streaming scale.** The largest stress world is 111 volumes
-  / 259k cells, which is big enough to measure shape but not residency.
+- **No GPU is tested.** Everything here runs headless. The one question 0002.11
+  could not answer — what draw-call count actually costs — needs real hardware,
+  which is why `SectionGrid` stayed configurable instead of being chosen.
+- **The renderer is not tested.** `apps/sandbox` has no tests; it is verified by
+  running it and looking, which is recorded in `docs/drop-0002.md` with
+  screenshots and HUD readings rather than asserted in CI.
 
 ## The stress harness
 
@@ -121,3 +125,46 @@ Scenarios exist to stop one friendly benchmark standing in for "performance".
 can achieve literally nothing; `material_stress` blocks merging without changing
 the shape; `boundary_storm` is the one that forces neighbouring sections to
 rebuild. When a change makes `dense_solid` faster, check what it did to `checker`.
+
+## The other harness tools
+
+```sh
+# Renderer granularity: every scenario at 1, 2 and 4 volumes per section edge.
+cargo run --release -p engine_stress --bin granularity
+
+# A deterministic world far larger than memory, written a region at a time.
+cargo run --release -p engine_stress --bin worldgen -- /tmp/world --regions 12
+
+# What one region of real terrain costs to read and write.
+cargo run --release -p engine_stress --bin regionio -- /tmp/world
+```
+
+None of these commit anything. They answer a question when it is being asked:
+whether to coarsen render sections, whether streaming holds up at scale, whether
+region I/O belongs on the main thread. Their findings live in
+`docs/drop-0002-report.md`, with the command that produced each number.
+
+A generated world is never committed — one big enough to be interesting is far
+too big for a repository.
+
+## The torture suite
+
+`crates/engine_stream/tests/torture.rs` covers the orderings that only happen
+when a player is unlucky: a save landing after the edit it should have captured,
+a mesh job returning long after the world moved on, a region evicted mid-flight,
+storage that simply fails.
+
+**Every ordering is forced, never raced.** A test that reproduces a bug one run in
+fifty is not a test, so the host is a `BTreeMap` and completion order is a seeded
+permutation that replays identically on any machine.
+
+Two traps it is worth knowing about, because both produced a false failure first:
+
+- **The fake disk must model real storage.** `dirty` means "differs from what is
+  on disk" — an in-memory property that storage has no concept of. A `BTreeMap`
+  of cloned `Region`s carries the flag across the round trip and makes a reloaded
+  region read as unsaved, which `v2::load_region` never does.
+- **A fixture has to weigh something.** A uniform volume costs *four bytes* — one
+  palette entry, no cell array — so a hundred and seventy-five of them will not
+  trouble any budget. Give each volume a second material and it lands in the
+  indexed tier at 8,200 bytes. Region count is not memory.

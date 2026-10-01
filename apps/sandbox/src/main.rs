@@ -135,6 +135,7 @@ fn main() {
             edit::edit_cells,
             edit::save_and_load,
             edit::toggle_compiler,
+            edit::quit,
             // Streaming: decide residency, start I/O, dispatch compiles, and
             // apply whatever came back that is still current.
             streaming::drive_streaming,
@@ -147,7 +148,10 @@ fn main() {
             // Edits must be applied before geometry is rebuilt, and geometry
             // before the HUD reports it, so the display never lags the world.
             .chain(),
-    );
+    )
+    // Unsaved edits must reach disk before the process does, so this runs in
+    // `Last`, after the exit message exists and before the app stops.
+    .add_systems(Last, streaming::flush_on_exit);
 
     app.run();
 }

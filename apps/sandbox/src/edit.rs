@@ -165,6 +165,17 @@ pub fn save_and_load(
     }
 }
 
+/// `Q` quits, which is the only exit that guarantees edits reach disk.
+///
+/// Closing the window works too — [`crate::streaming::flush_on_exit`] runs on
+/// any `AppExit` — but a key that is certain to arrive makes the flush testable
+/// without a window manager.
+pub fn quit(keys: Res<ButtonInput<KeyCode>>, mut exits: MessageWriter<AppExit>) {
+    if keys.just_pressed(KeyCode::KeyQ) {
+        exits.write(AppExit::Success);
+    }
+}
+
 /// `G` swaps the greedy mesher for the exact oracle and rebuilds everything.
 ///
 /// Rendering the oracle's output is the quickest way to tell a meshing bug from a

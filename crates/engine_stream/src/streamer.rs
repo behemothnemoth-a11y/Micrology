@@ -586,6 +586,48 @@ impl RegionStreamer {
         world.dirty_regions().collect()
     }
 
+    /// Start a save for every region holding unsaved edits, for shutdown.
+    ///
+    /// Deliberately unlike [`RegionStreamer::update`] in three ways, because
+    /// shutdown is not steady state:
+    ///
+    /// * **Distance is irrelevant.** Every dirty region is written, whether or
+    ///   not the camera is anywhere near it.
+    /// * **`max_active_saves` does not apply.** That bound exists to keep a
+    ///   frame from stalling on I/O; there are no more frames.
+    /// * **A failed residency transition does not stop the write.** The state
+    ///   machine protects the *engine's* bookkeeping. Losing a player's edits
+    ///   because a region was in an awkward state would be a far worse bug, so
+    ///   the ticket is issued either way.
+    ///
+    /// A region already saving an older revision is ticketed again at its
+    /// current one. The older save then completes against a newer revision and
+    /// reports [`SaveOutcome::StillDirty`], which is exactly the existing
+    /// stale-save rule doing its job rather than a special case.
+    ///
+    /// The host must drive every returned ticket to completion before exiting —
+    /// that is the whole point — and feed each result back through
+    /// [`RegionStreamer::on_save_finished`].
+    pub fn flush(&mut self, world: &World) -> Vec<SaveTicket> {
+        let mut tickets = Vec::new();
+        for region in world.dirty_regions() {
+            let revision = world
+                .region(region)
+                .map(|r| r.revision())
+                .unwrap_or_default();
+            if self.active_saves.get(&region) == Some(&revision) {
+                // Already writing exactly this revision; a second write would
+                // be wasted I/O at the moment I/O is most expensive.
+                continue;
+            }
+            let _ = self.residency.begin_save(region);
+            self.active_saves.insert(region, revision);
+            self.counts.saves_started += 1;
+            tickets.push(SaveTicket { region, revision });
+        }
+        tickets
+    }
+
     /// Stop wanting anything. Used when a different world is loaded.
     pub fn clear(&mut self) {
         self.residency.clear();

@@ -38,7 +38,7 @@ use engine_core::{
     CellPos, CellSource, FaceDir, MaterialId, MaterialRegistry, RenderSectionId, Revision,
     SectionGrid, VolumePos,
 };
-use engine_geometry::{MeshData, QuadSet, SurfaceCompiler};
+use engine_geometry::{CachedSection, MeshData, QuadSet, SurfaceCompiler};
 use engine_volume::Volume;
 use engine_world::World;
 use std::collections::{BTreeMap, BTreeSet};
@@ -156,6 +156,20 @@ pub struct MeshJobResult {
     pub fingerprint: SectionFingerprint,
     pub quads: QuadSet,
     pub mesh: MeshData,
+}
+
+impl MeshJobResult {
+    /// Take the compiled geometry as a cache entry.
+    ///
+    /// The host does this on every applied result, so it lives here rather than
+    /// being rebuilt by each caller — a second copy of this would be a second
+    /// place to forget a field.
+    pub fn into_cached(self) -> CachedSection {
+        CachedSection {
+            quads: self.quads,
+            mesh: self.mesh,
+        }
+    }
 }
 
 /// What happened to a returning result.

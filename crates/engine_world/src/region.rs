@@ -20,7 +20,7 @@
 //!
 //! [`World`]: crate::World
 
-use engine_core::{MaterialId, RegionPos, Revision, VolumePos};
+use engine_core::{CellPos, MaterialId, RegionPos, Revision, VolumePos};
 use engine_volume::Volume;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -61,6 +61,17 @@ impl Region {
             dirty: false,
             revision: Revision::ZERO,
         }
+    }
+
+    /// The material at `pos`, or `None` for an empty cell or one this region
+    /// does not cover.
+    ///
+    /// Reading through the region rather than the world is what a save or a
+    /// load works with: a `Region` detached from a `World` is a whole, valid
+    /// piece of the map, and must be inspectable as one.
+    pub fn get(&self, pos: CellPos) -> Option<MaterialId> {
+        let (volume_pos, local) = pos.split();
+        self.volume(volume_pos)?.get(local)
     }
 
     pub fn volume(&self, pos: VolumePos) -> Option<&Volume> {

@@ -16,9 +16,8 @@ use crate::camera::FlyCamera;
 use crate::render::SectionEntities;
 use crate::{GeometryRes, StatusLine, WorldRes};
 use bevy::prelude::*;
-use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures::check_ready};
 use engine_core::{CellPos, RegionPos, RenderSectionId, SectionGrid};
-use engine_geometry::CachedSection;
 use engine_io::{WorldMeta, v2};
 use engine_stream::{
     LoadTicket, MeshScheduler, MeshUrgency, RegionLoad, RegionStreamer, SaveTicket,
@@ -42,12 +41,37 @@ pub struct StreamRes {
     pub enabled: bool,
 }
 
+/// Read a positive integer override from the environment.
+///
+/// The streaming defaults are what ships. These exist so an acceptance run can
+/// put the *real* application under real memory pressure without a special
+/// build: a budget can only be shown to work by being exceeded, and a world
+/// large enough to exceed the shipped 96 MiB ceiling at the shipped radius is
+/// larger than is practical to generate. Nothing reads them in normal use.
+fn env_override(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()?
+        .parse::<u64>()
+        .ok()
+        .filter(|n| *n > 0)
+}
+
 impl StreamRes {
     pub fn new(dir: PathBuf, meta: WorldMeta) -> Self {
-        let mut streamer = RegionStreamer::new(StreamingConfig::default());
+        let config = StreamingConfig {
+            load_radius: env_override("MICROLOGY_LOAD_RADIUS")
+                .map(|r| r as i32)
+                .unwrap_or(StreamingConfig::default().load_radius),
+            unload_radius: env_override("MICROLOGY_UNLOAD_RADIUS")
+                .map(|r| r as i32)
+                .unwrap_or(StreamingConfig::default().unload_radius),
+            ..StreamingConfig::default()
+        };
+        let mut streamer = RegionStreamer::new(config);
         // Deliberately modest: a budget nobody ever reaches is a budget that
         // was never tested.
-        streamer.set_budget(engine_stream::MemoryBudget::with_ceiling(96 * 1024 * 1024));
+        let ceiling = env_override("MICROLOGY_BUDGET_MB").unwrap_or(96) * 1024 * 1024;
+        streamer.set_budget(engine_stream::MemoryBudget::with_ceiling(ceiling));
         Self {
             streamer,
             scheduler: MeshScheduler::new(SchedulerLimits {
@@ -386,13 +410,7 @@ pub fn apply_mesh_results(
 
     for result in ready {
         let section = result.section;
-        geometry.cache.insert(
-            section,
-            CachedSection {
-                quads: result.quads,
-                mesh: result.mesh,
-            },
-        );
+        geometry.cache.insert(section, result.into_cached());
         let cached = geometry.cache.get(section).expect("just inserted");
         targets.sections.upload(
             &mut commands,
@@ -403,4 +421,63 @@ pub fn apply_mesh_results(
             cached,
         );
     }
+}
+
+/// Write every unsaved region before the process ends.
+///
+/// Runs in `Last`, after the exit message has been raised but before the app
+/// actually stops. Three things make this deliberately unlike the steady-state
+/// path in [`drive_streaming`]:
+///
+/// * **It is synchronous.** Spawning a save onto the async pool would race the
+///   process exit, and a task that never completes has saved nothing. There is
+///   no frame left to protect, so blocking is the correct trade.
+/// * **It waits for saves already in flight.** One of those may hold the only
+///   copy of an edit written before the exit key was pressed.
+/// * **Distance is irrelevant.** Every dirty region is written, not just the
+///   ones near the camera — see [`RegionStreamer::flush`].
+///
+/// Losing a player's last few edits on quit is the kind of bug that is noticed
+/// once and never forgiven, so this runs even when streaming is disabled.
+pub fn flush_on_exit(
+    mut exits: MessageReader<AppExit>,
+    mut stream: ResMut<StreamRes>,
+    mut world: ResMut<WorldRes>,
+    mut tasks: ResMut<StreamTasks>,
+    mut status: ResMut<StatusLine>,
+) {
+    if exits.read().next().is_none() {
+        return;
+    }
+
+    // Let whatever is already being written finish, rather than starting a
+    // second write of the same region or abandoning the first.
+    for (ticket, _, task) in std::mem::take(&mut tasks.saves) {
+        let ok = block_on(task);
+        stream.streamer.on_save_finished(&mut world.0, ticket, ok);
+    }
+
+    let dir = stream.dir.clone();
+    let tickets = stream.streamer.flush(&world.0);
+    let mut written = 0usize;
+    let mut failed = 0usize;
+    for ticket in tickets {
+        let Some(region) = world.0.region(ticket.region) else {
+            continue;
+        };
+        let ok = v2::save_region(&dir, ticket.region, region).is_ok();
+        if ok {
+            written += 1;
+        } else {
+            failed += 1;
+        }
+        stream.streamer.on_save_finished(&mut world.0, ticket, ok);
+    }
+
+    status.0 = match (written, failed) {
+        (0, 0) => "nothing to flush".to_string(),
+        (w, 0) => format!("flushed {w} region(s) on exit"),
+        (w, f) => format!("flushed {w} region(s), {f} FAILED"),
+    };
+    info!("{}", status.0);
 }

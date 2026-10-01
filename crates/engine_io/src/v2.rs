@@ -248,6 +248,33 @@ pub fn manifest_to_json(world: &World, meta: &WorldMeta) -> Result<String, IoErr
     Ok(json)
 }
 
+/// Write a manifest for a world that was never all in memory at once.
+///
+/// [`save_world_v2`] derives the region index from a live `World`, which a
+/// generator writing a world larger than memory cannot provide — it holds one
+/// region at a time by design. This takes the index directly.
+///
+/// The positions are sorted and deduplicated, so the manifest is identical
+/// whatever order the shards were produced in.
+pub fn write_manifest(
+    dir: impl AsRef<Path>,
+    materials: &MaterialRegistry,
+    meta: &WorldMeta,
+    regions: impl IntoIterator<Item = RegionPos>,
+) -> Result<(), IoError> {
+    let index: std::collections::BTreeSet<RegionPos> = regions.into_iter().collect();
+    let file = ManifestFile {
+        format: FORMAT_TAG.to_string(),
+        version: FORMAT_VERSION_V2,
+        meta: meta.clone(),
+        materials: materials.iter().cloned().collect(),
+        regions: index.into_iter().collect(),
+    };
+    let mut json = serde_json::to_string_pretty(&file)?;
+    json.push('\n');
+    write_atomic(&manifest_path(dir.as_ref()), &json)
+}
+
 fn write_atomic(path: &Path, contents: &str) -> Result<(), IoError> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|source| IoError::File {

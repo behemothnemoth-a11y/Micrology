@@ -44,12 +44,37 @@ cargo run -p sandbox -- fixtures/worlds/drop0001_sample.json   # load a world in
 | right click | place a cell against the face you are looking at |
 | `F` | repaint the cell under the crosshair |
 | `1`–`5`, mouse wheel | choose material |
-| `F5` / `F9` | save / reload `saves/sandbox.world.json` |
+| `F5` / `F9` | flush unsaved regions / drop everything and stream it back |
 | `G` | swap the greedy mesher for the exact oracle |
+| `Q` | quit, flushing unsaved edits first |
 
 `G` is a debugging tool worth knowing about: it re-renders the world with the
 simple reference extractor instead of the optimised mesher. If a visual artefact
 survives the swap, the cell data is wrong, not the meshing.
+
+Closing the window flushes unsaved edits too — `Q` exists because a key is
+certain to arrive, and an unverified flush is not a flush.
+
+### Streaming a world larger than memory
+
+The sandbox streams whatever world directory it is given. To make one far bigger
+than it can hold:
+
+```sh
+cargo run --release -p engine_stress --bin worldgen -- /tmp/world --regions 12
+cargo run --release -p sandbox -- /tmp/world
+```
+
+That is 144 regions, 1,536 cells square, 57.2M cells — 153 MiB if it were ever
+all resident, against a 96 MiB ceiling. Three environment variables exist so the
+*shipped* application can be put under real memory pressure without a special
+build; nothing reads them in normal use:
+
+| variable | effect |
+|---|---|
+| `MICROLOGY_BUDGET_MB` | memory ceiling (default 96) |
+| `MICROLOGY_LOAD_RADIUS` | regions fetched around the camera |
+| `MICROLOGY_UNLOAD_RADIUS` | regions kept before eviction |
 
 ### Linux system dependencies
 
@@ -67,25 +92,27 @@ so leaving it out builds fine and then panics inside winit on startup.
 
 ```text
 crates/
-  engine_core/      coordinates, materials, revisions, the CellSource trait
+  engine_core/      coordinates, materials, revisions, CellSource, spatial roles
   engine_volume/    one 16^3 volume of cells, palette-indexed
-  engine_world/     sparse volume map, editing, dirty tracking
+  engine_world/     regions own volumes; editing, dirty tracking, raycast
   engine_geometry/  surface extraction, greedy meshing, per-section mesh cache
-  engine_io/        versioned save/load
-  engine_stress/    deterministic stress scenarios and the measurement harness
+  engine_io/        versioned save/load, v1 file and v2 sharded directory
+  engine_stream/    residency, async mesh jobs, scheduling, the memory budget
+  engine_stress/    deterministic scenarios, granularity audit, world generator
 apps/
-  sandbox/          the desktop app: window, camera, picking, rendering
-fixtures/worlds/    committed worlds, used to prove format stability
-docs/               architecture, save format, testing, and the vision pack
+  sandbox/          the desktop app: window, camera, picking, rendering, streaming
+fixtures/           committed worlds and stress baselines, to prove stability
+docs/               architecture, save format, testing, drop reports, the vision pack
 ```
 
 The crates form a strict line: `core <- volume <- world`, with `geometry`
-depending only on `core`, and `io` on top. Geometry does not know how cells are
-stored and the engine does not know what a renderer is. Bevy appears in exactly
-one place — `apps/sandbox` — and `apps/sandbox/src/render.rs` is the only file
-where engine geometry meets a graphics API.
+depending only on `core`, `io` and `stream` on top. Geometry does not know how
+cells are stored and the engine does not know what a renderer is. Bevy appears in
+exactly one place — `apps/sandbox` — and `apps/sandbox/src/render.rs` is the only
+file where engine geometry meets a graphics API. `cargo test` never builds Bevy,
+because `sandbox` is excluded from the workspace's `default-members`.
 
-### The four ideas that matter
+### The five ideas that matter
 
 **Cells are data, never entities.** A 16³ volume is `u16` palette indices, 8 KiB
 at its most expensive, and nothing at all when it is empty or uniform. Nothing in
@@ -113,15 +140,21 @@ storage leaf. A region is what gets loaded, evicted and saved. A render section 
 what gets meshed and drawn. They happen to line up today; nothing is allowed to
 assume they always will.
 
+**The world is streamed, and bounded in bytes.** Regions load and evict around
+the camera, meshing happens on worker threads, and a memory budget decides what
+may stay — denominated in bytes, because mesh cost per cell spans four orders of
+magnitude between solid terrain and a checkerboard, so counting regions would be
+wrong by that factor. Verified on a 153 MiB world held inside a 24 MiB ceiling.
+
 ## What does not exist yet
 
-Not started, by design: streaming, LOD, destruction, physics, collision,
+Not started, by design: LOD, destruction, physics, collision,
 connectivity/island detection, an editor, procedural generation, scripting,
 networking, multiplayer, Minecraft or Litematica import/export, GIS ingestion,
 transforms on volume data, and any actual game.
 
-DROP 0002 (scale: regions, streaming, async meshing) is in progress —
-`docs/drop-0002.md` tracks it pass by pass.
+DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complete**
+— see [the report](docs/drop-0002-report.md).
 
 ## Documentation
 
@@ -132,7 +165,8 @@ DROP 0002 (scale: regions, streaming, async meshing) is in progress —
 | [`docs/testing.md`](docs/testing.md) | what is covered, and how to add a case |
 | [`docs/drop-0001.md`](docs/drop-0001.md) | DROP 0001 status, limitations, verification |
 | [`docs/drop-0002-scope.md`](docs/drop-0002-scope.md) | DROP 0002 scope: scale, regions, streaming |
-| [`docs/drop-0002.md`](docs/drop-0002.md) | DROP 0002 progress and recorded baselines |
+| [`docs/drop-0002.md`](docs/drop-0002.md) | DROP 0002 pass by pass, with every measurement taken |
+| [`docs/drop-0002-report.md`](docs/drop-0002-report.md) | DROP 0002 report: what shipped, what it measures, what DROP 0003 inherits |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 
