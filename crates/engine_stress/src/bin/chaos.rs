@@ -41,7 +41,10 @@ fn push(cases: &mut Vec<Case>, name: &'static str, ok: bool, detail: impl Into<S
     });
 }
 
-fn damaged_job(scenario: StructuralScenario, limits: SnapshotLimits) -> (World, engine_destruction::StructureJobResult) {
+fn damaged_job(
+    scenario: StructuralScenario,
+    limits: SnapshotLimits,
+) -> (World, engine_destruction::StructureJobResult) {
     let mut built = scenario.build();
     built.world.take_dirty();
     let mut batch = WorldEditBatch::new();
@@ -74,10 +77,7 @@ fn small_fragment(id: FragmentId) -> Fragment {
 }
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "micrology-chaos-{name}-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("micrology-chaos-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create chaos temp dir");
     dir
@@ -119,8 +119,7 @@ fn structural_matrix(cases: &mut Vec<Case>) {
 }
 
 fn stale_result(cases: &mut Vec<Case>) {
-    let (mut world, result) =
-        damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
+    let (mut world, result) = damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
     let before = world.occupied_count();
     world.set(CellPos::new(10, 30, 10), None);
     let after_intervening = world.occupied_count();
@@ -143,8 +142,7 @@ fn stale_result(cases: &mut Vec<Case>) {
 }
 
 fn policy_refusal(cases: &mut Vec<Case>) {
-    let (mut world, result) =
-        damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
+    let (mut world, result) = damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
     let before = world.occupied_count();
     let mut sequence = DestructionSequence::new(77);
     let refusal = detach_if(&mut world, &mut sequence, &result, |_| false);
@@ -275,8 +273,8 @@ fn repeat_determinism(cases: &mut Vec<Case>) {
         let (mut world, result) =
             damaged_job(StructuralScenario::MultiIsland, SnapshotLimits::default());
         let mut sequence = DestructionSequence::new(5);
-        let outcome = detach_if(&mut world, &mut sequence, &result, |_| true)
-            .expect("multi-island detaches");
+        let outcome =
+            detach_if(&mut world, &mut sequence, &result, |_| true).expect("multi-island detaches");
         let current = (
             world.occupied_count(),
             outcome
