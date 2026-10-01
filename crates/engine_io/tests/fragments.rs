@@ -140,7 +140,7 @@ fn missing_index_is_backward_compatible_empty_fragment_state() {
 }
 
 #[test]
-fn stale_spatial_index_is_rejected_on_full_load() {
+fn stale_spatial_index_is_recovered_on_full_load() {
     let dir = temp_dir("stale-index");
     let mut store = FragmentStore::default();
     let mut f = fragment(
@@ -151,12 +151,36 @@ fn stale_spatial_index_is_rejected_on_full_load() {
     store.insert(f.clone());
     save_fragment_store(&dir, &store, DestructionSequence::new(7)).unwrap();
 
-    // Move only the payload. The old index still points at the old region.
+    // Simulate a crash window: the moving payload reached disk, but the
+    // derived region index did not. Full loading has the authoritative payload
+    // and must rebuild the derived map rather than brick the world.
     f.pose.translation.x += 512.0;
     save_fragment(&dir, &f).unwrap();
 
-    let error = load_fragment_store(&dir).unwrap_err();
-    assert!(matches!(error, engine_io::IoError::FragmentIndexMismatch));
+    let (loaded, sequence, spatial) = load_fragment_store(&dir).unwrap();
+    assert_eq!(sequence.peek(), 7);
+    assert_eq!(loaded.get(f.id), Some(&f));
+    assert!(!spatial.regions_for(f.id).any(|region| region == RegionPos::ZERO));
+    assert!(spatial.regions_for(f.id).any(|region| region.x >= 3));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn missing_index_with_payloads_recovers_instead_of_erasing_them() {
+    let dir = temp_dir("missing-index-recovery");
+    let id = FragmentId::new(22, 3);
+    let f = fragment(id, CellPos::new(4, 5, 6), CellPos::new(7, 8, 9));
+
+    // Payload committed, process died before the first index write.
+    save_fragment(&dir, &f).unwrap();
+    let index = load_fragment_index(&dir).unwrap();
+    assert_eq!(index.fragment_count(), 1);
+    assert!(index.contains(id));
+    assert_eq!(index.next_destruction_sequence, 23);
+
+    let (loaded, sequence, _) = load_fragment_store(&dir).unwrap();
+    assert_eq!(loaded.get(id), Some(&f));
+    assert_eq!(sequence.peek(), 23);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
