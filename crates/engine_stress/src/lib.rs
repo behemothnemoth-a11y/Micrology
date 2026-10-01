@@ -19,10 +19,12 @@
 //! — resident regions, queued and discarded mesh jobs — so that baselines stay
 //! comparable as the later passes of DROP 0002 fill them in.
 
+pub mod granularity;
 pub mod report;
 pub mod rng;
 pub mod scenario;
 
+pub use granularity::{AUDITED_GRIDS, GridAudit, GridTimings, audit};
 pub use report::{Counters, Report, Timings};
 pub use rng::Rng;
 pub use scenario::{Scenario, all_scenarios};
