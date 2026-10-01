@@ -140,6 +140,15 @@ impl DestructionHost {
         self.sequence
     }
 
+    pub fn set_sequence(&mut self, sequence: DestructionSequence) {
+        self.sequence = sequence;
+    }
+
+    pub fn clear_work(&mut self) {
+        self.pending.clear();
+        self.active.clear();
+    }
+
     pub fn stats(&self) -> DestructionStats {
         DestructionStats {
             queued: self.pending.len(),
@@ -184,14 +193,20 @@ impl DestructionHost {
 pub fn setup(
     stream: Res<StreamRes>,
     mut host: ResMut<DestructionHost>,
+    mut fragments: ResMut<DynamicFragments>,
     mut status: ResMut<StatusLine>,
 ) {
-    match engine_io::load_fragment_index(&stream.dir) {
-        Ok(index) => {
-            host.sequence = DestructionSequence::new(index.next_destruction_sequence);
+    match engine_io::load_fragment_store(&stream.dir) {
+        Ok((store, sequence, _spatial)) => {
+            let count = store.len();
+            fragments.replace_store(store);
+            host.sequence = sequence;
+            if count > 0 {
+                status.0 = format!("loaded {count} persisted fragment(s)");
+            }
         }
         Err(error) => {
-            status.0 = format!("fragment index failed to load: {error}");
+            status.0 = format!("fragment persistence failed to load: {error}");
         }
     }
 }
@@ -329,4 +344,59 @@ pub fn poll(
             Err(DetachRefusal::NothingToDo) => {}
         }
     }
+}
+
+
+/// Persist every live fragment independently of static region shards.
+pub fn save_fragments(
+    stream: &StreamRes,
+    fragments: &DynamicFragments,
+    host: &DestructionHost,
+) -> Result<usize, engine_io::IoError> {
+    engine_io::save_fragment_store(&stream.dir, fragments.store(), host.sequence())?;
+    Ok(fragments.len())
+}
+
+/// Reload fragment persistence after an explicit sandbox reload.
+pub fn reload_fragments(
+    stream: &StreamRes,
+    fragments: &mut DynamicFragments,
+    host: &mut DestructionHost,
+) -> Result<usize, engine_io::IoError> {
+    let (store, sequence, _spatial) = engine_io::load_fragment_store(&stream.dir)?;
+    let count = store.len();
+    fragments.replace_store(store);
+    host.set_sequence(sequence);
+    host.clear_work();
+    Ok(count)
+}
+
+/// Shutdown has no future frame in which an async fragment write can finish, so
+/// this mirrors static-region shutdown and writes synchronously.
+pub fn flush_on_exit(
+    mut exits: MessageReader<AppExit>,
+    stream: Res<StreamRes>,
+    fragments: Res<DynamicFragments>,
+    host: Res<DestructionHost>,
+    mut status: ResMut<StatusLine>,
+) {
+    if exits.read().next().is_none() {
+        return;
+    }
+
+    match save_fragments(&stream, &fragments, &host) {
+        Ok(count) => {
+            if count > 0 {
+                if status.0.is_empty() {
+                    status.0 = format!("saved {count} fragment(s) on exit");
+                } else {
+                    status.0.push_str(&format!("; {count} fragment(s) saved"));
+                }
+            }
+        }
+        Err(error) => {
+            status.0.push_str(&format!("; fragment save FAILED: {error}"));
+        }
+    }
+    info!("{}", status.0);
 }
