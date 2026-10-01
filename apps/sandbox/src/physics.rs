@@ -46,6 +46,10 @@ pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 /// rebuild scope. If physics granularity is ever coarsened, measure it on its
 /// own terms first.
 const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
+/// Bound fragment collider compilation / rigid-body creation per rendered frame.
+/// A fragment storm can otherwise turn one destruction result into hundreds of
+/// synchronous Avian compound-collider builds on the main thread.
+const MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME: usize = 8;
 
 /// Avian stays a host dependency. Returning the plugin group from here keeps
 /// even the application root from needing to know its types.
@@ -354,8 +358,24 @@ impl DynamicFragments {
         self.store.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
         self.store.iter()
+    }
+
+    pub fn store(&self) -> &FragmentStore {
+        &self.store
+    }
+
+    pub fn replace_store(&mut self, store: FragmentStore) {
+        self.store = store;
+    }
+
+    pub fn clear(&mut self) {
+        self.store = FragmentStore::default();
     }
 
     pub fn account(&self) -> FragmentAccount {
@@ -380,6 +400,7 @@ pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
     withheld_current: u64,
     withheld_total: u64,
+    pending_spawn_current: u64,
 }
 
 impl FragmentBodies {
@@ -393,6 +414,10 @@ impl FragmentBodies {
 
     pub fn withheld_total(&self) -> u64 {
         self.withheld_total
+    }
+
+    pub fn pending_spawn_current(&self) -> u64 {
+        self.pending_spawn_current
     }
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
@@ -489,6 +514,7 @@ pub fn sync_fragment_bodies(
     mut bodies: ResMut<FragmentBodies>,
 ) {
     bodies.withheld_current = 0;
+    bodies.pending_spawn_current = 0;
     let wanted: BTreeSet<_> = fragments.store.ids().collect();
 
     let gone: Vec<_> = bodies
@@ -504,8 +530,13 @@ pub fn sync_fragment_bodies(
     }
 
     let mut account = budget.account(&fragments, &bodies);
+    let mut spawned_this_frame = 0usize;
     for (id, fragment) in fragments.iter() {
         if bodies.entries.contains_key(&id) {
+            continue;
+        }
+        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
+            bodies.pending_spawn_current += 1;
             continue;
         }
 
@@ -561,6 +592,7 @@ pub fn sync_fragment_bodies(
                 collision_bytes: descriptor.collision_bytes(),
             },
         );
+        spawned_this_frame += 1;
         account.footprint += next;
     }
 }
