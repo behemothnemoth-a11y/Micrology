@@ -253,6 +253,14 @@ impl FragmentEntities {
         self.mesh_bytes.remove(&id);
         self.active.remove(&id);
     }
+
+    pub fn clear(&mut self, commands: &mut Commands) {
+        for (_, entity) in std::mem::take(&mut self.entities) {
+            commands.entity(entity).despawn();
+        }
+        self.mesh_bytes.clear();
+        self.active.clear();
+    }
 }
 
 #[derive(Component)]
