@@ -56,9 +56,7 @@ pub use lifecycle::{
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
-pub use spatial::{
-    FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment,
-};
+pub use spatial::{FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment};
 
 pub use jobs::{
     Occupancy, ResultDisposition, SnapshotLimits, StructureFingerprint, StructureJobInput,
