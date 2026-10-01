@@ -61,6 +61,32 @@ fn damaged_job(
     (built.world, job.run())
 }
 
+
+fn small_detachable_job() -> (World, engine_destruction::StructureJobResult) {
+    let mut world = World::new();
+    // Entirely inside volume (0,0,0), with plenty of air between the structure
+    // and every volume face. The async snapshot therefore has complete
+    // knowledge and cannot become inconclusive merely because open space in a
+    // neighbouring volume was never resident.
+    world.fill_box(CellPos::new(4, 4, 4), CellPos::new(11, 4, 11), Some(STONE));
+    world.set_anchor_box(CellPos::new(4, 4, 4), CellPos::new(11, 4, 11), true);
+    world.fill_box(CellPos::new(7, 5, 7), CellPos::new(8, 9, 8), Some(STONE));
+    world.fill_box(CellPos::new(5, 10, 5), CellPos::new(10, 12, 10), Some(STONE));
+    world.take_dirty();
+
+    let mut cut = WorldEditBatch::new();
+    cut.fill_box(CellPos::new(7, 7, 7), CellPos::new(8, 7, 8), None);
+    let outcome = world.apply(&cut);
+    let result = StructureJobInput::snapshot(
+        &world,
+        outcome.structural_candidates.iter().copied(),
+        SnapshotLimits::default(),
+        StructuralLimits::UNLIMITED,
+    )
+    .run();
+    (world, result)
+}
+
 fn small_fragment(id: FragmentId) -> Fragment {
     let mut world = World::new();
     world.fill_box(CellPos::new(4, 4, 4), CellPos::new(7, 7, 7), Some(STONE));
@@ -270,8 +296,7 @@ fn repeat_determinism(cases: &mut Vec<Case>) {
     let mut signature: Option<(u64, Vec<(FragmentId, u64)>)> = None;
     let mut ok = true;
     for _ in 0..32 {
-        let (mut world, result) =
-            damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
+        let (mut world, result) = small_detachable_job();
         let mut sequence = DestructionSequence::new(5);
         let Ok(outcome) = detach_if(&mut world, &mut sequence, &result, |_| true) else {
             ok = false;
