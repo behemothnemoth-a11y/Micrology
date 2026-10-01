@@ -1,0 +1,98 @@
+# Testing
+
+```sh
+cargo test                                             # the engine suite, ~1s, no GPU
+cargo test -p engine_geometry --test oracle            # just the equivalence checks
+cargo clippy --workspace --exclude sandbox --all-targets -- -D warnings
+```
+
+The sandbox is outside `default-members`, so the common commands never build Bevy.
+A fast test loop is the point; keep it that way.
+
+## Where things live
+
+| file | covers |
+|------|--------|
+| `crates/engine_core/src/coords.rs` | coordinate splitting across the origin, index round-trips, face bases |
+| `crates/engine_volume/src/lib.rs` | storage tier promotion/demotion, occupancy counting, palette canonicalisation, run encoding |
+| `crates/engine_world/src/lib.rs` | sparse chunks, dirty tracking including boundary neighbours, compaction |
+| `crates/engine_geometry/tests/surface.rs` | the scope's fixture cases, winding, mesh conversion |
+| `crates/engine_geometry/tests/oracle.rs` | greedy-vs-exact equivalence, determinism |
+| `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild |
+| `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
+
+## The scope's required cases
+
+Every case `03_DROP_0001_SCOPE.md` lists, and where it is:
+
+| case | test |
+|------|------|
+| empty volume | `an_empty_chunk_compiles_to_nothing` |
+| one occupied cell | `a_single_cell_emits_six_faces` |
+| solid volume | `a_solid_chunk_emits_no_internal_faces` |
+| two adjacent cells | `two_adjacent_cells_drop_their_shared_faces` |
+| hollow cavity | `a_hollow_cavity_is_surfaced_from_the_inside` |
+| mixed-material boundary | `a_material_boundary_blocks_merging_but_not_occlusion` |
+| cells crossing a chunk boundary | `an_object_spanning_a_chunk_boundary_has_a_continuous_surface` |
+| edit → dirty mark → rebuild | `an_interior_edit_rebuilds_exactly_one_chunk` |
+| save → reload exact equality | `save_and_reload_are_exactly_equal` |
+| independent topology oracle preserved | all of `tests/oracle.rs` |
+
+## The three habits worth keeping
+
+**Assert against the oracle, not against a number you recorded.** The greedy
+mesher is checked by expanding its merged quads back into unit faces and comparing
+the set with what `ExactCompiler` produced — over seeded pseudo-random worlds at
+densities from 1% to 100%, with 3 materials and with 64, and around negative
+coordinates. A hand-copied expected quad count proves only that the output has not
+changed; the oracle proves it is *right*.
+
+**Name the test as the sentence it asserts.** `a_boundary_edit_dirties_the_touching_neighbour`
+says what broke when it fails. `test_set_3` does not.
+
+**Seed anything random.** `tests/common/mod.rs` has a SplitMix64 `Rng` with an
+explicit seed. A failure must be replayable; a flaky geometry test is worse than
+no test. There is no `rand` dependency and there should not be one.
+
+## Adding a case
+
+A new geometry case belongs in `tests/surface.rs` if it is a specific shape, and in
+`tests/oracle.rs` if it is a class of shapes. For a shape, prefer asserting a count
+you derived by hand *and* oracle agreement — the count catches a silent change, the
+oracle catches a wrong one:
+
+```rust
+#[test]
+fn an_l_shaped_bar_keeps_its_inner_corner() {
+    let mut w = world();
+    w.fill_box(CellPos::new(0, 0, 0), CellPos::new(3, 0, 0), Some(STONE));
+    w.fill_box(CellPos::new(0, 1, 0), CellPos::new(0, 3, 0), Some(STONE));
+
+    let e = exact(&w, ChunkPos::ZERO);
+    let g = greedy(&w, ChunkPos::ZERO);
+    assert_eq!(g.unit_faces(), e.unit_faces());
+    assert_eq!(e.stats.exposed_faces, 7 * 6 - 2 * 2);
+}
+```
+
+If you add a meshing optimisation, the oracle test is not optional — it is the only
+reason to trust the optimisation.
+
+## What is not tested
+
+Honest gaps, so nobody mistakes green for complete:
+
+- **The sandbox app has no automated coverage.** No window opens in CI; the
+  `sandbox` job only type-checks and lints it. The app has been run and observed
+  once (see `drop-0001.md`), but nothing re-checks it. A headless smoke test under
+  Xvfb with a software Vulkan driver is feasible — that is how the first run was
+  done — and would be worth adding before the renderer grows.
+- **`raycast` in `apps/sandbox/src/edit.rs` is untested.** It is the one piece of
+  real algorithmic work outside the engine crates, and it should move into an
+  engine crate with proper tests — it is named as the next step in
+  `drop-0001.md`.
+- **No performance tests, and no benchmarks.** `CompileStats` and the HUD report
+  counts and rebuild times, but nothing asserts a budget. Adding a regression
+  benchmark before streaming work begins would be sensible.
+- **Large worlds are untested.** The biggest test world is 32³ cells. Nothing yet
+  exercises the memory or timing behaviour the headroom principle is about.

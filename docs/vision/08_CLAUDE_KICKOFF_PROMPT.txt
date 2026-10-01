@@ -1,0 +1,71 @@
+You are starting a new repository for a standalone reusable volumetric game engine.
+
+Read every file in this transfer package first, especially:
+
+- 00_START_HERE.md
+- 01_PROJECT_CHARTER.md
+- 02_ARCHITECTURE.md
+- 03_DROP_0001_SCOPE.md
+- 04_DESIGN_PRINCIPLES.md
+- 05_ASTRA_MICROBLOCKS_PORTING_NOTES.md
+- 07_REPO_SKELETON.md
+
+The user's existing project `behemothnemoth-a11y/astra-microblocks` is reference material for proven concepts and tests. Do NOT turn this new repo into another Minecraft mod. Do NOT make Minecraft/Fabric/NBT/block entities the core architecture.
+
+Goal right now:
+START IMPLEMENTING DROP 0001 — WORLD KERNEL.
+
+Use Rust. Prefer Bevy for the sandbox/window/render integration unless you uncover a concrete blocker.
+
+Start by creating the repository framework and getting to the first runnable vertical slice.
+
+Required first slice:
+
+1. Cargo workspace / repository skeleton
+2. engine-native material ID + simple RGB material definition
+3. engine-native local volume data structure
+4. simple world/chunk ownership
+5. exact exposed-face extraction
+6. deterministic mesh output
+7. Bevy sandbox window
+8. free camera
+9. render one generated test volume
+10. basic save/load
+11. automated tests for empty / single-cell / adjacent / solid / cavity / material boundary cases
+
+Then add the smallest possible runtime edit path:
+- ray/select a cell
+- remove cell
+- mark affected region dirty
+- rebuild only that local geometry
+- visibly update the mesh
+
+Important implementation rules:
+
+- Individual microcells are DATA, not ECS entities.
+- Preserve an independent exact topology oracle if/when you add greedy meshing.
+- Do not build a polished editor yet.
+- Do not add procedural planets, multiplayer, AI, networking, combat, complex destruction, GIS ingestion, Minecraft importing, or BuildWright integration yet.
+- Do not over-engineer the plugin architecture before the first native volume is rendering.
+- Keep core world/volume/geometry code as independent from Bevy as reasonably practical.
+- Use explicit versioning for the first native save format.
+- Make geometry output deterministic.
+- Add clear README commands for build/test/run.
+
+When you reach a choice between a clever optimized system and a simple exact system, build the exact system first behind a clean interface and get it tested.
+
+After the first rendered native volume works, implement greedy meshing and cross-local-volume hidden-face removal only if doing so does not destabilize the baseline.
+
+Do actual implementation work now. Do not return only an architecture proposal.
+
+At the end of your first work session, report:
+
+- files created
+- current repo tree
+- what runs
+- test status
+- current rendering path
+- known limitations
+- the exact next smallest implementation step
+
+Treat this as DROP 0001 of a long-running project. Keep the changes reviewable and incremental.

@@ -294,7 +294,7 @@ fn mesh_colours_come_from_the_material_registry() {
     w.set(CellPos::new(0, 0, 0), Some(DIRT));
 
     let mesh = MeshData::from_quads(&greedy(&w, ChunkPos::ZERO), &materials());
-    let expected = engine_core::Rgb::new(120, 72, 40).to_srgb_f32();
+    let expected = engine_core::Rgb::new(120, 72, 40).to_linear_f32();
     assert!(
         mesh.colors.iter().all(|c| c[0] == expected[0]
             && c[1] == expected[1]
@@ -309,7 +309,7 @@ fn an_unregistered_material_renders_as_the_missing_colour() {
     w.set(CellPos::new(0, 0, 0), Some(engine_core::MaterialId(999)));
 
     let mesh = MeshData::from_quads(&greedy(&w, ChunkPos::ZERO), &materials());
-    let missing = engine_core::Rgb::MISSING.to_srgb_f32();
+    let missing = engine_core::Rgb::MISSING.to_linear_f32();
     assert_eq!(mesh.colors[0], [missing[0], missing[1], missing[2], 1.0]);
 }
 

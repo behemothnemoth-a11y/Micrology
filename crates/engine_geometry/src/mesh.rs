@@ -54,7 +54,7 @@ impl MeshData {
         for quad in &quads.quads {
             let base = mesh.positions.len() as u32;
             let normal = quad.dir.normal_f32();
-            let rgb = materials.color_of(quad.material).to_srgb_f32();
+            let rgb = materials.color_of(quad.material).to_linear_f32();
             let color = [rgb[0], rgb[1], rgb[2], 1.0];
             let (du, dv) = (quad.du as f32, quad.dv as f32);
 

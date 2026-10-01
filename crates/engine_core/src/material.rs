@@ -61,6 +61,9 @@ impl Rgb {
     }
 
     /// Components as sRGB floats in `0.0..=1.0`.
+    ///
+    /// This is the *encoded* value, suitable for UI and for writing back out.
+    /// Renderers almost always want [`Rgb::to_linear_f32`] instead.
     #[inline]
     pub fn to_srgb_f32(self) -> [f32; 3] {
         [
@@ -68,6 +71,25 @@ impl Rgb {
             self.g as f32 / 255.0,
             self.b as f32 / 255.0,
         ]
+    }
+
+    /// Components as linear-light floats in `0.0..=1.0`.
+    ///
+    /// Shading maths is linear, and vertex colours are consumed as linear
+    /// values. Handing a renderer raw sRGB components makes every surface too
+    /// bright and washed out — mid-tones suffer worst, because that is where
+    /// the sRGB transfer curve bends furthest from linear.
+    #[inline]
+    pub fn to_linear_f32(self) -> [f32; 3] {
+        let channel = |value: u8| {
+            let encoded = value as f32 / 255.0;
+            if encoded <= 0.04045 {
+                encoded / 12.92
+            } else {
+                ((encoded + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        [channel(self.r), channel(self.g), channel(self.b)]
     }
 }
 
@@ -195,6 +217,25 @@ mod tests {
             vec![MaterialId(2), MaterialId(7), MaterialId(9)]
         );
         assert_eq!(reg.len(), 3);
+    }
+
+    #[test]
+    fn linear_conversion_darkens_mid_tones_and_pins_the_ends() {
+        assert_eq!(Rgb::new(0, 0, 0).to_linear_f32(), [0.0, 0.0, 0.0]);
+        assert_eq!(Rgb::WHITE.to_linear_f32(), [1.0, 1.0, 1.0]);
+
+        // Mid grey is the case that exposes a missing conversion: sRGB 0.5
+        // is only about 0.21 of the light.
+        let mid = Rgb::new(128, 128, 128).to_linear_f32()[0];
+        assert!(
+            (mid - 0.2158).abs() < 0.001,
+            "sRGB 128 should be ~0.216 linear, got {mid}"
+        );
+        for value in [1u8, 7, 10] {
+            // The low end is the linear segment of the curve, not the power one.
+            let expected = value as f32 / 255.0 / 12.92;
+            assert!((Rgb::new(value, 0, 0).to_linear_f32()[0] - expected).abs() < 1e-6);
+        }
     }
 
     #[test]
