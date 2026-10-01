@@ -63,11 +63,7 @@ impl FragmentSpatialIndex {
     }
 
     /// Install an already-computed overlap set, used by persistence loading.
-    pub fn set_regions(
-        &mut self,
-        id: FragmentId,
-        regions: impl IntoIterator<Item = RegionPos>,
-    ) {
+    pub fn set_regions(&mut self, id: FragmentId, regions: impl IntoIterator<Item = RegionPos>) {
         self.remove(id);
         let regions: BTreeSet<RegionPos> = regions.into_iter().collect();
         for region in &regions {
@@ -245,11 +241,7 @@ mod tests {
 
     #[test]
     fn nonfinite_motion_is_rejected_not_clamped() {
-        let mut f = fragment(
-            FragmentId::new(4, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let mut f = fragment(FragmentId::new(4, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         f.pose.translation.x = f64::NAN;
         assert_eq!(
             regions_for_fragment(&f),
@@ -259,11 +251,7 @@ mod tests {
 
     #[test]
     fn removing_last_fragment_cleans_region_entries() {
-        let f = fragment(
-            FragmentId::new(5, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let f = fragment(FragmentId::new(5, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         let mut index = FragmentSpatialIndex::default();
         index.update(&f).unwrap();
         assert!(index.region_count() > 0);
