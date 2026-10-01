@@ -9,6 +9,7 @@ use crate::fragment_render::FragmentEntities;
 use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use engine_core::{CellPos, RegionPos};
@@ -221,17 +222,30 @@ pub fn dispatch_structural_jobs(world: Res<WorldRes>, mut host: ResMut<Destructi
     }
 }
 
+#[derive(SystemParam)]
+pub struct DestructionPollResources<'w> {
+    world: ResMut<'w, WorldRes>,
+    stream: ResMut<'w, StreamRes>,
+    host: ResMut<'w, DestructionHost>,
+    fragments: ResMut<'w, DynamicFragments>,
+    bodies: Res<'w, FragmentBodies>,
+    renders: Res<'w, FragmentEntities>,
+    budget: Res<'w, FragmentBudgetRes>,
+    status: ResMut<'w, StatusLine>,
+}
+
 /// Apply finished structural work if and only if it is still true.
-pub fn poll_structural_jobs(
-    mut world: ResMut<WorldRes>,
-    mut stream: ResMut<StreamRes>,
-    mut host: ResMut<DestructionHost>,
-    mut fragments: ResMut<DynamicFragments>,
-    bodies: Res<FragmentBodies>,
-    renders: Res<FragmentEntities>,
-    budget: Res<FragmentBudgetRes>,
-    mut status: ResMut<StatusLine>,
-) {
+pub fn poll_structural_jobs(resources: DestructionPollResources) {
+    let DestructionPollResources {
+        mut world,
+        mut stream,
+        mut host,
+        mut fragments,
+        bodies,
+        renders,
+        budget,
+        mut status,
+    } = resources;
     let mut finished = Vec::new();
     host.tasks
         .retain_mut(|task| match check_ready(&mut task.task) {
@@ -271,12 +285,16 @@ pub fn poll_structural_jobs(
                 }
             }
             ResultDisposition::Accepted => {
-                let current_bytes =
-                    budget.account(&fragments, &bodies, renders.mesh_bytes()).footprint.tracked_bytes();
+                let current_bytes = budget
+                    .account(&fragments, &bodies, renders.mesh_bytes())
+                    .footprint
+                    .tracked_bytes();
                 let hard_bytes = budget.0.hard_bytes;
                 match detach_if(&mut world.0, &mut host.sequence, &result, |candidate| {
-                    let new_storage: u64 =
-                        candidate.iter().map(|fragment| fragment.footprint_bytes()).sum();
+                    let new_storage: u64 = candidate
+                        .iter()
+                        .map(|fragment| fragment.footprint_bytes())
+                        .sum();
                     current_bytes.saturating_add(new_storage) <= hard_bytes
                 }) {
                     Ok(outcome) => {

@@ -2646,6 +2646,7 @@ name = "engine_io"
 version = "0.1.0"
 dependencies = [
  "engine_core",
+ "engine_destruction",
  "engine_geometry",
  "engine_volume",
  "engine_world",

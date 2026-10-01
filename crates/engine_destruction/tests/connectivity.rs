@@ -552,7 +552,6 @@ fn classifying_one_component_agrees_with_classifying_from_roots() {
     assert_eq!(one.anchor_cell(), Some(CellPos::new(1, 6, 1)));
 }
 
-
 #[test]
 fn connectivity_at_the_integer_world_edge_never_wraps_to_the_other_side() {
     let edge = CellPos::new(i32::MAX, 0, 0);

@@ -81,7 +81,6 @@ fn detaching_removes_the_component_and_returns_it_as_one_fragment() {
     assert_eq!(outcome.cells_detached(), fragment.cell_count());
 }
 
-
 #[test]
 fn host_policy_can_refuse_a_detachment_without_spending_an_id_or_cells() {
     let (mut w, result) = cut_platform();

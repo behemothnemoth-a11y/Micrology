@@ -542,6 +542,14 @@ type FragmentBodyQuery<'w, 's> = Query<
     With<DynamicFragmentBody>,
 >;
 
+fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
+    let p = fragment.pose.translation;
+    let dx = (p.x - camera.x).abs();
+    let dy = (p.y - camera.y).abs();
+    let dz = (p.z - camera.z).abs();
+    dx.max(dy).max(dz) <= PHYSICS_RADIUS_CELLS as f64
+}
+
 /// Reconcile engine-owned fragments with Avian bodies.
 ///
 /// Creation/destruction happens in the ordinary host update. Physics then steps
@@ -552,11 +560,20 @@ pub fn sync_fragment_bodies(
     fragments: Res<DynamicFragments>,
     renders: Res<crate::fragment_render::FragmentEntities>,
     budget: Res<FragmentBudgetRes>,
+    camera: Option<Single<&FlyCamera>>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
     bodies.withheld_current = 0;
     bodies.pending_spawn_current = 0;
-    let wanted: BTreeSet<_> = fragments.store.ids().collect();
+    let camera = camera.map(|camera| camera.global);
+    let wanted: BTreeSet<_> = fragments
+        .iter()
+        .filter(|(id, fragment)| {
+            *id == SMOKE_FRAGMENT_ID
+                || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+        })
+        .map(|(id, _)| id)
+        .collect();
 
     let gone: Vec<_> = bodies
         .entries

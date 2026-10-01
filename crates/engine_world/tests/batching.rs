@@ -445,7 +445,6 @@ fn a_carve_spanning_volumes_groups_by_volume() {
     assert_eq!(batch.volumes().len(), grouped.len());
 }
 
-
 #[test]
 fn a_sphere_at_the_integer_world_edge_clips_instead_of_wrapping() {
     let centre = CellPos::new(i32::MAX, 0, 0);
