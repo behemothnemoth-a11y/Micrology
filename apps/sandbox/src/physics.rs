@@ -232,10 +232,7 @@ pub fn sync_static_colliders(
     }
     rebuilds.sort_by_key(|(distance, section, _)| (*distance, *section));
 
-    for (_, section, fingerprint) in rebuilds
-        .into_iter()
-        .take(MAX_STATIC_REBUILDS_PER_FRAME)
-    {
+    for (_, section, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
         let bounds = grid.cell_bounds(section);
         let shape = GreedyCollisionCompiler.compile(&world.0, bounds);
         colliders.install(&mut commands, section, fingerprint, bounds, shape);
