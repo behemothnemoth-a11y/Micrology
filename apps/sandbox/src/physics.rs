@@ -362,10 +362,6 @@ impl DynamicFragments {
         self.store.iter()
     }
 
-    pub fn store(&self) -> &FragmentStore {
-        &self.store
-    }
-
     pub fn replace_store(&mut self, store: FragmentStore) {
         self.store = store;
     }
