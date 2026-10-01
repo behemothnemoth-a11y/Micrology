@@ -123,7 +123,12 @@ fn main() {
     .init_resource::<render::RenderOriginRes>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
-    .add_systems(Startup, (scene::setup_world, scene::setup_view, hud::setup))
+    // `setup_view` reads the world manifest's spawn, so it has to run after
+    // `setup_world` has inserted the stream resource that holds it.
+    .add_systems(
+        Startup,
+        (scene::setup_world, scene::setup_view, hud::setup).chain(),
+    )
     .add_systems(
         Update,
         (

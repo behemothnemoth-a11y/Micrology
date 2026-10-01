@@ -140,18 +140,36 @@ fn ground_height(x: i32, z: i32) -> i32 {
     (6.0 + swell).round().clamp(1.0, 24.0) as i32
 }
 
-pub fn setup_view(mut commands: Commands) {
-    // Far enough back to frame the whole demo scene rather than opening with the
-    // brick room filling the view. The transform supplies the initial rotation;
-    // its translation is recomputed every frame from the camera's global
-    // position, which is the authoritative one.
-    const START: [f64; 3] = [46.0, 38.0, 54.0];
+/// Where the camera starts when a world does not say.
+///
+/// Far enough back to frame the whole demo scene rather than opening with the
+/// brick room filling the view.
+const DEFAULT_START: [f64; 3] = [46.0, 38.0, 54.0];
+const DEFAULT_LOOK_AT: [f64; 3] = [0.0, 8.0, 0.0];
+
+pub fn setup_view(mut commands: Commands, stream: Option<Res<StreamRes>>) {
+    // A world's manifest says where to stand and, optionally, where to look.
+    // Until now the sandbox wrote `spawn` and then ignored it, so a generated
+    // world opened looking at whatever happened to be near the demo scene's
+    // coordinates.
+    let meta = stream.as_ref().map(|s| &s.meta);
+    let start = meta
+        .filter(|m| m.spawn != [0.0, 0.0, 0.0])
+        .map(|m| m.spawn)
+        .unwrap_or(DEFAULT_START);
+    let target = meta.and_then(|m| m.look_at).unwrap_or(DEFAULT_LOOK_AT);
+
+    // The transform supplies the initial rotation; its translation is
+    // recomputed every frame from the camera's global position, which is the
+    // authoritative one.
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(START[0] as f32, START[1] as f32, START[2] as f32)
-            .looking_at(Vec3::new(0.0, 8.0, 0.0), Vec3::Y),
+        Transform::from_xyz(start[0] as f32, start[1] as f32, start[2] as f32).looking_at(
+            Vec3::new(target[0] as f32, target[1] as f32, target[2] as f32),
+            Vec3::Y,
+        ),
         crate::camera::FlyCamera {
-            global: GlobalPos::new(START[0], START[1], START[2]),
+            global: GlobalPos::new(start[0], start[1], start[2]),
             ..default()
         },
     ));

@@ -222,9 +222,14 @@ fn export(dir: &str, damaged: bool, show_anchors: bool) -> std::process::ExitCod
 
         let suffix = if damaged { "after" } else { "before" };
         let path = std::path::Path::new(dir).join(format!("{}-{suffix}", scenario.name()));
+        // Frame the structure from its own bounds rather than from a guess, so
+        // every scenario is photographed the same way and the picture does not
+        // depend on which direction a camera was nudged.
+        let (spawn, target) = framing(&built.world);
         let meta = WorldMeta::new(scenario.name())
             .with_name(scenario.description())
-            .with_spawn([32.0, 40.0, 70.0]);
+            .with_spawn(spawn)
+            .looking_at(target);
         if let Err(error) = v2::save_world_v2(&built.world, &meta, &path) {
             eprintln!("could not write {}: {error}", path.display());
             return std::process::ExitCode::FAILURE;
@@ -232,4 +237,63 @@ fn export(dir: &str, damaged: bool, show_anchors: bool) -> std::process::ExitCod
         println!("{}", path.display());
     }
     std::process::ExitCode::SUCCESS
+}
+
+/// A camera position and target that frame a world's occupied cells.
+///
+/// Pulled back along a fixed diagonal by a multiple of the structure's radius,
+/// so a 10-cell column and a 64-cell platform are both shown whole and at a
+/// comparable apparent size. Deterministic: the same world always frames the
+/// same way, which is the only reason these images can be compared at all.
+fn framing(world: &engine_world::World) -> ([f64; 3], [f64; 3]) {
+    let mut min = [i32::MAX; 3];
+    let mut max = [i32::MIN; 3];
+    let mut any = false;
+    for (pos, _) in world.volumes() {
+        // Volume granularity is enough to frame a shot and avoids walking every
+        // cell of a 25,000-cell structure for a camera position.
+        let origin = pos.origin();
+        let corner = [
+            origin.x + engine_core::VOLUME_EDGE - 1,
+            origin.y + engine_core::VOLUME_EDGE - 1,
+            origin.z + engine_core::VOLUME_EDGE - 1,
+        ];
+        for (axis, (lo, hi)) in [
+            (origin.x, corner[0]),
+            (origin.y, corner[1]),
+            (origin.z, corner[2]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            min[axis] = min[axis].min(lo);
+            max[axis] = max[axis].max(hi);
+        }
+        any = true;
+    }
+    if !any {
+        return ([46.0, 38.0, 54.0], [0.0, 8.0, 0.0]);
+    }
+
+    let centre = [
+        f64::from(min[0] + max[0]) / 2.0,
+        f64::from(min[1] + max[1]) / 2.0,
+        f64::from(min[2] + max[2]) / 2.0,
+    ];
+    let extent = [
+        f64::from(max[0] - min[0]),
+        f64::from(max[1] - min[1]),
+        f64::from(max[2] - min[2]),
+    ];
+    let radius = extent.iter().fold(0.0f64, |acc, e| acc.max(*e)).max(8.0);
+
+    // A three-quarter view from above: enough to read a structure's shape, and
+    // the same angle every time.
+    let distance = radius * 1.5;
+    let spawn = [
+        centre[0] + distance * 0.80,
+        centre[1] + distance * 0.62,
+        centre[2] + distance * 0.95,
+    ];
+    (spawn, centre)
 }

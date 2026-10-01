@@ -73,6 +73,14 @@ pub struct WorldMeta {
     /// Where a player or camera starts, in cells.
     #[serde(default)]
     pub spawn: [f64; 3],
+    /// What the camera faces from the spawn, in cells.
+    ///
+    /// Additive and optional: a world that does not say is faced the way the
+    /// host prefers. It exists because `spawn` alone does not determine a view,
+    /// and a world that has gone to the trouble of saying where to stand
+    /// usually has an opinion about where to look.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look_at: Option<[f64; 3]>,
     /// Reserved for generator settings. A seeded world will record enough here
     /// to regenerate untouched terrain instead of storing it; that format is
     /// not designed yet and this is deliberately only a placeholder.
@@ -86,6 +94,7 @@ impl Default for WorldMeta {
             id: "micrology-world".to_string(),
             name: None,
             spawn: [0.0, 0.0, 0.0],
+            look_at: None,
             generation: None,
         }
     }
@@ -106,6 +115,11 @@ impl WorldMeta {
 
     pub fn with_spawn(mut self, spawn: [f64; 3]) -> Self {
         self.spawn = spawn;
+        self
+    }
+
+    pub fn looking_at(mut self, target: [f64; 3]) -> Self {
+        self.look_at = Some(target);
         self
     }
 }
