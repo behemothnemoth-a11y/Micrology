@@ -397,8 +397,16 @@ impl FragmentBodies {
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
         FragmentDerivedFootprint {
-            collision_bytes: self.entries.values().map(|entry| entry.collision_bytes).sum(),
-            collision_boxes: self.entries.values().map(|entry| entry.collision_boxes).sum(),
+            collision_bytes: self
+                .entries
+                .values()
+                .map(|entry| entry.collision_bytes)
+                .sum(),
+            collision_boxes: self
+                .entries
+                .values()
+                .map(|entry| entry.collision_boxes)
+                .sum(),
             physics_bodies: self.entries.len() as u64,
             ..FragmentDerivedFootprint::default()
         }
