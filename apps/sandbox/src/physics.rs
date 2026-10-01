@@ -412,6 +412,14 @@ impl FragmentBodies {
         self.pending_spawn_current
     }
 
+    pub fn clear(&mut self, commands: &mut Commands) {
+        for (_, entry) in self.entries.drain() {
+            commands.entity(entry.entity).despawn();
+        }
+        self.withheld_current = 0;
+        self.pending_spawn_current = 0;
+    }
+
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
         FragmentDerivedFootprint {
             collision_bytes: self
