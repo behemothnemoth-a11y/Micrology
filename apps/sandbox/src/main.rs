@@ -178,8 +178,10 @@ fn main() {
                 // Physics residency is deliberately smaller than render residency.
                 // Rebuild only nearby static colliders, from the live cell world.
                 physics::sync_static_colliders,
-                physics::sync_fragment_bodies,
+                // Admit fragment render memory first, then let physics see the
+                // same updated budget before creating a body.
                 fragment_render::sync_fragment_render,
+                physics::sync_fragment_bodies,
                 hud::toggle,
                 hud::apply_visibility,
                 hud::update,
