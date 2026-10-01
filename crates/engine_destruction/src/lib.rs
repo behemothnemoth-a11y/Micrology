@@ -42,6 +42,7 @@ pub mod fragment;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
+pub mod spatial;
 
 pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
@@ -55,6 +56,7 @@ pub use lifecycle::{
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
+pub use spatial::{FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment};
 
 pub use jobs::{
     Occupancy, ResultDisposition, SnapshotLimits, StructureFingerprint, StructureJobInput,

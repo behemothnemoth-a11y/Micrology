@@ -195,6 +195,56 @@ impl Fragment {
         })
     }
 
+    /// Rebuild a persisted fragment from canonical local volumes.
+    ///
+    /// Bounds are recomputed from the cells rather than accepted from storage.
+    /// A damaged or stale file therefore cannot lie about where its geometry
+    /// lives. Empty volumes are ignored and an entirely empty fragment is
+    /// rejected.
+    pub fn from_local_volumes(
+        id: FragmentId,
+        volumes: impl IntoIterator<Item = (VolumePos, Volume)>,
+        source_origin: CellPos,
+        physics: crate::FragmentPhysicsState,
+        revision: Revision,
+    ) -> Option<Self> {
+        let volumes: BTreeMap<VolumePos, Volume> = volumes
+            .into_iter()
+            .filter(|(_, volume)| !volume.is_empty())
+            .collect();
+
+        let mut min = CellPos::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max = CellPos::new(i32::MIN, i32::MIN, i32::MIN);
+        let mut any = false;
+        for (volume_pos, volume) in &volumes {
+            for (local, _) in volume.iter_occupied() {
+                let cell = CellPos::from_parts(*volume_pos, local);
+                min = CellPos::new(min.x.min(cell.x), min.y.min(cell.y), min.z.min(cell.z));
+                max = CellPos::new(max.x.max(cell.x), max.y.max(cell.y), max.z.max(cell.z));
+                any = true;
+            }
+        }
+        if !any {
+            return None;
+        }
+
+        Some(Self {
+            id,
+            volumes,
+            source_origin,
+            pose: physics.pose,
+            linear_velocity: physics.linear_velocity,
+            angular_velocity: physics.angular_velocity,
+            bounds: CellBounds::new(min, max),
+            state: if physics.sleeping {
+                FragmentState::Sleeping
+            } else {
+                FragmentState::Dynamic
+            },
+            revision,
+        })
+    }
+
     pub fn cell_count(&self) -> u64 {
         self.volumes
             .values()
