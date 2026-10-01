@@ -216,7 +216,7 @@ pub fn update(
          volumes {volumes}  cells {cells}  dirty sections {dirty_sections}\n\
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
-         physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  radius {physics_radius}\n\
+         physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -256,6 +256,8 @@ pub fn update(
         physics_volumes = physics_stats.active_volumes,
         physics_boxes = physics_stats.boxes,
         physics_bytes = human_bytes(physics_stats.bytes),
+        physics_pending = physics_stats.pending_volumes,
+        physics_built = physics_stats.rebuilt_this_frame,
         physics_radius = PHYSICS_RADIUS_CELLS,
         cell_bytes = human_bytes(footprint.cell_bytes),
         palette_bytes = human_bytes(footprint.palette_bytes),
