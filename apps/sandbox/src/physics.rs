@@ -335,12 +335,16 @@ impl DynamicFragments {
         self.store.insert(fragment)
     }
 
-    #[expect(
-        dead_code,
-        reason = "consumed by fragment lifecycle/streaming in 0003.13"
-    )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.store.remove(id)
+    }
+
+    pub(crate) fn store(&self) -> &FragmentStore {
+        &self.store
+    }
+
+    pub(crate) fn replace_store(&mut self, store: FragmentStore) {
+        self.store = store;
     }
 
     pub fn get(&self, id: FragmentId) -> Option<&Fragment> {
@@ -386,6 +390,13 @@ pub struct FragmentBodies {
 impl FragmentBodies {
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    pub fn clear(&mut self, commands: &mut Commands) {
+        for (_, entry) in std::mem::take(&mut self.entries) {
+            commands.entity(entry.entity).despawn();
+        }
+        self.withheld_current = 0;
     }
 
     pub fn withheld_current(&self) -> u64 {
