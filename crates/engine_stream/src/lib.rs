@@ -13,6 +13,7 @@
 pub mod mesh_jobs;
 pub mod residency;
 pub mod scheduler;
+pub mod streamer;
 
 pub use mesh_jobs::{MeshJobInput, MeshJobResult, ResultDisposition, SectionFingerprint};
 pub use residency::{
@@ -22,4 +23,8 @@ pub use residency::{
 pub use scheduler::{
     MeshScheduler, MeshUrgency, PendingMeshRequest, SchedulerCounts, SchedulerLimits,
     SectionPriority,
+};
+pub use streamer::{
+    LoadOutcome, LoadTicket, RegionLoad, RegionStreamer, SaveOutcome, SaveTicket, StreamAction,
+    StreamCounts, StreamingConfig,
 };
