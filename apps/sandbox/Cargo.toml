@@ -1,0 +1,18 @@
+[package]
+name = "sandbox"
+description = "Standalone desktop sandbox: renders and edits an engine-native world."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+engine_core = { workspace = true }
+engine_volume = { workspace = true }
+engine_world = { workspace = true }
+engine_geometry = { workspace = true }
+engine_io = { workspace = true }
+bevy = "0.19"

@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/engine_core",
+    "crates/engine_volume",
+    "crates/engine_world",
+    "crates/engine_geometry",
+    "crates/engine_io",
+    "apps/sandbox",
+]
+
+# The sandbox pulls in Bevy, which is a multi-minute cold build. Keeping it out of
+# `default-members` means a bare `cargo test` / `cargo build` exercises the engine
+# crates in seconds. Use `cargo run -p sandbox` for the app.
+default-members = [
+    "crates/engine_core",
+    "crates/engine_volume",
+    "crates/engine_world",
+    "crates/engine_geometry",
+    "crates/engine_io",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/behemothnemoth-a11y/Micrology"
+authors = ["Micrology contributors"]
+
+[workspace.dependencies]
+engine_core = { path = "crates/engine_core" }
+engine_volume = { path = "crates/engine_volume" }
+engine_world = { path = "crates/engine_world" }
+engine_geometry = { path = "crates/engine_geometry" }
+engine_io = { path = "crates/engine_io" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.dev]
+opt-level = 1
+
+# Dependencies stay optimised even in dev builds: meshing and Bevy are both
+# unusably slow at opt-level 1.
+[profile.dev.package."*"]
+opt-level = 3

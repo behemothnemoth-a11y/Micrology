@@ -1,0 +1,13 @@
+[package]
+name = "engine_world"
+description = "Chunked world storage, editing and dirty-region tracking."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+engine_core = { workspace = true }
+engine_volume = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "engine_geometry"
+description = "Deterministic surface extraction and greedy meshing of cell data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+engine_core = { workspace = true }
+
+[dev-dependencies]
+engine_volume = { workspace = true }
+engine_world = { workspace = true }
