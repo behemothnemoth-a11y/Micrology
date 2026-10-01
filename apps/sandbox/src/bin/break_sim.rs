@@ -1,7 +1,8 @@
 use avian3d::math::{Quaternion, Vector};
+use avian3d::physics_transform::PhysicsTransformConfig;
 use avian3d::prelude::{
-    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, PhysicsTransformConfig,
-    Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation, Sleeping,
+    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
+    RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::{App, Entity, MinimalPlugins, Time};
