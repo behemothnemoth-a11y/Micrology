@@ -361,6 +361,10 @@ impl DynamicFragments {
     pub fn account(&self) -> FragmentAccount {
         FragmentAccount::from_store(&self.store)
     }
+
+    pub fn stats(&self) -> engine_destruction::FragmentStoreStats {
+        self.store.stats()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
