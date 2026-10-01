@@ -40,6 +40,7 @@ pub mod connectivity;
 pub mod detach;
 pub mod fragment;
 pub mod jobs;
+pub mod lifecycle;
 pub mod physics;
 
 pub use collision::{
@@ -49,6 +50,10 @@ pub use collision::{
 
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
+pub use lifecycle::{
+    FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
+    FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
+};
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
 
 pub use jobs::{
