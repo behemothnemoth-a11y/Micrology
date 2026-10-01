@@ -28,6 +28,10 @@ jobs:
         run: cargo test --all-targets
       - name: Doc tests
         run: cargo test --doc
+      - name: Stress baseline is unchanged
+        # Deterministic counters only. Timings are diagnostic and are never
+        # asserted, so this cannot fail because a runner was slow.
+        run: cargo run --release -p engine_stress --bin stress -- --check
       - name: Fixtures are still canonical
         # Regenerating must be a no-op; a diff here means the save format moved
         # without the committed fixtures being reviewed.

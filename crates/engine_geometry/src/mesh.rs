@@ -84,4 +84,18 @@ impl MeshData {
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
+
+    /// CPU bytes this mesh occupies.
+    ///
+    /// Counts logical size rather than allocator capacity so the figure is
+    /// deterministic. Mesh data is the engine's dominant memory consumer — it
+    /// already outweighs cell storage — so this is the number that decides
+    /// whether a residency budget is being kept.
+    pub fn cpu_bytes(&self) -> usize {
+        self.positions.len() * size_of::<[f32; 3]>()
+            + self.normals.len() * size_of::<[f32; 3]>()
+            + self.colors.len() * size_of::<[f32; 4]>()
+            + self.uvs.len() * size_of::<[f32; 2]>()
+            + self.indices.len() * size_of::<u32>()
+    }
 }

@@ -2428,6 +2428,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_stress"
+version = "0.1.0"
+dependencies = [
+ "engine_core",
+ "engine_geometry",
+ "engine_volume",
+ "engine_world",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "engine_volume"
 version = "0.1.0"
 dependencies = [

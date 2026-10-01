@@ -50,6 +50,9 @@ pub struct CacheStats {
     pub quads: u64,
     pub vertices: u64,
     pub triangles: u64,
+    pub indices: u64,
+    /// CPU bytes held by compiled mesh data across every cached section.
+    pub mesh_bytes: u64,
 }
 
 /// Holds the compiled surface of every non-empty chunk.
@@ -102,6 +105,8 @@ impl ChunkMeshCache {
             stats.quads += u64::from(entry.quads.stats.quads);
             stats.vertices += u64::from(entry.mesh.stats.vertices);
             stats.triangles += u64::from(entry.mesh.stats.triangles);
+            stats.indices += u64::from(entry.mesh.stats.indices);
+            stats.mesh_bytes += entry.mesh.cpu_bytes() as u64;
         }
         stats
     }

@@ -261,6 +261,30 @@ impl Volume {
         }
     }
 
+    /// Heap bytes this volume's cell storage occupies.
+    ///
+    /// Zero for the `Empty` and `Uniform` tiers, which is the whole point of
+    /// having them: a solid or absent volume costs nothing to keep resident.
+    ///
+    /// Counts logical size rather than allocator capacity, so the figure is
+    /// deterministic and safe to assert on in tests.
+    pub fn cell_bytes(&self) -> usize {
+        match &self.storage {
+            Storage::Empty | Storage::Uniform(_) => 0,
+            Storage::Dense(_) => CHUNK_CELLS * size_of::<Slot>(),
+        }
+    }
+
+    /// Heap bytes this volume's palette occupies.
+    pub fn palette_bytes(&self) -> usize {
+        self.palette.len() * size_of::<MaterialId>()
+    }
+
+    /// Total heap bytes: cells plus palette.
+    pub fn heap_bytes(&self) -> usize {
+        self.cell_bytes() + self.palette_bytes()
+    }
+
     /// The palette, in slot order. Slot `n` is `palette()[n - 1]`.
     pub fn palette(&self) -> &[MaterialId] {
         &self.palette
@@ -568,6 +592,34 @@ mod tests {
         let volume = Volume::from_slot_runs(vec![STONE, STONE], &runs).unwrap();
         assert_eq!(volume.palette(), &[STONE]);
         assert_eq!(volume.occupied_count(), 2);
+    }
+
+    #[test]
+    fn storage_tiers_report_their_real_cost() {
+        assert_eq!(
+            Volume::new().cell_bytes(),
+            0,
+            "an empty volume owns no cells"
+        );
+        assert_eq!(Volume::new().heap_bytes(), 0);
+
+        let full = Volume::filled(STONE);
+        assert_eq!(
+            full.cell_bytes(),
+            0,
+            "a uniform volume owns no cells either"
+        );
+        assert_eq!(full.palette_bytes(), size_of::<MaterialId>());
+
+        let mut mixed = Volume::filled(STONE);
+        mixed.set(LocalPos::at(0, 0, 0), Some(DIRT));
+        assert_eq!(mixed.cell_bytes(), CHUNK_CELLS * 2, "promoted to dense");
+        assert_eq!(mixed.palette_bytes(), 2 * size_of::<MaterialId>());
+
+        // Demoting gives the memory back.
+        mixed.set(LocalPos::at(0, 0, 0), Some(STONE));
+        mixed.compact();
+        assert_eq!(mixed.cell_bytes(), 0);
     }
 
     #[test]

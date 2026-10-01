@@ -20,6 +20,7 @@ A fast test loop is the point; keep it that way.
 | `crates/engine_geometry/tests/oracle.rs` | greedy-vs-exact equivalence, determinism |
 | `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild |
 | `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
+| `crates/engine_stress/tests/baseline.rs` | stress-scenario counters against the committed baseline |
 
 ## The scope's required cases
 
@@ -91,8 +92,32 @@ Honest gaps, so nobody mistakes green for complete:
   real algorithmic work outside the engine crates, and it should move into an
   engine crate with proper tests — it is named as the next step in
   `drop-0001.md`.
-- **No performance tests, and no benchmarks.** `CompileStats` and the HUD report
-  counts and rebuild times, but nothing asserts a budget. Adding a regression
-  benchmark before streaming work begins would be sensible.
-- **Large worlds are untested.** The biggest test world is 32³ cells. Nothing yet
-  exercises the memory or timing behaviour the headroom principle is about.
+- **No performance *budgets*.** The stress harness records timings but nothing
+  asserts them, by design — hardware timings are diagnostic, not correctness. What
+  CI does assert is the deterministic counters.
+- **Nothing has run at streaming scale.** The largest stress world is 111 volumes
+  / 259k cells, which is big enough to measure shape but not residency.
+
+## The stress harness
+
+```sh
+cargo run --release -p engine_stress --bin stress            # measure and print
+cargo run --release -p engine_stress --bin stress -- --check # compare to baseline
+cargo run --release -p engine_stress --bin stress -- --write # regenerate it
+```
+
+Seven deterministic scenarios, measured on counters that are identical on every
+machine. Those counters are committed to `fixtures/stress/baseline.json` and
+asserted by `cargo test`; a diff means engine behaviour changed and should be
+reviewed, not waved through.
+
+Timings are printed but never committed and never asserted. They vary with
+hardware, and a value that varies between runs must not live inside anything
+compared for equality — the same reasoning that removed build time from
+`CompileStats`.
+
+Scenarios exist to stop one friendly benchmark standing in for "performance".
+`dense_solid` is the best case for merging; `checker` is the case where merging
+can achieve literally nothing; `material_stress` blocks merging without changing
+the shape; `boundary_storm` is the one that forces neighbouring sections to
+rebuild. When a change makes `dense_solid` faster, check what it did to `checker`.
