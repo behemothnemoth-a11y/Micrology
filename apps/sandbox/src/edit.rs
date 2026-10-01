@@ -208,8 +208,16 @@ pub fn save_and_load(
         let dir = stream.dir.clone();
         let meta = stream.meta.clone();
         let region_status = match engine_io::save_dirty_regions(&mut world.0, &meta, &dir) {
-            Ok(written) if written.is_empty() => "no region changes".to_string(),
-            Ok(written) => format!("{} region(s)", written.len()),
+            Ok(written) => {
+                for region in &written {
+                    stream.streamer.residency_mut().mark_saved(*region);
+                }
+                if written.is_empty() {
+                    "no region changes".to_string()
+                } else {
+                    format!("{} region(s)", written.len())
+                }
+            }
             Err(error) => format!("region save FAILED: {error}"),
         };
         let fragment_status =
@@ -218,9 +226,6 @@ pub fn save_and_load(
                 Err(error) => format!("fragment save FAILED: {error}"),
             };
         status.0 = format!("saved {region_status}; {fragment_status}");
-        for region in world.0.region_positions().collect::<Vec<_>>() {
-            stream.streamer.residency_mut().mark_saved(region);
-        }
     }
 
     if keys.just_pressed(KeyCode::F9) {

@@ -239,8 +239,8 @@ pub fn update(
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
          fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  body-pending {fragment_body_pending}  render {fragment_render_count}/{fragment_render_pending}  cells {fragment_cells}\n\
-         fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}  withheld {fragment_withheld}/{fragment_withheld_total}\n\
-         destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  stale {destruction_stale}  inconclusive {destruction_inconclusive}  budget-held {destruction_rejected}  made {destruction_fragments} frag / {destruction_cells} cells\n\
+         fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}  body-held {fragment_withheld}/{fragment_withheld_total}  render-held {fragment_render_withheld}/{fragment_render_withheld_total}\n\
+         destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  stale {destruction_stale}  inconclusive {destruction_inconclusive}  byte-cap {destruction_byte_limited}  budget-held {destruction_rejected}  made {destruction_fragments} frag / {destruction_cells} cells\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -290,6 +290,8 @@ pub fn update(
         fragment_body_pending = fragment_bodies.pending_spawn_current(),
         fragment_render_count = fragment_render_stats.entities,
         fragment_render_pending = fragment_render_stats.pending_uploads,
+        fragment_render_withheld = fragment_render_stats.withheld_current,
+        fragment_render_withheld_total = fragment_render_stats.withheld_total,
         fragment_withheld = fragment_bodies.withheld_current(),
         fragment_withheld_total = fragment_bodies.withheld_total(),
         fragment_cells = fragment_stats.cells,
@@ -303,6 +305,7 @@ pub fn update(
         destruction_pending = destruction_stats.pending_requests,
         destruction_stale = destruction_stats.stale,
         destruction_inconclusive = destruction_stats.inconclusive,
+        destruction_byte_limited = destruction_stats.byte_limited,
         destruction_rejected = destruction_stats.rejected_by_policy,
         destruction_fragments = destruction_stats.fragments_created,
         destruction_cells = destruction_stats.cells_detached,

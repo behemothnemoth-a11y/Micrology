@@ -6,6 +6,7 @@
 //! in a single rendered frame.
 
 use crate::WorldRes;
+use crate::camera::FlyCamera;
 use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::render::{RenderOriginRes, to_bevy_mesh};
 use bevy::ecs::system::SystemParam;
@@ -16,6 +17,9 @@ use engine_destruction::{FragmentFootprint, FragmentId, FragmentPressure};
 use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
 
 const MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME: usize = 4;
+/// Moving fragment meshes are useful much farther than active collision, but
+/// still should not exist globally just because their persisted payload is loaded.
+const FRAGMENT_RENDER_RADIUS_CELLS: f64 = 256.0;
 
 #[derive(Clone, Copy, Debug)]
 struct FragmentRenderEntry {
@@ -97,6 +101,7 @@ pub struct FragmentMesh;
 #[derive(SystemParam)]
 pub struct FragmentRenderSources<'w, 's> {
     fragments: Res<'w, DynamicFragments>,
+    camera: Option<Single<'w, 's, &'static FlyCamera>>,
     bodies: Res<'w, FragmentBodies>,
     budget: Res<'w, FragmentBudgetRes>,
     world: Res<'w, WorldRes>,
@@ -110,6 +115,7 @@ pub struct FragmentRenderSources<'w, 's> {
 pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSources) {
     let FragmentRenderSources {
         fragments,
+        camera,
         bodies,
         budget,
         world,
@@ -123,7 +129,14 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
     renders.stats.uploaded_this_frame = 0;
     renders.stats.withheld_current = 0;
 
-    let wanted: std::collections::BTreeSet<_> = fragments.iter().map(|(id, _)| id).collect();
+    let camera = camera.map(|camera| camera.global);
+    let wanted: std::collections::BTreeSet<_> = fragments
+        .iter()
+        .filter(|(_, fragment)| {
+            camera.is_some_and(|camera| fragment_in_render_range(fragment, camera))
+        })
+        .map(|(id, _)| id)
+        .collect();
     let gone: Vec<_> = renders
         .entries
         .keys()
@@ -152,6 +165,9 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
 
     let mut uploads = 0usize;
     for (id, fragment) in fragments.iter() {
+        if !wanted.contains(&id) {
+            continue;
+        }
         let transform = fragment_transform(fragment, &origin.0);
         if let Some(entry) = renders.entries.get(&id) {
             if let Ok(mut existing) = transforms.get_mut(entry.entity) {
@@ -215,6 +231,17 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
             .hard_bytes
             .saturating_sub(account.footprint.tracked_bytes()),
     );
+}
+
+fn fragment_in_render_range(
+    fragment: &engine_destruction::Fragment,
+    camera: engine_core::GlobalPos,
+) -> bool {
+    let p = fragment.pose.translation;
+    let dx = (p.x - camera.x).abs();
+    let dy = (p.y - camera.y).abs();
+    let dz = (p.z - camera.z).abs();
+    dx.max(dy).max(dz) <= FRAGMENT_RENDER_RADIUS_CELLS
 }
 
 fn fragment_transform(

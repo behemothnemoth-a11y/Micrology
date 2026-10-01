@@ -132,6 +132,7 @@ fn main() {
     .init_resource::<physics::FragmentSmoke>()
     .init_resource::<fragment_render::FragmentEntities>()
     .init_resource::<destruction::DestructionHost>()
+    .init_resource::<destruction::DestructionSmoke>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -141,6 +142,7 @@ fn main() {
         (
             scene::setup_world,
             destruction::load_fragment_state,
+            destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
             hud::setup,
@@ -199,6 +201,7 @@ fn main() {
         (
             physics::readback_fragment_bodies,
             physics::verify_fragment_smoke,
+            destruction::verify_destruction_smoke,
         )
             .chain()
             .after(avian3d::prelude::PhysicsSystems::Last),

@@ -323,18 +323,30 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_physics_residency_uses_the_same_local_radius_rule() {
+    fn dynamic_physics_residency_uses_fragment_bounds_not_only_its_origin() {
         let camera = engine_core::GlobalPos::new(1000.0, 20.0, -500.0);
-        assert!(global_in_physics_range(
+
+        assert!(bounds_in_physics_range(
+            engine_core::GlobalPos::new(1048.0, 68.0, -452.0),
             engine_core::GlobalPos::new(1048.0, 68.0, -452.0),
             camera
         ));
-        assert!(!global_in_physics_range(
+        assert!(!bounds_in_physics_range(
+            engine_core::GlobalPos::new(1048.001, 20.0, -500.0),
             engine_core::GlobalPos::new(1048.001, 20.0, -500.0),
             camera
         ));
-        assert!(!global_in_physics_range(
-            engine_core::GlobalPos::new(-1_000_000.0, 20.0, -500.0),
+
+        // The fragment origin/minimum can be well outside the physics radius
+        // while a long body still overlaps the active area.
+        assert!(bounds_in_physics_range(
+            engine_core::GlobalPos::new(900.0, 18.0, -502.0),
+            engine_core::GlobalPos::new(980.0, 22.0, -498.0),
+            camera
+        ));
+        assert!(!bounds_in_physics_range(
+            engine_core::GlobalPos::new(-1_000_000.0, 18.0, -502.0),
+            engine_core::GlobalPos::new(-999_900.0, 22.0, -498.0),
             camera
         ));
     }
@@ -383,9 +395,17 @@ impl DynamicFragments {
         self.store = store;
     }
 
-    /// Clone the persistent subset of the store. The opt-in smoke fragment uses
-    /// a reserved diagnostic id and must never reach disk or influence the
-    /// world's destruction sequence.
+    /// Borrow the store directly when it contains no runtime-only smoke object.
+    /// Normal saves take this zero-copy path.
+    pub fn persistent_store_ref(&self) -> Option<&FragmentStore> {
+        self.store
+            .get(SMOKE_FRAGMENT_ID)
+            .is_none()
+            .then_some(&self.store)
+    }
+
+    /// Clone the persistent subset only for the opt-in smoke run, where the
+    /// reserved diagnostic fragment must never reach disk or influence IDs.
     pub fn persistent_store(&self) -> FragmentStore {
         let mut store = self.store.clone();
         store.remove(SMOKE_FRAGMENT_ID);
@@ -559,15 +579,30 @@ type FragmentBodyQuery<'w, 's> = Query<
     With<DynamicFragmentBody>,
 >;
 
-fn global_in_physics_range(p: engine_core::GlobalPos, camera: engine_core::GlobalPos) -> bool {
-    let dx = (p.x - camera.x).abs();
-    let dy = (p.y - camera.y).abs();
-    let dz = (p.z - camera.z).abs();
+fn bounds_in_physics_range(
+    min: engine_core::GlobalPos,
+    max: engine_core::GlobalPos,
+    camera: engine_core::GlobalPos,
+) -> bool {
+    fn axis(value: f64, min: f64, max: f64) -> f64 {
+        if value < min {
+            min - value
+        } else if value > max {
+            value - max
+        } else {
+            0.0
+        }
+    }
+
+    let dx = axis(camera.x, min.x, max.x);
+    let dy = axis(camera.y, min.y, max.y);
+    let dz = axis(camera.z, min.z, max.z);
     dx.max(dy).max(dz) <= PHYSICS_RADIUS_CELLS as f64
 }
 
 fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
-    global_in_physics_range(fragment.pose.translation, camera)
+    let (min, max) = fragment.world_bounds();
+    bounds_in_physics_range(min, max, camera)
 }
 
 /// Reconcile engine-owned fragments with Avian bodies.
@@ -631,7 +666,7 @@ pub fn sync_fragment_bodies(
         // In the sandbox, visible geometry is admitted first. Do not create an
         // invisible simulated body for a fragment whose render mesh was held
         // back by the shared fragment budget.
-        if !renders.contains(id) {
+        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
             bodies.pending_spawn_current += 1;
             continue;
         }
@@ -763,7 +798,7 @@ pub struct FragmentSmoke {
     verified: bool,
 }
 
-const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
+pub(crate) const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
     sequence: u64::MAX,
     index: 0,
 };
