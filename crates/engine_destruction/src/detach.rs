@@ -36,6 +36,9 @@ pub enum DetachRefusal {
     Inconclusive,
     /// The result was current and settled, and detached nothing.
     NothingToDo,
+    /// The exact fragments were built successfully, but host policy refused
+    /// to admit them. The static world and destruction sequence stay unchanged.
+    RejectedByPolicy,
 }
 
 /// What a transaction did.
@@ -93,8 +96,23 @@ pub fn detach(
     sequence: &mut DestructionSequence,
     result: &StructureJobResult,
 ) -> Result<DetachOutcome, DetachRefusal> {
-    // Validate first, against the world as it is now. A worker's result is an
-    // observation about a world that may have moved on, not permission to act.
+    detach_if(world, sequence, result, |_| true)
+}
+
+/// Validate and build the exact detached fragments, then ask host policy whether
+/// they may be admitted before mutating the static world.
+///
+/// The policy callback sees the canonical fragments with their would-be IDs.
+/// Returning `false` changes nothing: no cells are removed and the destruction
+/// sequence is not consumed. This is the safe place for memory/work admission
+/// because rejecting after `World::apply` would leave mass missing from both
+/// the static world and the dynamic-fragment store.
+pub fn detach_if(
+    world: &mut World,
+    sequence: &mut DestructionSequence,
+    result: &StructureJobResult,
+    admit: impl FnOnce(&[Fragment]) -> bool,
+) -> Result<DetachOutcome, DetachRefusal> {
     match result.judge(world) {
         ResultDisposition::DiscardedStale => return Err(DetachRefusal::Stale),
         ResultDisposition::Inconclusive => return Err(DetachRefusal::Inconclusive),
@@ -111,19 +129,16 @@ pub fn detach(
         return Err(DetachRefusal::NothingToDo);
     }
 
-    let seq = sequence.take();
+    // Peek, don't consume. A policy refusal is not a destruction transaction
+    // and must not leave a hole in deterministic fragment identity.
+    let seq = sequence.peek();
 
-    // Build every fragment *before* removing anything, because a fragment is
-    // built by reading the cells it is made of. Removing as we went would make
-    // each fragment depend on how many had already been built.
     let mut fragments = Vec::new();
     let mut leaving: Vec<CellPos> = Vec::new();
     for (index, component) in detaching.iter().enumerate() {
         let Some(fragment) =
             Fragment::from_cells(FragmentId::new(seq, index as u32), world, &component.cells)
         else {
-            // Every cell of this component is already gone. Nothing to extract,
-            // and nothing to remove.
             continue;
         };
         leaving.extend(component.cells.iter().copied());
@@ -133,9 +148,13 @@ pub fn detach(
     if fragments.is_empty() {
         return Err(DetachRefusal::NothingToDo);
     }
+    if !admit(&fragments) {
+        return Err(DetachRefusal::RejectedByPolicy);
+    }
 
-    // One batch, so the static world is invalidated once: every affected volume
-    // marked for a re-mesh once, every affected region marked unsaved once.
+    let consumed = sequence.take();
+    debug_assert_eq!(consumed, seq);
+
     let mut batch = WorldEditBatch::new();
     for cell in leaving {
         batch.remove(cell);
