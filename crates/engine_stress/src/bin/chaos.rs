@@ -338,7 +338,7 @@ fn last_cell_cliff(cases: &mut Vec<Case>) {
         StructuralLimits::UNLIMITED,
     )
     .run();
-    let detached_cells: u64 = detached.components.detached().map(|c| c.len()).sum();
+    let detached_cells: u64 = detached.components.detached().map(|c| c.len() as u64).sum();
     let after_final = detached.components.detached().count() == 1 && detached_cells > 0;
 
     // This is "ok" because it is the explicit DROP 0003 rule, but the detail is
