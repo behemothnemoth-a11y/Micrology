@@ -17,12 +17,17 @@
 
 use crate::WorldRes;
 use crate::camera::FlyCamera;
+use avian3d::math::{Quaternion, Vector};
 use avian3d::prelude::{
-    Collider, PhysicsPlugins, Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation,
+    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
+    RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::prelude::*;
 use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
-use engine_destruction::{CollisionCompiler, CollisionShape, GreedyCollisionCompiler};
+use engine_destruction::{
+    CollisionCompiler, CollisionShape, Fragment, FragmentId, FragmentPhysicsDescriptor,
+    FragmentPhysicsState, FragmentPose, GreedyCollisionCompiler, Rotation as FragmentRotation,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Collision is active only near the simulation focus.
@@ -309,5 +314,171 @@ mod tests {
             distance_to_bounds(CellPos::new(i32::MIN, 0, 0), bounds),
             u64::from(u32::MAX) - 15
         );
+    }
+}
+
+
+/// Engine-owned fragment state currently active in the sandbox.
+///
+/// Persistence and spatial streaming arrive in 0003.13. Until then this is a
+/// deliberately small host-side owner that proves a fragment can enter and
+/// leave simulation without making Avian the source of truth.
+#[derive(Resource, Default)]
+pub struct DynamicFragments {
+    fragments: BTreeMap<FragmentId, Fragment>,
+}
+
+impl DynamicFragments {
+    pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
+        self.fragments.insert(fragment.id, fragment)
+    }
+
+    pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
+        self.fragments.remove(&id)
+    }
+
+    pub fn get(&self, id: FragmentId) -> Option<&Fragment> {
+        self.fragments.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: FragmentId) -> Option<&mut Fragment> {
+        self.fragments.get_mut(&id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.fragments.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fragments.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
+        self.fragments.iter().map(|(id, fragment)| (*id, fragment))
+    }
+}
+
+/// Backend entities corresponding to engine-owned fragments.
+#[derive(Resource, Default)]
+pub struct FragmentBodies {
+    entities: BTreeMap<FragmentId, Entity>,
+}
+
+impl FragmentBodies {
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+}
+
+/// Identifies the fragment an Avian body represents.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+struct DynamicFragmentBody(FragmentId);
+
+/// Reconcile engine-owned fragments with Avian bodies.
+///
+/// Creation/destruction happens in the ordinary host update. Physics then steps
+/// in Avian's fixed schedule, and `readback_fragment_bodies` copies the result
+/// back into the engine-owned fragment afterwards.
+pub fn sync_fragment_bodies(
+    mut commands: Commands,
+    fragments: Res<DynamicFragments>,
+    mut bodies: ResMut<FragmentBodies>,
+) {
+    let wanted: BTreeSet<_> = fragments.fragments.keys().copied().collect();
+
+    let gone: Vec<_> = bodies
+        .entities
+        .keys()
+        .filter(|id| !wanted.contains(id))
+        .copied()
+        .collect();
+    for id in gone {
+        if let Some(entity) = bodies.entities.remove(&id) {
+            commands.entity(entity).despawn();
+        }
+    }
+
+    for (id, fragment) in fragments.iter() {
+        if bodies.entities.contains_key(&id) {
+            continue;
+        }
+
+        let descriptor = FragmentPhysicsDescriptor::from_fragment(fragment);
+        let Some(collider) = collider_from_shape(&descriptor.collider, CellPos::ZERO) else {
+            continue;
+        };
+        let q = descriptor.pose.rotation.0;
+        let linear = descriptor.linear_velocity;
+        let angular = descriptor.angular_velocity;
+
+        let mut entity = commands.spawn((
+            RigidBody::Dynamic,
+            PhysicsPosition::from_xyz(
+                descriptor.pose.translation.x,
+                descriptor.pose.translation.y,
+                descriptor.pose.translation.z,
+            ),
+            PhysicsRotation(Quaternion::from_xyzw(q[0], q[1], q[2], q[3]).normalize()),
+            LinearVelocity(Vector::new(
+                f64::from(linear[0]),
+                f64::from(linear[1]),
+                f64::from(linear[2]),
+            )),
+            AngularVelocity(Vector::new(
+                f64::from(angular[0]),
+                f64::from(angular[1]),
+                f64::from(angular[2]),
+            )),
+            collider,
+            DynamicFragmentBody(id),
+        ));
+        if descriptor.sleeping {
+            entity.insert(Sleeping);
+        }
+        bodies.entities.insert(id, entity.id());
+    }
+}
+
+/// Copy backend simulation state back into Micrology fragments.
+///
+/// Avian's default physics schedule is `FixedPostUpdate`; this system is wired
+/// after `PhysicsSystems::Last` so it observes the completed step rather than
+/// the state that entered it.
+pub fn readback_fragment_bodies(
+    mut fragments: ResMut<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    query: Query<
+        (
+            &PhysicsPosition,
+            &PhysicsRotation,
+            &LinearVelocity,
+            &AngularVelocity,
+            Has<Sleeping>,
+        ),
+        With<DynamicFragmentBody>,
+    >,
+) {
+    for (id, entity) in &bodies.entities {
+        let Some(fragment) = fragments.get_mut(*id) else {
+            continue;
+        };
+        let Ok((position, rotation, linear, angular, sleeping)) = query.get(*entity) else {
+            continue;
+        };
+
+        let q = rotation.0.to_array();
+        let state = FragmentPhysicsState {
+            pose: FragmentPose {
+                translation: engine_core::GlobalPos::new(position.x, position.y, position.z),
+                rotation: FragmentRotation(q),
+            },
+            linear_velocity: [linear.x as f32, linear.y as f32, linear.z as f32],
+            angular_velocity: [angular.x as f32, angular.y as f32, angular.z as f32],
+            sleeping,
+        };
+
+        if FragmentPhysicsState::from_fragment(fragment) != state {
+            state.apply_to(fragment);
+        }
     }
 }
