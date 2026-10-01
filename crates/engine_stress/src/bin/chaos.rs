@@ -171,15 +171,15 @@ fn stale_result(cases: &mut Vec<Case>) {
 }
 
 fn policy_refusal(cases: &mut Vec<Case>) {
-    let (mut world, result) = damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
+    let (mut world, result) = small_detachable_job();
     let before = world.occupied_count();
     let diagnostic = format!(
-        "judge={:?}, truncated={}, byte_limit={}, required={:?}, components={:?}",
+        "judge={:?}, truncated={}, byte_limit={}, required={:?}, detached={}",
         result.judge(&world),
         result.was_truncated,
         result.hit_byte_limit,
         result.required_regions(),
-        result.components
+        result.components.detached().count()
     );
     let mut sequence = DestructionSequence::new(77);
     let refusal = detach_if(&mut world, &mut sequence, &result, |_| false);
