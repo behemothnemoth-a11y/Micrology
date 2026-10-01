@@ -7,6 +7,9 @@ bounded by a memory budget, and persisted a region at a time.
 Everything below is a measurement, not an estimate. Where a number appears, the
 command that produced it is named.
 
+![The sandbox streaming a 144-region world, seen from above. The pale seam
+material marks region boundaries, and the hard edge is where residency ends.](images/streaming.png)
+
 ---
 
 ## 1. What shipped
