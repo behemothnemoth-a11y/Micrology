@@ -2428,6 +2428,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_stream"
+version = "0.1.0"
+dependencies = [
+ "engine_core",
+]
+
+[[package]]
 name = "engine_stress"
 version = "0.1.0"
 dependencies = [

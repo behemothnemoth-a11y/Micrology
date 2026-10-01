@@ -6,6 +6,7 @@ members = [
     "crates/engine_world",
     "crates/engine_geometry",
     "crates/engine_io",
+    "crates/engine_stream",
     "crates/engine_stress",
     "apps/sandbox",
 ]
@@ -19,6 +20,7 @@ default-members = [
     "crates/engine_world",
     "crates/engine_geometry",
     "crates/engine_io",
+    "crates/engine_stream",
     "crates/engine_stress",
 ]
 
@@ -36,6 +38,7 @@ engine_volume = { path = "crates/engine_volume" }
 engine_world = { path = "crates/engine_world" }
 engine_geometry = { path = "crates/engine_geometry" }
 engine_io = { path = "crates/engine_io" }
+engine_stream = { path = "crates/engine_stream" }
 engine_stress = { path = "crates/engine_stress" }
 
 serde = { version = "1", features = ["derive"] }
