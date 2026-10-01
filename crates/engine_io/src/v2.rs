@@ -345,7 +345,7 @@ pub fn write_manifest(
     write_atomic(&manifest_path(dir.as_ref()), &json)
 }
 
-fn write_atomic(path: &Path, contents: &str) -> Result<(), IoError> {
+pub(crate) fn write_atomic(path: &Path, contents: &str) -> Result<(), IoError> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|source| IoError::File {
             path: parent.to_path_buf(),
