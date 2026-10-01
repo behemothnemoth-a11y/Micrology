@@ -23,11 +23,16 @@ pub mod granularity;
 pub mod report;
 pub mod rng;
 pub mod scenario;
+pub mod structural;
 
 pub use granularity::{AUDITED_GRIDS, GridAudit, GridTimings, audit};
 pub use report::{Counters, Report, Timings};
 pub use rng::Rng;
 pub use scenario::{Scenario, all_scenarios};
+pub use structural::{
+    STRUCTURAL_BASELINE_PATH, StructuralCounters, StructuralReport, StructuralScenario,
+    StructuralTimings, StructuralWorld, all_structural_scenarios,
+};
 
 /// Where the committed baseline counters live, relative to the repository root.
 pub const BASELINE_PATH: &str = "fixtures/stress/baseline.json";

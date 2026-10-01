@@ -154,7 +154,9 @@ networking, multiplayer, Minecraft or Litematica import/export, GIS ingestion,
 transforms on volume data, and any actual game.
 
 DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complete**
-— see [the report](docs/drop-0002-report.md).
+— see [the report](docs/drop-0002-report.md). DROP 0003 (structural destruction:
+connectivity, volumetric fragments, collision, physics) is in progress —
+[`docs/drop-0003.md`](docs/drop-0003.md) tracks it pass by pass.
 
 ## Documentation
 
@@ -167,6 +169,8 @@ DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complet
 | [`docs/drop-0002-scope.md`](docs/drop-0002-scope.md) | DROP 0002 scope: scale, regions, streaming |
 | [`docs/drop-0002.md`](docs/drop-0002.md) | DROP 0002 pass by pass, with every measurement taken |
 | [`docs/drop-0002-report.md`](docs/drop-0002-report.md) | DROP 0002 report: what shipped, what it measures, what DROP 0003 inherits |
+| [`docs/drop-0003-scope.md`](docs/drop-0003-scope.md) | DROP 0003 scope: structural destruction and volumetric fragments |
+| [`docs/drop-0003.md`](docs/drop-0003.md) | DROP 0003 pass by pass |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 
