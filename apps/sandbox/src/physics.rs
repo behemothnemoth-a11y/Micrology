@@ -6,7 +6,7 @@
 //!
 //! Rendering residency and physics residency are deliberately different. The
 //! streamed world can be visible for hundreds of cells, while only a small area
-//! around the camera needs active collision. A section entering that area gets
+//! around the camera needs active collision. A collision volume entering that area gets
 //! a static compound collider compiled from the same cell data; leaving the area
 //! drops it again.
 //!
@@ -75,7 +75,7 @@ struct StaticColliderEntry {
 /// the shape data Micrology handed the backend.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct StaticColliderStats {
-    pub active_sections: usize,
+    pub active_volumes: usize,
     pub boxes: u64,
     pub bytes: u64,
     pub rebuilt_total: u64,
@@ -153,7 +153,7 @@ impl StaticColliders {
     }
 
     fn refresh_live_stats(&mut self) {
-        self.stats.active_sections = self
+        self.stats.active_volumes = self
             .entries
             .values()
             .filter(|entry| entry.entity.is_some())
@@ -268,7 +268,7 @@ fn collider_from_shape(shape: &CollisionShape, origin: CellPos) -> Option<Collid
     Some(Collider::compound(parts))
 }
 
-/// Chebyshev distance from a cell to an inclusive section AABB.
+/// Chebyshev distance from a cell to an inclusive collision-volume AABB.
 fn distance_to_bounds(cell: CellPos, bounds: CellBounds) -> u64 {
     fn axis(value: i32, min: i32, max: i32) -> u64 {
         if value < min {
