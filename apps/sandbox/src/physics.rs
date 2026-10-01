@@ -396,9 +396,38 @@ struct FragmentBodyEntry {
 }
 
 /// Backend entities corresponding to engine-owned fragments.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct FragmentCapacity {
+    bytes: u64,
+    bodies: u64,
+    boxes: u64,
+}
+
+impl FragmentCapacity {
+    fn remaining(budget: FragmentBudget, account: FragmentAccount) -> Self {
+        Self {
+            bytes: budget
+                .hard_bytes
+                .saturating_sub(account.footprint.tracked_bytes()),
+            bodies: budget
+                .max_physics_bodies
+                .saturating_sub(account.footprint.physics_bodies),
+            boxes: budget
+                .max_collision_boxes
+                .saturating_sub(account.footprint.collision_boxes),
+        }
+    }
+
+    fn increased_from(self, previous: Self) -> bool {
+        self.bytes > previous.bytes || self.bodies > previous.bodies || self.boxes > previous.boxes
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
+    blocked: BTreeSet<FragmentId>,
+    last_capacity: Option<FragmentCapacity>,
     withheld_current: u64,
     withheld_total: u64,
     pending_spawn_current: u64,
@@ -425,6 +454,8 @@ impl FragmentBodies {
         for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
         }
+        self.blocked.clear();
+        self.last_capacity = None;
         self.withheld_current = 0;
         self.pending_spawn_current = 0;
     }
@@ -542,15 +573,43 @@ pub fn sync_fragment_bodies(
             commands.entity(entry.entity).despawn();
         }
     }
+    bodies.blocked.retain(|id| wanted.contains(id));
 
     let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
+    let capacity = FragmentCapacity::remaining(budget.0, account);
+    if bodies
+        .last_capacity
+        .is_some_and(|previous| capacity.increased_from(previous))
+    {
+        // Only retry fragments rejected by the hard budget when capacity has
+        // actually increased. Otherwise a permanently-too-large fragment would
+        // rebuild the same greedy collider every rendered frame forever.
+        bodies.blocked.clear();
+    }
+
     let mut spawned_this_frame = 0usize;
     for (id, fragment) in fragments.iter() {
         if bodies.entries.contains_key(&id) {
             continue;
         }
+        if bodies.blocked.contains(&id) {
+            bodies.withheld_current += 1;
+            continue;
+        }
         if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
             bodies.pending_spawn_current += 1;
+            continue;
+        }
+
+        // Cheap caps first: do not compile a collider merely to discover that
+        // no additional body or box can possibly be admitted.
+        if account.footprint.physics_bodies >= budget.0.max_physics_bodies
+            || account.footprint.collision_boxes >= budget.0.max_collision_boxes
+            || account.footprint.tracked_bytes() >= budget.0.hard_bytes
+        {
+            bodies.blocked.insert(id);
+            bodies.withheld_current += 1;
+            bodies.withheld_total += 1;
             continue;
         }
 
@@ -562,6 +621,7 @@ pub fn sync_fragment_bodies(
             ..FragmentFootprint::default()
         };
         if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
+            bodies.blocked.insert(id);
             bodies.withheld_current += 1;
             bodies.withheld_total += 1;
             continue;
@@ -609,6 +669,7 @@ pub fn sync_fragment_bodies(
         spawned_this_frame += 1;
         account.footprint += next;
     }
+    bodies.last_capacity = Some(FragmentCapacity::remaining(budget.0, account));
 }
 
 /// Copy backend simulation state back into Micrology fragments.
