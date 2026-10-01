@@ -10,7 +10,8 @@ use crate::render::{RenderOriginRes, to_bevy_mesh};
 use crate::WorldRes;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use engine_core::{CellPos, FragmentId};
+use engine_core::CellPos;
+use engine_destruction::FragmentId;
 use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
 
 const MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME: usize = 4;
