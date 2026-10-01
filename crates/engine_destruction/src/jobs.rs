@@ -68,21 +68,38 @@ impl Occupancy {
 pub struct SnapshotLimits {
     /// Volumes the snapshot may hold. Each is up to 8 KiB of cells.
     pub max_volumes: usize,
+    /// Exact owned cell/palette/support bytes the snapshot may clone.
+    ///
+    /// `u64::MAX` preserves the old volume-only behaviour for offline tests;
+    /// live hosts should use [`SnapshotLimits::bounded`].
+    pub max_bytes: u64,
 }
 
 impl Default for SnapshotLimits {
     fn default() -> Self {
-        // 512 volumes is one region's worth: ~4 MiB of cells in the worst case,
-        // and enough to cover any structure that fits in a region without
-        // asking for more. Measured against the harness in the report rather
-        // than guessed at here.
-        Self { max_volumes: 512 }
+        // 512 volumes is one region's worth: ~4 MiB of cells in the common
+        // dense case. The default keeps the original volume-only semantics;
+        // hosts with a real frame budget add an explicit byte ceiling.
+        Self {
+            max_volumes: 512,
+            max_bytes: u64::MAX,
+        }
     }
 }
 
 impl SnapshotLimits {
     pub const fn volumes(max_volumes: usize) -> Self {
-        Self { max_volumes }
+        Self {
+            max_volumes,
+            max_bytes: u64::MAX,
+        }
+    }
+
+    pub const fn bounded(max_volumes: usize, max_bytes: u64) -> Self {
+        Self {
+            max_volumes,
+            max_bytes,
+        }
     }
 }
 
@@ -155,6 +172,8 @@ pub struct StructureJobInput {
     missing: BTreeSet<VolumePos>,
     /// Volumes wanted but left out because the snapshot budget ran out.
     truncated: BTreeSet<VolumePos>,
+    /// Whether the byte ceiling, specifically, stopped snapshot growth.
+    byte_truncated: bool,
     pub fingerprint: StructureFingerprint,
     pub limits: StructuralLimits,
 }
@@ -182,6 +201,8 @@ impl StructureJobInput {
         let mut covered = BTreeSet::new();
         let mut missing = BTreeSet::new();
         let mut truncated = BTreeSet::new();
+        let mut byte_truncated = false;
+        let mut owned_bytes = 0u64;
         // Ordered, so two runs over the same world snapshot the same volumes:
         // a budget that cut a different set each time would make a job's result
         // depend on map iteration order.
@@ -197,6 +218,23 @@ impl StructureJobInput {
                 truncated.insert(volume);
                 continue;
             }
+
+            let cell_bytes = world
+                .volume(volume)
+                .map(|data| (data.cell_bytes() + data.palette_bytes()) as u64)
+                .unwrap_or(0);
+            let anchor_bytes = world
+                .region(volume.region())
+                .and_then(|region| region.volume_anchors(volume))
+                .map(|field| field.heap_bytes() as u64)
+                .unwrap_or(0);
+            let volume_bytes = cell_bytes.saturating_add(anchor_bytes);
+            if owned_bytes.saturating_add(volume_bytes) > snapshot.max_bytes {
+                truncated.insert(volume);
+                byte_truncated = true;
+                continue;
+            }
+            owned_bytes = owned_bytes.saturating_add(volume_bytes);
             covered.insert(volume);
 
             let Some(data) = world.volume(volume) else {
@@ -208,7 +246,9 @@ impl StructureJobInput {
                 if !occupies_face(data, dir) {
                     continue;
                 }
-                let neighbour = volume.step(dir);
+                let Some(neighbour) = volume.checked_step(dir) else {
+                    continue;
+                };
                 if queued.insert(neighbour) {
                     queue.push_back(neighbour);
                 }
@@ -236,6 +276,7 @@ impl StructureJobInput {
             covered,
             missing,
             truncated,
+            byte_truncated,
             limits,
         }
     }
@@ -263,6 +304,11 @@ impl StructureJobInput {
     /// Whether the snapshot budget cut the job short.
     pub fn was_truncated(&self) -> bool {
         !self.truncated.is_empty()
+    }
+
+    /// Whether the byte ceiling, rather than the volume count, stopped growth.
+    pub fn hit_byte_limit(&self) -> bool {
+        self.byte_truncated
     }
 
     pub fn covered_volumes(&self) -> usize {
@@ -293,6 +339,7 @@ impl StructureJobInput {
             components,
             needs_loading: self.needs_loading(),
             was_truncated: self.was_truncated(),
+            hit_byte_limit: self.hit_byte_limit(),
         }
     }
 }
@@ -341,6 +388,8 @@ pub struct StructureJobResult {
     pub needs_loading: BTreeSet<RegionPos>,
     /// Whether the snapshot budget, rather than the world, cut it short.
     pub was_truncated: bool,
+    /// Whether the live byte ceiling specifically caused truncation.
+    pub hit_byte_limit: bool,
 }
 
 /// What the owning thread decided about a returning result.
@@ -368,10 +417,10 @@ impl StructureJobResult {
         if !self.fingerprint.still_current(world) {
             return ResultDisposition::DiscardedStale;
         }
-        if self.components.is_settled() {
-            ResultDisposition::Accepted
-        } else {
+        if self.was_truncated || !self.needs_loading.is_empty() || !self.components.is_settled() {
             ResultDisposition::Inconclusive
+        } else {
+            ResultDisposition::Accepted
         }
     }
 

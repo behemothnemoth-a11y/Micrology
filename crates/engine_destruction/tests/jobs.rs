@@ -176,6 +176,26 @@ fn a_budget_that_cannot_hold_the_structure_yields_indeterminate_not_detached() {
 }
 
 #[test]
+fn a_byte_bounded_snapshot_never_clones_past_the_ceiling() {
+    let (w, roots) = severed();
+    let input = StructureJobInput::snapshot(
+        &w,
+        roots,
+        SnapshotLimits::bounded(512, 1),
+        StructuralLimits::UNLIMITED,
+    );
+
+    assert!(input.was_truncated());
+    assert!(input.hit_byte_limit());
+    assert!(input.snapshot_bytes() <= 1);
+
+    let result = input.run();
+    assert!(result.hit_byte_limit);
+    assert_eq!(result.detachable().count(), 0);
+    assert_eq!(result.judge(&w), ResultDisposition::Inconclusive);
+}
+
+#[test]
 fn a_bigger_budget_resolves_the_same_structure() {
     // The deferral must be about the budget and nothing else.
     let mut w = world();

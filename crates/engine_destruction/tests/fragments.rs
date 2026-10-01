@@ -3,7 +3,7 @@
 use engine_core::{CellPos, CellSource, MaterialId, MaterialRegistry, Rgb, VOLUME_EDGE};
 use engine_destruction::{
     DestructionSequence, DetachRefusal, Fragment, FragmentId, FragmentState, SnapshotLimits,
-    StructuralLimits, StructureJobInput, detach,
+    StructuralLimits, StructureJobInput, detach, detach_if,
 };
 use engine_geometry::{GreedyCompiler, MeshData, SurfaceCompiler};
 use engine_world::{World, WorldEditBatch};
@@ -79,6 +79,30 @@ fn detaching_removes_the_component_and_returns_it_as_one_fragment() {
     assert!(!outcome.edit.dirtied_volumes.is_empty());
     assert!(!outcome.edit.dirtied_regions.is_empty());
     assert_eq!(outcome.cells_detached(), fragment.cell_count());
+}
+
+#[test]
+fn host_policy_can_refuse_a_detachment_without_spending_an_id_or_cells() {
+    let (mut w, result) = cut_platform();
+    let before = w.occupied_count();
+    let mut sequence = DestructionSequence::new(41);
+    let mut saw_candidate = false;
+
+    let refusal = detach_if(&mut w, &mut sequence, &result, |fragments| {
+        saw_candidate = true;
+        assert_eq!(fragments.len(), 1);
+        assert_eq!(fragments[0].id, FragmentId::new(41, 0));
+        false
+    });
+
+    assert!(saw_candidate);
+    assert_eq!(refusal, Err(DetachRefusal::RejectedByPolicy));
+    assert_eq!(w.occupied_count(), before);
+    assert_eq!(sequence.peek(), 41, "policy refusal spends no identity");
+    assert!(
+        w.get(CellPos::new(26, 41, 26)).is_some(),
+        "the would-be fragment remains static"
+    );
 }
 
 #[test]

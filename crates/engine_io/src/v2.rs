@@ -437,12 +437,15 @@ pub fn save_dirty_regions(
             save_region(dir, *pos, region)?;
         }
     }
+    // The manifest is part of the save transaction. If it cannot be replaced,
+    // leave every region dirty so a later flush retries the whole operation;
+    // clean shards with a stale directory index are not a durable save.
+    write_atomic(&manifest_path(dir), &manifest_to_json(world, meta)?)?;
     for pos in &dirty {
         if let Some(region) = world.region_mut(*pos) {
             region.mark_clean();
         }
     }
-    write_atomic(&manifest_path(dir), &manifest_to_json(world, meta)?)?;
     Ok(dirty)
 }
 

@@ -378,7 +378,9 @@ fn search(
         }
 
         for dir in FaceDir::ALL {
-            let neighbour = cell.step(dir);
+            let Some(neighbour) = cell.checked_step(dir) else {
+                continue;
+            };
             if visited.contains(&neighbour) {
                 continue;
             }
@@ -451,7 +453,9 @@ pub fn split_into_components(
 
         while let Some(cell) = queue.pop_front() {
             for dir in FaceDir::ALL {
-                let neighbour = cell.step(dir);
+                let Some(neighbour) = cell.checked_step(dir) else {
+                    continue;
+                };
                 if remaining.remove(&neighbour) {
                     group.insert(neighbour);
                     queue.push_back(neighbour);

@@ -551,3 +551,17 @@ fn classifying_one_component_agrees_with_classifying_from_roots() {
     assert_eq!(one.len(), 20);
     assert_eq!(one.anchor_cell(), Some(CellPos::new(1, 6, 1)));
 }
+
+#[test]
+fn connectivity_at_the_integer_world_edge_never_wraps_to_the_other_side() {
+    let edge = CellPos::new(i32::MAX, 0, 0);
+    let mut w = world();
+    w.set(edge, Some(STONE));
+    w.set_anchor(edge, true);
+    w.take_dirty();
+
+    let set = classify(&w, [edge], StructuralLimits::UNLIMITED);
+    assert_eq!(set.components.len(), 1);
+    assert_eq!(set.components[0].classification, Classification::Supported);
+    assert_eq!(set.components[0].len(), 1);
+}

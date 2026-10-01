@@ -364,13 +364,35 @@ pub fn fragment_index_from_json(json: &str) -> Result<FragmentIndex, IoError> {
     })
 }
 
-/// Missing fragment index means an old v3 world with no fragments.
+/// Load the fragment discovery index.
+///
+/// A missing index is an old-v3/no-fragments world only when there are no
+/// fragment payloads either. If payloads exist, recover the derived index from
+/// them instead of silently pretending those fragments do not exist. This is
+/// the crash window after payloads were committed but before the first index.
 pub fn load_fragment_index(dir: impl AsRef<Path>) -> Result<FragmentIndex, IoError> {
-    let path = fragment_index_path(&dir);
+    let dir = dir.as_ref();
+    let path = fragment_index_path(dir);
     match std::fs::read_to_string(&path) {
         Ok(json) => fragment_index_from_json(&json),
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
-            Ok(FragmentIndex::default())
+            let ids = scan_fragments(dir)?;
+            if ids.is_empty() {
+                return Ok(FragmentIndex::default());
+            }
+
+            let mut store = FragmentStore::default();
+            for id in ids {
+                store.insert(load_fragment(dir, id)?);
+            }
+            let spatial = FragmentSpatialIndex::from_store(&store)
+                .map_err(|source| IoError::FragmentSpatial { source })?;
+            let max_existing = store.ids().map(|id| id.sequence).max().unwrap_or(0);
+            Ok(FragmentIndex {
+                next_destruction_sequence: max_existing.saturating_add(1),
+                spatial,
+                fragments: store.ids().collect(),
+            })
         }
         Err(source) => Err(IoError::File { path, source }),
     }
@@ -404,6 +426,12 @@ pub fn save_fragment_store(
         save_fragment(dir, fragment)?;
     }
 
+    // Commit the new discovery index before deleting payloads it no longer
+    // references. If the index write fails, the previous index still points at
+    // every payload it knew about. Reversing this order can make an interrupted
+    // save unloadable by deleting a file the old index still requires.
+    let spatial = save_fragment_index(dir, store, sequence)?;
+
     let live: BTreeSet<FragmentId> = store.ids().collect();
     for id in scan_fragments(dir)? {
         if !live.contains(&id) {
@@ -412,7 +440,7 @@ pub fn save_fragment_store(
         }
     }
 
-    save_fragment_index(dir, store, sequence)
+    Ok(spatial)
 }
 
 pub fn load_fragment_store(
@@ -425,13 +453,14 @@ pub fn load_fragment_store(
         store.insert(load_fragment(dir, id)?);
     }
 
-    // Recompute from payload and compare with the persisted discovery index.
-    // A stale index must never make a fragment disappear from a region.
+    // The region map is derived data. A crash can land after a moving
+    // fragment's payload was atomically replaced but before the derived index
+    // was. Full-store loading already has every authoritative payload, so
+    // recompute the spatial map rather than bricking an otherwise recoverable
+    // world. Region-only discovery remains conservative until the next save
+    // heals the on-disk index.
     let computed = FragmentSpatialIndex::from_store(&store)
         .map_err(|source| IoError::FragmentSpatial { source })?;
-    if computed != index.spatial {
-        return Err(IoError::FragmentIndexMismatch);
-    }
 
     Ok((
         store,

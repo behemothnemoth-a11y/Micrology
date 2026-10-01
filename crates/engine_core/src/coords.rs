@@ -136,6 +136,9 @@ impl CellPos {
     }
 
     /// The neighbouring cell one step along `dir`.
+    ///
+    /// Runtime traversal that may reach the representable world boundary should
+    /// use [`CellPos::checked_step`] instead of relying on integer overflow.
     #[inline]
     pub const fn step(self, dir: FaceDir) -> Self {
         let n = dir.normal();
@@ -144,6 +147,26 @@ impl CellPos {
             y: self.y + n[1],
             z: self.z + n[2],
         }
+    }
+
+    /// The neighbouring cell, or `None` when stepping would leave the
+    /// representable i32 cell-address space.
+    #[inline]
+    pub const fn checked_step(self, dir: FaceDir) -> Option<Self> {
+        let n = dir.normal();
+        let x = match self.x.checked_add(n[0]) {
+            Some(value) => value,
+            None => return None,
+        };
+        let y = match self.y.checked_add(n[1]) {
+            Some(value) => value,
+            None => return None,
+        };
+        let z = match self.z.checked_add(n[2]) {
+            Some(value) => value,
+            None => return None,
+        };
+        Some(Self { x, y, z })
     }
 
     /// Translate by `count` cells along `axis`.
@@ -210,6 +233,26 @@ impl VolumePos {
             y: self.y + n[1],
             z: self.z + n[2],
         }
+    }
+
+    /// The neighbouring chunk, or `None` when stepping would leave the
+    /// representable i32 volume-address space.
+    #[inline]
+    pub const fn checked_step(self, dir: FaceDir) -> Option<Self> {
+        let n = dir.normal();
+        let x = match self.x.checked_add(n[0]) {
+            Some(value) => value,
+            None => return None,
+        };
+        let y = match self.y.checked_add(n[1]) {
+            Some(value) => value,
+            None => return None,
+        };
+        let z = match self.z.checked_add(n[2]) {
+            Some(value) => value,
+            None => return None,
+        };
+        Some(Self { x, y, z })
     }
 }
 
@@ -495,6 +538,31 @@ mod tests {
             assert_eq!(p.step(dir).step(dir.opposite()), p);
             assert_eq!(dir.opposite().opposite(), dir);
         }
+    }
+
+    #[test]
+    fn checked_step_refuses_to_wrap_at_address_limits() {
+        assert_eq!(
+            CellPos::new(i32::MAX, 0, 0).checked_step(FaceDir::PosX),
+            None
+        );
+        assert_eq!(
+            CellPos::new(i32::MIN, 0, 0).checked_step(FaceDir::NegX),
+            None
+        );
+        assert_eq!(
+            CellPos::new(i32::MAX - 1, 0, 0).checked_step(FaceDir::PosX),
+            Some(CellPos::new(i32::MAX, 0, 0))
+        );
+
+        assert_eq!(
+            VolumePos::new(i32::MAX, 0, 0).checked_step(FaceDir::PosX),
+            None
+        );
+        assert_eq!(
+            VolumePos::new(i32::MIN, 0, 0).checked_step(FaceDir::NegX),
+            None
+        );
     }
 
     #[test]

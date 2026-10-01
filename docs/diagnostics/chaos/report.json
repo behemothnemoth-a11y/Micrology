@@ -1,0 +1,51 @@
+{
+  "generated_by": "engine_stress::chaos",
+  "cases": [
+    {
+      "name": "structural_matrix",
+      "ok": true,
+      "detail": "all 10 canonical cases matched; worst search=25216 cells (large_supported_structure) in 127.2855ms"
+    },
+    {
+      "name": "stale_result_rejected",
+      "ok": true,
+      "detail": "result=Err(Stale), sequence=9, occupied=3151"
+    },
+    {
+      "name": "atomic_policy_refusal",
+      "ok": true,
+      "detail": "result=Err(RejectedByPolicy), occupied 188->188, sequence=77; judge=Accepted, truncated=false, byte_limit=false, required={}, detached=1"
+    },
+    {
+      "name": "snapshot_byte_ceiling",
+      "ok": true,
+      "detail": "snapshot=8712 B, hit_byte_limit=true, disposition=Inconclusive, live_cap=8388608 B"
+    },
+    {
+      "name": "fragment_storm_256",
+      "ok": true,
+      "detail": "fragments=256, detached=256, cells=5120, collision_boxes=256 merged / 5120 exact"
+    },
+    {
+      "name": "integer_edge_carve",
+      "ok": true,
+      "detail": "cells=23, wrapped=false"
+    },
+    {
+      "name": "fragment_persistence_crash_windows",
+      "ok": true,
+      "detail": "missing-index recovery=true, stale-spatial recovery=true"
+    },
+    {
+      "name": "repeat_determinism_32x",
+      "ok": true,
+      "detail": "signature=Some((72, [(FragmentId { sequence: 5, index: 0 }, 116)]))"
+    },
+    {
+      "name": "known_last_cell_support_cliff",
+      "ok": true,
+      "detail": "3/4 neck cells removed => supported; 4/4 => 28 cells detached. Correct for current binary topology, inadequate for load-bearing mechanics."
+    }
+  ],
+  "all_ok": true
+}

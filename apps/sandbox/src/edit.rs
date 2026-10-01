@@ -11,15 +11,19 @@
 //! need it, so it does not belong in an app.
 
 use crate::camera::{FlyCamera, cursor_grabbed};
+use crate::destruction::DestructionHost;
+use crate::fragment_render::FragmentEntities;
+use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
 use crate::streaming::StreamRes;
 use crate::{GeometryRes, StatusLine, WorldRes};
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 use engine_core::MaterialId;
-use engine_world::raycast;
+use engine_world::{WorldEditBatch, raycast};
 
 /// How far the edit ray reaches, in cells.
 const REACH: f32 = 96.0;
@@ -83,16 +87,30 @@ pub fn select_material(
     }
 }
 
+#[derive(SystemParam)]
+pub struct EditResources<'w> {
+    mouse: Res<'w, ButtonInput<MouseButton>>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    palette: Res<'w, Palette>,
+    world: ResMut<'w, WorldRes>,
+    destruction: ResMut<'w, DestructionHost>,
+    status: ResMut<'w, StatusLine>,
+}
+
 /// Left click carves, right click places, `F` repaints.
 pub fn edit_cells(
     cursor: Option<Single<&CursorOptions>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
     camera: Option<Single<(&Transform, &FlyCamera)>>,
-    palette: Res<Palette>,
-    mut world: ResMut<WorldRes>,
-    mut status: ResMut<StatusLine>,
+    resources: EditResources,
 ) {
+    let EditResources {
+        mouse,
+        keys,
+        palette,
+        mut world,
+        mut destruction,
+        mut status,
+    } = resources;
     // Edits only happen while looking around; the first click grabs the cursor.
     if !cursor.map(|c| cursor_grabbed(&c)).unwrap_or(false) {
         return;
@@ -116,8 +134,34 @@ pub fn edit_cells(
     };
 
     if carve {
-        world.set(hit.cell, None);
-        status.0 = format!("removed {:?}", hit.cell);
+        let radius = if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
+            4
+        } else if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            2
+        } else {
+            0
+        };
+        let mut batch = WorldEditBatch::new();
+        if radius == 0 {
+            batch.remove(hit.cell);
+        } else {
+            batch.carve_sphere(hit.cell, radius);
+        }
+        let outcome = world.apply(&batch);
+        destruction.enqueue_edit(&outcome);
+        status.0 = if radius == 0 {
+            format!(
+                "removed {:?}; {} structural root(s)",
+                hit.cell,
+                outcome.structural_candidates.len()
+            )
+        } else {
+            format!(
+                "carved r={radius}: {} cell(s), {} structural root(s)",
+                outcome.removed_cells.len(),
+                outcome.structural_candidates.len()
+            )
+        };
     } else if place {
         let target = hit.cell.step(hit.face);
         world.set(target, Some(palette.current()));
@@ -128,29 +172,60 @@ pub fn edit_cells(
     }
 }
 
+#[derive(SystemParam)]
+pub struct SaveLoadResources<'w> {
+    stream: ResMut<'w, StreamRes>,
+    world: ResMut<'w, WorldRes>,
+    geometry: ResMut<'w, GeometryRes>,
+    sections: ResMut<'w, SectionEntities>,
+    fragments: ResMut<'w, DynamicFragments>,
+    fragment_bodies: ResMut<'w, FragmentBodies>,
+    fragment_renders: ResMut<'w, FragmentEntities>,
+    destruction: ResMut<'w, DestructionHost>,
+    status: ResMut<'w, StatusLine>,
+}
+
 /// `F5` flushes unsaved regions, `F9` drops everything and streams it back.
 pub fn save_and_load(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
-    mut stream: ResMut<StreamRes>,
-    mut world: ResMut<WorldRes>,
-    mut geometry: ResMut<GeometryRes>,
-    mut sections: ResMut<SectionEntities>,
-    mut status: ResMut<StatusLine>,
+    resources: SaveLoadResources,
 ) {
+    let SaveLoadResources {
+        mut stream,
+        mut world,
+        mut geometry,
+        mut sections,
+        mut fragments,
+        mut fragment_bodies,
+        mut fragment_renders,
+        mut destruction,
+        mut status,
+    } = resources;
     if keys.just_pressed(KeyCode::F5) {
         // Only the regions with unsaved edits are written, which is what makes
         // a flush affordable on a large world.
         let dir = stream.dir.clone();
         let meta = stream.meta.clone();
-        status.0 = match engine_io::save_dirty_regions(&mut world.0, &meta, &dir) {
-            Ok(written) if written.is_empty() => "nothing to save".to_string(),
-            Ok(written) => format!("saved {} region(s)", written.len()),
-            Err(error) => format!("save failed: {error}"),
+        let region_status = match engine_io::save_dirty_regions(&mut world.0, &meta, &dir) {
+            Ok(written) => {
+                for region in &written {
+                    stream.streamer.residency_mut().mark_saved(*region);
+                }
+                if written.is_empty() {
+                    "no region changes".to_string()
+                } else {
+                    format!("{} region(s)", written.len())
+                }
+            }
+            Err(error) => format!("region save FAILED: {error}"),
         };
-        for region in world.0.region_positions().collect::<Vec<_>>() {
-            stream.streamer.residency_mut().mark_saved(region);
-        }
+        let fragment_status =
+            match crate::destruction::save_fragment_state(&stream, &destruction, &fragments) {
+                Ok(count) => format!("{count} fragment(s)"),
+                Err(error) => format!("fragment save FAILED: {error}"),
+            };
+        status.0 = format!("saved {region_status}; {fragment_status}");
     }
 
     if keys.just_pressed(KeyCode::F9) {
@@ -161,7 +236,16 @@ pub fn save_and_load(
         sections.clear(&mut commands);
         stream.scheduler.clear();
         stream.streamer.clear();
-        status.0 = "reloading from disk".to_string();
+        fragment_bodies.clear(&mut commands);
+        fragment_renders.clear(&mut commands);
+        status.0 = match crate::destruction::reload_fragment_state(
+            &stream,
+            &mut destruction,
+            &mut fragments,
+        ) {
+            Ok(count) => format!("reloading world + {count} fragment(s) from disk"),
+            Err(error) => format!("world reloading; fragment reload FAILED: {error}"),
+        };
     }
 }
 

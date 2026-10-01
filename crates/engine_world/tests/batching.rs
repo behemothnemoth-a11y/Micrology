@@ -444,3 +444,22 @@ fn a_carve_spanning_volumes_groups_by_volume() {
     assert_eq!(total, batch.len(), "grouping loses nothing");
     assert_eq!(batch.volumes().len(), grouped.len());
 }
+
+#[test]
+fn a_sphere_at_the_integer_world_edge_clips_instead_of_wrapping() {
+    let centre = CellPos::new(i32::MAX, 0, 0);
+    let mut batch = WorldEditBatch::new();
+    batch.carve_sphere(centre, 2);
+
+    assert!(!batch.is_empty());
+    for (cell, material) in batch.iter() {
+        assert!(material.is_none());
+        assert!(
+            cell.x >= i32::MAX - 2,
+            "carve wrapped across the integer address space: {cell:?}"
+        );
+        assert!((-2..=2).contains(&cell.y));
+        assert!((-2..=2).contains(&cell.z));
+    }
+    assert!(batch.iter().any(|(cell, _)| cell == centre));
+}

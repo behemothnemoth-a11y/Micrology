@@ -46,6 +46,10 @@ pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 /// rebuild scope. If physics granularity is ever coarsened, measure it on its
 /// own terms first.
 const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
+/// Bound fragment collider compilation / rigid-body creation per rendered frame.
+/// A fragment storm can otherwise turn one destruction result into hundreds of
+/// synchronous Avian compound-collider builds on the main thread.
+const MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME: usize = 8;
 
 /// Avian stays a host dependency. Returning the plugin group from here keeps
 /// even the application root from needing to know its types.
@@ -317,6 +321,35 @@ mod tests {
             u64::from(u32::MAX) - 15
         );
     }
+
+    #[test]
+    fn dynamic_physics_residency_uses_fragment_bounds_not_only_its_origin() {
+        let camera = engine_core::GlobalPos::new(1000.0, 20.0, -500.0);
+
+        assert!(bounds_in_physics_range(
+            engine_core::GlobalPos::new(1048.0, 68.0, -452.0),
+            engine_core::GlobalPos::new(1048.0, 68.0, -452.0),
+            camera
+        ));
+        assert!(!bounds_in_physics_range(
+            engine_core::GlobalPos::new(1048.001, 20.0, -500.0),
+            engine_core::GlobalPos::new(1048.001, 20.0, -500.0),
+            camera
+        ));
+
+        // The fragment origin/minimum can be well outside the physics radius
+        // while a long body still overlaps the active area.
+        assert!(bounds_in_physics_range(
+            engine_core::GlobalPos::new(900.0, 18.0, -502.0),
+            engine_core::GlobalPos::new(980.0, 22.0, -498.0),
+            camera
+        ));
+        assert!(!bounds_in_physics_range(
+            engine_core::GlobalPos::new(-1_000_000.0, 18.0, -502.0),
+            engine_core::GlobalPos::new(-999_900.0, 22.0, -498.0),
+            camera
+        ));
+    }
 }
 
 /// Engine-owned fragment state currently active in the sandbox.
@@ -358,6 +391,27 @@ impl DynamicFragments {
         self.store.iter()
     }
 
+    pub fn replace_store(&mut self, store: FragmentStore) {
+        self.store = store;
+    }
+
+    /// Borrow the store directly when it contains no runtime-only smoke object.
+    /// Normal saves take this zero-copy path.
+    pub fn persistent_store_ref(&self) -> Option<&FragmentStore> {
+        self.store
+            .get(SMOKE_FRAGMENT_ID)
+            .is_none()
+            .then_some(&self.store)
+    }
+
+    /// Clone the persistent subset only for the opt-in smoke run, where the
+    /// reserved diagnostic fragment must never reach disk or influence IDs.
+    pub fn persistent_store(&self) -> FragmentStore {
+        let mut store = self.store.clone();
+        store.remove(SMOKE_FRAGMENT_ID);
+        store
+    }
+
     pub fn account(&self) -> FragmentAccount {
         FragmentAccount::from_store(&self.store)
     }
@@ -375,11 +429,41 @@ struct FragmentBodyEntry {
 }
 
 /// Backend entities corresponding to engine-owned fragments.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct FragmentCapacity {
+    bytes: u64,
+    bodies: u64,
+    boxes: u64,
+}
+
+impl FragmentCapacity {
+    fn remaining(budget: FragmentBudget, account: FragmentAccount) -> Self {
+        Self {
+            bytes: budget
+                .hard_bytes
+                .saturating_sub(account.footprint.tracked_bytes()),
+            bodies: budget
+                .max_physics_bodies
+                .saturating_sub(account.footprint.physics_bodies),
+            boxes: budget
+                .max_collision_boxes
+                .saturating_sub(account.footprint.collision_boxes),
+        }
+    }
+
+    fn increased_from(self, previous: Self) -> bool {
+        self.bytes > previous.bytes || self.bodies > previous.bodies || self.boxes > previous.boxes
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
+    blocked: BTreeSet<FragmentId>,
+    last_capacity: Option<FragmentCapacity>,
     withheld_current: u64,
     withheld_total: u64,
+    pending_spawn_current: u64,
 }
 
 impl FragmentBodies {
@@ -393,6 +477,20 @@ impl FragmentBodies {
 
     pub fn withheld_total(&self) -> u64 {
         self.withheld_total
+    }
+
+    pub fn pending_spawn_current(&self) -> u64 {
+        self.pending_spawn_current
+    }
+
+    pub fn clear(&mut self, commands: &mut Commands) {
+        for (_, entry) in std::mem::take(&mut self.entries) {
+            commands.entity(entry.entity).despawn();
+        }
+        self.blocked.clear();
+        self.last_capacity = None;
+        self.withheld_current = 0;
+        self.pending_spawn_current = 0;
     }
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
@@ -441,9 +539,12 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        mesh_bytes: u64,
     ) -> FragmentAccount {
         let mut account = fragments.account();
-        account.add_derived(bodies.derived_footprint());
+        let mut derived = bodies.derived_footprint();
+        derived.mesh_bytes = mesh_bytes;
+        account.add_derived(derived);
         account
     }
 
@@ -451,8 +552,9 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        mesh_bytes: u64,
     ) -> FragmentPressure {
-        self.0.pressure(self.account(fragments, bodies))
+        self.0.pressure(self.account(fragments, bodies, mesh_bytes))
     }
 }
 
@@ -477,6 +579,32 @@ type FragmentBodyQuery<'w, 's> = Query<
     With<DynamicFragmentBody>,
 >;
 
+fn bounds_in_physics_range(
+    min: engine_core::GlobalPos,
+    max: engine_core::GlobalPos,
+    camera: engine_core::GlobalPos,
+) -> bool {
+    fn axis(value: f64, min: f64, max: f64) -> f64 {
+        if value < min {
+            min - value
+        } else if value > max {
+            value - max
+        } else {
+            0.0
+        }
+    }
+
+    let dx = axis(camera.x, min.x, max.x);
+    let dy = axis(camera.y, min.y, max.y);
+    let dz = axis(camera.z, min.z, max.z);
+    dx.max(dy).max(dz) <= PHYSICS_RADIUS_CELLS as f64
+}
+
+fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
+    let (min, max) = fragment.world_bounds();
+    bounds_in_physics_range(min, max, camera)
+}
+
 /// Reconcile engine-owned fragments with Avian bodies.
 ///
 /// Creation/destruction happens in the ordinary host update. Physics then steps
@@ -485,11 +613,22 @@ type FragmentBodyQuery<'w, 's> = Query<
 pub fn sync_fragment_bodies(
     mut commands: Commands,
     fragments: Res<DynamicFragments>,
+    renders: Res<crate::fragment_render::FragmentEntities>,
     budget: Res<FragmentBudgetRes>,
+    camera: Option<Single<&FlyCamera>>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
     bodies.withheld_current = 0;
-    let wanted: BTreeSet<_> = fragments.store.ids().collect();
+    bodies.pending_spawn_current = 0;
+    let camera = camera.map(|camera| camera.global);
+    let wanted: BTreeSet<_> = fragments
+        .iter()
+        .filter(|(id, fragment)| {
+            *id == SMOKE_FRAGMENT_ID
+                || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+        })
+        .map(|(id, _)| id)
+        .collect();
 
     let gone: Vec<_> = bodies
         .entries
@@ -502,10 +641,53 @@ pub fn sync_fragment_bodies(
             commands.entity(entry.entity).despawn();
         }
     }
+    bodies.blocked.retain(|id| wanted.contains(id));
 
-    let mut account = budget.account(&fragments, &bodies);
+    let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
+    let capacity = FragmentCapacity::remaining(budget.0, account);
+    if bodies
+        .last_capacity
+        .is_some_and(|previous| capacity.increased_from(previous))
+    {
+        // Only retry fragments rejected by the hard budget when capacity has
+        // actually increased. Otherwise a permanently-too-large fragment would
+        // rebuild the same greedy collider every rendered frame forever.
+        bodies.blocked.clear();
+    }
+
+    let mut spawned_this_frame = 0usize;
     for (id, fragment) in fragments.iter() {
+        if !wanted.contains(&id) {
+            continue;
+        }
         if bodies.entries.contains_key(&id) {
+            continue;
+        }
+        // In the sandbox, visible geometry is admitted first. Do not create an
+        // invisible simulated body for a fragment whose render mesh was held
+        // back by the shared fragment budget.
+        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
+            bodies.pending_spawn_current += 1;
+            continue;
+        }
+        if bodies.blocked.contains(&id) {
+            bodies.withheld_current += 1;
+            continue;
+        }
+        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
+            bodies.pending_spawn_current += 1;
+            continue;
+        }
+
+        // Cheap caps first: do not compile a collider merely to discover that
+        // no additional body or box can possibly be admitted.
+        if account.footprint.physics_bodies >= budget.0.max_physics_bodies
+            || account.footprint.collision_boxes >= budget.0.max_collision_boxes
+            || account.footprint.tracked_bytes() >= budget.0.hard_bytes
+        {
+            bodies.blocked.insert(id);
+            bodies.withheld_current += 1;
+            bodies.withheld_total += 1;
             continue;
         }
 
@@ -517,6 +699,7 @@ pub fn sync_fragment_bodies(
             ..FragmentFootprint::default()
         };
         if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
+            bodies.blocked.insert(id);
             bodies.withheld_current += 1;
             bodies.withheld_total += 1;
             continue;
@@ -561,8 +744,10 @@ pub fn sync_fragment_bodies(
                 collision_bytes: descriptor.collision_bytes(),
             },
         );
+        spawned_this_frame += 1;
         account.footprint += next;
     }
+    bodies.last_capacity = Some(FragmentCapacity::remaining(budget.0, account));
 }
 
 /// Copy backend simulation state back into Micrology fragments.
@@ -613,7 +798,7 @@ pub struct FragmentSmoke {
     verified: bool,
 }
 
-const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
+pub(crate) const SMOKE_FRAGMENT_ID: FragmentId = FragmentId {
     sequence: u64::MAX,
     index: 0,
 };

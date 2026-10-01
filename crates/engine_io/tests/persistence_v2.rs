@@ -225,6 +225,37 @@ fn only_dirty_regions_are_rewritten() {
 }
 
 #[test]
+fn a_manifest_failure_never_marks_dirty_regions_clean() {
+    let dir = scratch("manifest-failure");
+    let mut world = sample();
+    save_world_v2(&world, &meta(), &dir).unwrap();
+    for pos in world.region_positions().collect::<Vec<_>>() {
+        world.region_mut(pos).unwrap().mark_clean();
+    }
+
+    world.set(CellPos::new(1, 1, 1), Some(DIRT));
+    assert_eq!(
+        world.dirty_regions().collect::<Vec<_>>(),
+        vec![RegionPos::ZERO]
+    );
+
+    // Force only the final manifest replacement to fail. Region shard writes
+    // can succeed, but without the directory index the save is not durable.
+    let manifest = manifest_path(&dir);
+    std::fs::remove_file(&manifest).unwrap();
+    std::fs::create_dir(&manifest).unwrap();
+
+    assert!(v2::save_dirty_regions(&mut world, &meta(), &dir).is_err());
+    assert_eq!(
+        world.dirty_regions().collect::<Vec<_>>(),
+        vec![RegionPos::ZERO],
+        "manifest failure must leave the region retryable"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn an_edit_survives_eviction_and_reload() {
     // The acceptance property in miniature: edit, save, drop from memory,
     // reload, and the edit is exact.

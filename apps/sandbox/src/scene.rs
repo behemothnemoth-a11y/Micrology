@@ -113,6 +113,14 @@ fn demo_world() -> EngineWorld {
             world.set(CellPos::new(x, height + 1, z), Some(TURF));
         }
     }
+    // The sandbox is now a destruction demo, so its terrain needs an explicit
+    // structural root. Only the bottom layer is fixed; everything above it is
+    // ordinary topology and can still be separated by a complete cut.
+    world.set_anchor_box(
+        CellPos::new(-HALF, 0, -HALF),
+        CellPos::new(HALF - 1, 0, HALF - 1),
+        true,
+    );
 
     // A hollow brick room: walls, floor and roof, with a doorway carved out.
     world.fill_box(CellPos::new(4, 8, 4), CellPos::new(14, 15, 14), Some(BRICK));

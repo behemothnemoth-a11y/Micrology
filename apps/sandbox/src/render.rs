@@ -133,7 +133,7 @@ pub struct SectionMesh;
 /// Convert engine mesh data into a Bevy mesh.
 ///
 /// This is the only place in the project where engine geometry meets a renderer.
-fn to_bevy_mesh(data: &MeshData) -> Mesh {
+pub(crate) fn to_bevy_mesh(data: &MeshData) -> Mesh {
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
