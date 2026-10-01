@@ -74,10 +74,7 @@ pub enum IoError {
     /// Persisted region membership disagrees with fragment payload positions.
     FragmentIndexMismatch,
     /// The next destruction sequence would reuse an existing fragment ID range.
-    FragmentSequenceRegression {
-        next: u64,
-        max_existing: u64,
-    },
+    FragmentSequenceRegression { next: u64, max_existing: u64 },
     /// A fragment pose cannot map into the current region address space.
     FragmentSpatial { source: FragmentSpatialError },
     /// A path that should be a world directory is not usable as one.
