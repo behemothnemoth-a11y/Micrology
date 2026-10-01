@@ -592,6 +592,13 @@ pub fn sync_fragment_bodies(
         if bodies.entries.contains_key(&id) {
             continue;
         }
+        // In the sandbox, visible geometry is admitted first. Do not create an
+        // invisible simulated body for a fragment whose render mesh was held
+        // back by the shared fragment budget.
+        if !renders.contains(id) {
+            bodies.pending_spawn_current += 1;
+            continue;
+        }
         if bodies.blocked.contains(&id) {
             bodies.withheld_current += 1;
             continue;
