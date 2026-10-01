@@ -13,7 +13,7 @@
 use crate::camera::{FlyCamera, cursor_grabbed};
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
-use crate::physics::DynamicFragments;
+use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
 use crate::streaming::StreamRes;
@@ -179,6 +179,7 @@ pub struct SaveLoadResources<'w> {
     geometry: ResMut<'w, GeometryRes>,
     sections: ResMut<'w, SectionEntities>,
     fragments: ResMut<'w, DynamicFragments>,
+    fragment_bodies: ResMut<'w, FragmentBodies>,
     fragment_renders: ResMut<'w, FragmentEntities>,
     destruction: ResMut<'w, DestructionHost>,
     status: ResMut<'w, StatusLine>,
@@ -196,6 +197,7 @@ pub fn save_and_load(
         mut geometry,
         mut sections,
         mut fragments,
+        mut fragment_bodies,
         mut fragment_renders,
         mut destruction,
         mut status,
@@ -229,6 +231,7 @@ pub fn save_and_load(
         sections.clear(&mut commands);
         stream.scheduler.clear();
         stream.streamer.clear();
+        fragment_bodies.clear(&mut commands);
         fragment_renders.clear(&mut commands);
         status.0 = match crate::destruction::reload_fragment_state(
             &stream,
