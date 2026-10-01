@@ -160,7 +160,11 @@ fn stale_spatial_index_is_recovered_on_full_load() {
     let (loaded, sequence, spatial) = load_fragment_store(&dir).unwrap();
     assert_eq!(sequence.peek(), 7);
     assert_eq!(loaded.get(f.id), Some(&f));
-    assert!(!spatial.regions_for(f.id).any(|region| region == RegionPos::ZERO));
+    assert!(
+        !spatial
+            .regions_for(f.id)
+            .any(|region| region == RegionPos::ZERO)
+    );
     assert!(spatial.regions_for(f.id).any(|region| region.x >= 3));
     std::fs::remove_dir_all(dir).unwrap();
 }
