@@ -47,10 +47,7 @@ pub enum IoError {
         volume: VolumePos,
     },
     /// A fragment payload file is missing.
-    MissingFragment {
-        fragment: FragmentId,
-        path: PathBuf,
-    },
+    MissingFragment { fragment: FragmentId, path: PathBuf },
     /// A fragment file identified a different ID than the path requested.
     FragmentMismatch {
         expected: FragmentId,
@@ -77,9 +74,7 @@ pub enum IoError {
     /// Persisted region membership disagrees with fragment payload positions.
     FragmentIndexMismatch,
     /// A fragment pose cannot map into the current region address space.
-    FragmentSpatial {
-        source: FragmentSpatialError,
-    },
+    FragmentSpatial { source: FragmentSpatialError },
     /// A path that should be a world directory is not usable as one.
     NotAWorldDirectory { path: PathBuf },
 }
