@@ -111,21 +111,11 @@ struct FragmentIndexFile {
 }
 
 /// Index data that can be loaded before any fragment payload.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct FragmentIndex {
     pub next_destruction_sequence: u64,
     pub spatial: FragmentSpatialIndex,
     fragments: BTreeSet<FragmentId>,
-}
-
-impl Default for FragmentIndex {
-    fn default() -> Self {
-        Self {
-            next_destruction_sequence: 0,
-            spatial: FragmentSpatialIndex::default(),
-            fragments: BTreeSet::new(),
-        }
-    }
 }
 
 impl FragmentIndex {
@@ -391,10 +381,8 @@ pub fn save_fragment_index(
     store: &FragmentStore,
     sequence: DestructionSequence,
 ) -> Result<FragmentSpatialIndex, IoError> {
-    let spatial =
-        FragmentSpatialIndex::from_store(store).map_err(|source| IoError::FragmentSpatial {
-            source,
-        })?;
+    let spatial = FragmentSpatialIndex::from_store(store)
+        .map_err(|source| IoError::FragmentSpatial { source })?;
     let file = index_to_file(store, &spatial, sequence);
     let mut json = serde_json::to_string_pretty(&file)?;
     json.push('\n');
