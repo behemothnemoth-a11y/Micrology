@@ -61,7 +61,6 @@ fn damaged_job(
     (built.world, job.run())
 }
 
-
 fn small_detachable_job() -> (World, engine_destruction::StructureJobResult) {
     let mut world = World::new();
     // Entirely inside volume (0,0,0), with plenty of air between the structure
@@ -71,7 +70,11 @@ fn small_detachable_job() -> (World, engine_destruction::StructureJobResult) {
     world.fill_box(CellPos::new(4, 4, 4), CellPos::new(11, 4, 11), Some(STONE));
     world.set_anchor_box(CellPos::new(4, 4, 4), CellPos::new(11, 4, 11), true);
     world.fill_box(CellPos::new(7, 5, 7), CellPos::new(8, 9, 8), Some(STONE));
-    world.fill_box(CellPos::new(5, 10, 5), CellPos::new(10, 12, 10), Some(STONE));
+    world.fill_box(
+        CellPos::new(5, 10, 5),
+        CellPos::new(10, 12, 10),
+        Some(STONE),
+    );
     world.take_dirty();
 
     let mut cut = WorldEditBatch::new();
