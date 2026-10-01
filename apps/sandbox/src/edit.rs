@@ -201,12 +201,14 @@ pub fn save_and_load(
         stream.scheduler.clear();
         stream.streamer.clear();
         fragment_renders.clear(&mut commands);
-        status.0 =
-            match crate::destruction::reload_fragment_state(&stream, &mut destruction, &mut fragments)
-            {
-                Ok(count) => format!("reloading world + {count} fragment(s) from disk"),
-                Err(error) => format!("world reloading; fragment reload FAILED: {error}"),
-            };
+        status.0 = match crate::destruction::reload_fragment_state(
+            &stream,
+            &mut destruction,
+            &mut fragments,
+        ) {
+            Ok(count) => format!("reloading world + {count} fragment(s) from disk"),
+            Err(error) => format!("world reloading; fragment reload FAILED: {error}"),
+        };
     }
 }
 

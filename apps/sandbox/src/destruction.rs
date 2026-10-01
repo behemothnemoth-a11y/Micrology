@@ -168,10 +168,7 @@ pub fn reload_fragment_state(
 /// Snapshot creation itself copies world data, so bounding worker count is not
 /// enough: without this extra per-frame bound, a burst of edits could still
 /// copy several megabytes synchronously before any worker begins.
-pub fn dispatch_structural_jobs(
-    world: Res<WorldRes>,
-    mut host: ResMut<DestructionHost>,
-) {
+pub fn dispatch_structural_jobs(world: Res<WorldRes>, mut host: ResMut<DestructionHost>) {
     if host.tasks.len() >= MAX_ACTIVE_STRUCTURAL_JOBS {
         return;
     }
@@ -202,7 +199,8 @@ pub fn dispatch_structural_jobs(
         );
         let bytes = snapshot.snapshot_bytes();
         let in_flight: u64 = host.tasks.iter().map(|task| task.snapshot_bytes).sum();
-        if in_flight.saturating_add(bytes) > MAX_IN_FLIGHT_SNAPSHOT_BYTES && !host.tasks.is_empty() {
+        if in_flight.saturating_add(bytes) > MAX_IN_FLIGHT_SNAPSHOT_BYTES && !host.tasks.is_empty()
+        {
             host.requests.push_front(request);
             break;
         }
@@ -228,13 +226,14 @@ pub fn poll_structural_jobs(
     mut status: ResMut<StatusLine>,
 ) {
     let mut finished = Vec::new();
-    host.tasks.retain_mut(|task| match check_ready(&mut task.task) {
-        Some(result) => {
-            finished.push((task.request.clone(), result));
-            false
-        }
-        None => true,
-    });
+    host.tasks
+        .retain_mut(|task| match check_ready(&mut task.task) {
+            Some(result) => {
+                finished.push((task.request.clone(), result));
+                false
+            }
+            None => true,
+        });
 
     for (mut request, result) in finished {
         host.stats.completed += 1;
@@ -260,7 +259,8 @@ pub fn poll_structural_jobs(
                         (request.snapshot_volumes * 2).min(MAX_SNAPSHOT_VOLUMES);
                     host.requeue(request);
                 } else {
-                    status.0 = "destruction analysis inconclusive; geometry left static".to_string();
+                    status.0 =
+                        "destruction analysis inconclusive; geometry left static".to_string();
                 }
             }
             ResultDisposition::Accepted => {
