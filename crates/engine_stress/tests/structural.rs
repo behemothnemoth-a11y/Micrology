@@ -311,7 +311,6 @@ fn analysis_counters_stay_zero_until_their_pass_lands() {
     // reviewable diff rather than as a new file. Until then they must be zero,
     // so a baseline diff points at real work.
     for (name, c) in &measured() {
-        assert_eq!(c.fragment_count, 0, "{name}");
         assert_eq!(c.fragment_mesh_bytes, 0, "{name}");
         assert_eq!(c.collision_boxes_exact, 0, "{name}");
         assert_eq!(c.collision_boxes_merged, 0, "{name}");
@@ -335,6 +334,49 @@ fn every_scenario_discovers_somewhere_to_start_searching() {
             "{name}: every cell is a root, so the damage removed nothing useful"
         );
     }
+}
+
+#[test]
+fn one_fragment_is_extracted_per_detached_component() {
+    // A component is one volumetric body. If these ever diverged, something
+    // would be minting bodies that no analysis found, or losing ones it did.
+    for (name, c) in &measured() {
+        assert_eq!(
+            c.fragment_count, c.detached_components,
+            "{name}: {} components became {} fragments",
+            c.detached_components, c.fragment_count
+        );
+        if c.fragment_count > 0 {
+            assert!(
+                c.fragment_cells > 0,
+                "{name}: an empty fragment is not a body"
+            );
+            assert!(c.fragment_bytes > 0, "{name}");
+            assert!(
+                c.largest_fragment_cells <= c.fragment_cells,
+                "{name}: the largest fragment holds more than all of them"
+            );
+        }
+    }
+}
+
+#[test]
+fn fragment_memory_tracks_fragment_count_not_fragment_size() {
+    // The finding that drives the debris policy. A fragment allocates whole
+    // 16³ volumes, so a 20-cell stub costs 8 KiB exactly like a 2,000-cell
+    // platform does — and 256 of them cost 2 MiB.
+    let measured = measured();
+    let storm = measured.get("fragment_storm").expect("present");
+    let column = measured.get("cut_column").expect("present");
+
+    let storm_per_cell = storm.fragment_bytes as f64 / storm.fragment_cells as f64;
+    let column_per_cell = column.fragment_bytes as f64 / column.fragment_cells as f64;
+    assert!(
+        storm_per_cell > column_per_cell * 5.0,
+        "many small fragments cost {storm_per_cell:.1} B/cell against {column_per_cell:.1} \
+         for one large one; if this ever evens out, the storage tiers changed and the \
+         debris policy's justification should be re-read"
+    );
 }
 
 #[test]

@@ -36,7 +36,12 @@
 //!    trustworthy.
 
 pub mod connectivity;
+pub mod detach;
+pub mod fragment;
 pub mod jobs;
+
+pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach};
+pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 
 pub use jobs::{
     Occupancy, ResultDisposition, SnapshotLimits, StructureFingerprint, StructureJobInput,

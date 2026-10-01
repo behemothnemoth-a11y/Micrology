@@ -41,7 +41,9 @@ use engine_core::{
     CellPos, CellSource, MaterialId, REGION_EDGE_CELLS, SectionGrid, SupportSource, VOLUME_EDGE,
     VolumePos,
 };
-use engine_destruction::{AllResident, StructuralLimits, classify_from_roots};
+use engine_destruction::{
+    AllResident, DestructionSequence, Fragment, FragmentId, StructuralLimits, classify_from_roots,
+};
 use engine_geometry::{GreedyCompiler, SectionMeshCache};
 use engine_world::{World, WorldEditBatch};
 use serde::{Deserialize, Serialize};
@@ -163,6 +165,8 @@ pub struct StructuralCounters {
     pub fragment_count: u64,
     pub fragment_cells: u64,
     pub largest_fragment_cells: u64,
+    /// Cell and palette bytes the extracted fragments own.
+    pub fragment_bytes: u64,
     pub fragment_mesh_bytes: u64,
 
     // --- collision (0003.9) ---------------------------------------------
@@ -563,6 +567,22 @@ impl StructuralScenario {
         let connectivity = started.elapsed();
         let counts = components.counts(outcome.structural_candidates.len() as u64);
 
+        // Extract every detached component as a fragment, exactly as the detach
+        // transaction does — but without removing anything, so the static
+        // geometry measured below is the world *before* detachment. Measuring
+        // after would conflate "what destruction costs" with "what is left".
+        let started = Instant::now();
+        let seq = DestructionSequence::default().peek();
+        let fragments: Vec<Fragment> = components
+            .detached()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                let cells: &dyn CellSource = &built.world;
+                Fragment::from_cells(FragmentId::new(seq, index as u32), cells, &component.cells)
+            })
+            .collect();
+        let fragment_extraction = started.elapsed();
+
         // Static geometry after the damage. Destruction changes how the world
         // looks whether or not anything detaches, so this is measured for every
         // scenario rather than only the ones that drop something.
@@ -593,6 +613,8 @@ impl StructuralScenario {
                 indeterminate_components: counts.indeterminate,
                 fragment_cells: counts.detached_cells,
                 largest_fragment_cells: counts.largest_detached_cells,
+                fragment_count: fragments.len() as u64,
+                fragment_bytes: fragments.iter().map(|f| f.footprint_bytes()).sum(),
                 static_quads: geometry.quads,
                 static_mesh_bytes: geometry.mesh_bytes,
                 // Everything else lands as its pass does.
@@ -602,6 +624,7 @@ impl StructuralScenario {
                 world_build,
                 batch_edit,
                 connectivity,
+                fragment_extraction,
                 ..StructuralTimings::default()
             },
         }
