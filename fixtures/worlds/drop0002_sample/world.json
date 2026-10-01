@@ -1,0 +1,52 @@
+{
+  "format": "micrology.world",
+  "version": 2,
+  "id": "drop0002-sample",
+  "name": "DROP 0002 sample",
+  "spawn": [
+    8.0,
+    20.0,
+    8.0
+  ],
+  "materials": [
+    {
+      "id": 1,
+      "color": {
+        "r": 130,
+        "g": 130,
+        "b": 136
+      },
+      "name": "stone"
+    },
+    {
+      "id": 2,
+      "color": {
+        "r": 120,
+        "g": 84,
+        "b": 48
+      },
+      "name": "dirt"
+    },
+    {
+      "id": 3,
+      "color": {
+        "r": 96,
+        "g": 150,
+        "b": 72
+      },
+      "name": "turf"
+    }
+  ],
+  "regions": [
+    {
+      "x": -1,
+      "y": -1,
+      "z": -1
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  ]
+}

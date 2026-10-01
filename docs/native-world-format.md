@@ -1,6 +1,10 @@
 # Native world format
 
-**Format tag:** `micrology.world` · **Current version:** `1` · **Encoding:** UTF-8 JSON
+**Format tag:** `micrology.world` · **Current version:** `2` · **Encoding:** UTF-8 JSON
+
+Two versions exist and both load. **v2** is a sharded directory and is what the
+engine writes; **v1** is a single file, still readable, and migratable with
+`engine_io::migrate_v1_to_v2`.
 
 The engine's own save format. Not NBT, not a schematic, not anything Minecraft
 reads. Import and export of foreign formats will be adapters that translate into
@@ -101,6 +105,61 @@ writer may add generator seeds, lighting data or PBR parameters and this build w
 still read the file. That is the "room for future metadata" the scope asks for, and
 it means additive changes need no version bump.
 
+## Version 2: a sharded directory
+
+```text
+world/
+  world.json                  manifest: metadata, materials, region index
+  regions/
+    r.0.0.0.json
+    r.-1.0.2.json
+```
+
+v1 was one file holding the whole world, which is fine for a resident demo and
+impossible for a streamed one: loading a single region would mean parsing
+everything, and saving one edit would mean rewriting everything. Regions are the
+residency unit, so they became the storage unit.
+
+### The manifest
+
+| field | notes |
+|-------|-------|
+| `format` | `micrology.world` |
+| `version` | `2` |
+| `id` | stable identifier for this world |
+| `name` | optional, human-readable |
+| `spawn` | `[x, y, z]` in cells, where a camera or player starts |
+| `generation` | reserved. A seeded world will eventually record enough here to regenerate untouched terrain instead of storing it; that format is not designed yet |
+| `materials` | as v1, ascending by id |
+| `regions` | which shards exist, ascending |
+
+### A region shard
+
+| field | notes |
+|-------|-------|
+| `format` | `micrology.region` |
+| `version` | `2` |
+| `pos` | the region this shard holds, checked against the file name on load |
+| `volumes` | `{pos, palette, cells}` per volume, ascending, same encoding as v1 |
+
+Shards are named `r.<x>.<y>.<z>.json`, negative coordinates included
+(`r.-1.0.2.json`). A shard whose `pos` disagrees with the name it was loaded as is
+rejected, as is a volume that does not belong to the region claiming it — both
+would otherwise corrupt a world quietly.
+
+### What v2 adds beyond sharding
+
+- **Single-region I/O.** `load_region` and `save_region` touch one shard. This is
+  the streaming primitive.
+- **Dirty-only saves.** `save_dirty_regions` writes just the regions with unsaved
+  edits and marks them clean, which is what makes "save before evict" affordable.
+- **World metadata**, which v1 had nowhere to put.
+
+Everything v1 guaranteed still holds and is still tested: canonical byte-identical
+output for equal worlds, atomic writes via a `.tmp` sibling and a rename, unknown
+keys ignored at every level, and unregistered materials rendering as magenta
+rather than failing.
+
 ## Changing the format
 
 Additive and optional? No bump — unknown keys are already ignored and missing ones
@@ -122,9 +181,8 @@ That is deliberate: a format change should be a visible, reviewed diff.
 ## Known limitations
 
 - No compression, and no intention of adding it before a binary version.
-- No world metadata yet: no name, no seed, no spawn point, no timestamps. The
-  schema has room; nothing writes them.
-- Everything is in one file. Phase B's streaming work needs per-region files, and
-  that will be a version bump.
-- Floating point does not appear in the format at all, which is why determinism is
-  currently easy. Keep it that way if you can.
+- No generator metadata. The manifest has a placeholder and nothing writes it.
+- No timestamps, and no record of which engine version wrote a world.
+- `spawn` is the only float in the format. Everything else is integers, which is
+  why determinism is currently easy — keep it that way if you can.
+- Migration is one-way: there is no v2 → v1 downgrade, and there should not be.

@@ -26,6 +26,11 @@
 
 mod error;
 mod format;
+pub mod v2;
 
 pub use error::IoError;
 pub use format::{FORMAT_TAG, FORMAT_VERSION, from_json, load_world, save_world, to_json};
+pub use v2::{
+    FORMAT_VERSION_V2, LoadedWorld, WorldMeta, load_region, load_world_v2, migrate_v1_to_v2,
+    save_dirty_regions, save_region, save_world_v2,
+};

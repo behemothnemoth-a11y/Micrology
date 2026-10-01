@@ -23,6 +23,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     engine_io::save_world(&sample_world(), worlds.join("drop0001_sample.json"))?;
     engine_io::save_world(&World::new(), worlds.join("empty.json"))?;
 
+    // The same world in format v2, so the sharded format gets the same
+    // stability guarantee: an older directory must keep loading.
+    let v2_dir = worlds.join("drop0002_sample");
+    if v2_dir.exists() {
+        std::fs::remove_dir_all(&v2_dir)?;
+    }
+    let meta = engine_io::WorldMeta::new("drop0002-sample")
+        .with_name("DROP 0002 sample")
+        .with_spawn([8.0, 20.0, 8.0]);
+    engine_io::save_world_v2(&sample_world(), &meta, &v2_dir)?;
+
     println!("wrote fixtures to {}", worlds.display());
     Ok(())
 }

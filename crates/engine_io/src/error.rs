@@ -1,6 +1,6 @@
 //! Save/load failures.
 
-use engine_core::VolumePos;
+use engine_core::{RegionPos, VolumePos};
 use engine_volume::VolumeError;
 use std::fmt;
 use std::path::PathBuf;
@@ -24,6 +24,20 @@ pub enum IoError {
         chunk: VolumePos,
         source: VolumeError,
     },
+    /// The manifest lists a region whose file is not there.
+    MissingRegion { region: RegionPos, path: PathBuf },
+    /// A region file does not describe the region it was loaded as.
+    RegionMismatch {
+        expected: RegionPos,
+        found: RegionPos,
+    },
+    /// A volume in a region file is outside that region.
+    VolumeOutsideRegion {
+        region: RegionPos,
+        volume: VolumePos,
+    },
+    /// A path that should be a world directory is not usable as one.
+    NotAWorldDirectory { path: PathBuf },
 }
 
 impl fmt::Display for IoError {
@@ -46,6 +60,21 @@ impl fmt::Display for IoError {
             IoError::BadChunk { chunk, source } => {
                 write!(f, "chunk {chunk:?} holds invalid cell data: {source}")
             }
+            IoError::MissingRegion { region, path } => write!(
+                f,
+                "the manifest lists region {region:?} but {} is missing",
+                path.display()
+            ),
+            IoError::RegionMismatch { expected, found } => write!(
+                f,
+                "region file claims to be {found:?} but was loaded as {expected:?}"
+            ),
+            IoError::VolumeOutsideRegion { region, volume } => {
+                write!(f, "volume {volume:?} does not belong to region {region:?}")
+            }
+            IoError::NotAWorldDirectory { path } => {
+                write!(f, "{} is not a world directory", path.display())
+            }
         }
     }
 }
@@ -56,7 +85,12 @@ impl std::error::Error for IoError {
             IoError::File { source, .. } => Some(source),
             IoError::Parse(source) => Some(source),
             IoError::BadChunk { source, .. } => Some(source),
-            IoError::WrongFormat { .. } | IoError::UnsupportedVersion { .. } => None,
+            IoError::WrongFormat { .. }
+            | IoError::UnsupportedVersion { .. }
+            | IoError::MissingRegion { .. }
+            | IoError::RegionMismatch { .. }
+            | IoError::VolumeOutsideRegion { .. }
+            | IoError::NotAWorldDirectory { .. } => None,
         }
     }
 }
