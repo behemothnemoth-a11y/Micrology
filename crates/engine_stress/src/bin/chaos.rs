@@ -173,6 +173,14 @@ fn stale_result(cases: &mut Vec<Case>) {
 fn policy_refusal(cases: &mut Vec<Case>) {
     let (mut world, result) = damaged_job(StructuralScenario::CutColumn, SnapshotLimits::default());
     let before = world.occupied_count();
+    let diagnostic = format!(
+        "judge={:?}, truncated={}, byte_limit={}, required={:?}, components={:?}",
+        result.judge(&world),
+        result.was_truncated,
+        result.hit_byte_limit,
+        result.required_regions(),
+        result.components
+    );
     let mut sequence = DestructionSequence::new(77);
     let refusal = detach_if(&mut world, &mut sequence, &result, |_| false);
     let ok = refusal == Err(DetachRefusal::RejectedByPolicy)
@@ -183,7 +191,7 @@ fn policy_refusal(cases: &mut Vec<Case>) {
         "atomic_policy_refusal",
         ok,
         format!(
-            "result={refusal:?}, occupied {}->{}, sequence={}",
+            "result={refusal:?}, occupied {}->{}, sequence={}; {diagnostic}",
             before,
             world.occupied_count(),
             sequence.peek()
