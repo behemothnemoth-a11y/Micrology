@@ -49,7 +49,7 @@ pub use collision::{
     GreedyCollisionCompiler,
 };
 
-pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach};
+pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
