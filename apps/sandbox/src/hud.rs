@@ -9,7 +9,9 @@
 //! consequence of the geometry counts.
 
 use crate::camera::FlyCamera;
+use crate::destruction::DestructionHost;
 use crate::edit::Palette;
+use crate::fragment_render::FragmentEntities;
 use crate::physics::{
     DynamicFragments, FragmentBodies, FragmentBudgetRes, PHYSICS_RADIUS_CELLS, StaticColliders,
 };
@@ -69,7 +71,7 @@ pub fn apply_visibility(
 }
 
 const CONTROLS: &str = "click grab · esc release · wasd+space/ctrl fly · shift fast\n\
-                        lmb carve · rmb place · f paint · 1-5 / wheel material\n\
+                        lmb carve · shift+lmb r2 · ctrl+lmb r4 · rmb place · f paint\n\
                         f5 flush dirty regions · f9 drop and restream · g toggle mesher\n\
                         q quit (flushes unsaved edits) · h hide this overlay";
 
@@ -163,7 +165,9 @@ pub struct Diagnostics<'w> {
     pub physics: Res<'w, StaticColliders>,
     pub fragments: Res<'w, DynamicFragments>,
     pub fragment_bodies: Res<'w, FragmentBodies>,
+    pub fragment_renders: Res<'w, FragmentEntities>,
     pub fragment_budget: Res<'w, FragmentBudgetRes>,
+    pub destruction: Res<'w, DestructionHost>,
 }
 
 pub fn update(
@@ -184,7 +188,9 @@ pub fn update(
         physics,
         fragments,
         fragment_bodies,
+        fragment_renders,
         fragment_budget,
+        destruction,
     } = sources;
     let Some(text) = text else {
         return;
@@ -216,8 +222,12 @@ pub fn update(
     let budget = stream.streamer.budget();
     let physics_stats = physics.stats();
     let fragment_stats = fragments.stats();
-    let fragment_account = fragment_budget.account(&fragments, &fragment_bodies);
-    let fragment_pressure = fragment_budget.pressure(&fragments, &fragment_bodies);
+    let fragment_render_stats = fragment_renders.stats();
+    let fragment_account =
+        fragment_budget.account(&fragments, &fragment_bodies, fragment_renders.mesh_bytes());
+    let fragment_pressure =
+        fragment_budget.pressure(&fragments, &fragment_bodies, fragment_renders.mesh_bytes());
+    let destruction_stats = destruction.stats();
 
     **text.into_inner() = format!(
         "Micrology · DROP 0003 · mesher: {mesher}\n\
@@ -228,8 +238,9 @@ pub fn update(
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
-         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  withheld {fragment_withheld}/{fragment_withheld_total}  cells {fragment_cells}\n\
-         fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}\n\
+         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  body-pending {fragment_body_pending}  render {fragment_render_count}/{fragment_render_pending}  cells {fragment_cells}\n\
+         fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}  withheld {fragment_withheld}/{fragment_withheld_total}\n\
+         destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  stale {destruction_stale}  inconclusive {destruction_inconclusive}  made {destruction_fragments} frag / {destruction_cells} cells\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -276,6 +287,9 @@ pub fn update(
         fragment_dynamic = fragment_stats.dynamic,
         fragment_sleeping = fragment_stats.sleeping,
         fragment_body_count = fragment_bodies.len(),
+        fragment_body_pending = fragment_bodies.pending_spawn_current(),
+        fragment_render_count = fragment_render_stats.entities,
+        fragment_render_pending = fragment_render_stats.pending_uploads,
         fragment_withheld = fragment_bodies.withheld_current(),
         fragment_withheld_total = fragment_bodies.withheld_total(),
         fragment_cells = fragment_stats.cells,
@@ -284,6 +298,13 @@ pub fn update(
         fragment_hard = human_bytes(fragment_budget.0.hard_bytes),
         fragment_pressure = fragment_pressure_label(fragment_pressure),
         fragment_boxes = fragment_account.footprint.collision_boxes,
+        destruction_requested = destruction_stats.requested,
+        destruction_active = destruction_stats.active_jobs,
+        destruction_pending = destruction_stats.pending_requests,
+        destruction_stale = destruction_stats.stale,
+        destruction_inconclusive = destruction_stats.inconclusive,
+        destruction_fragments = destruction_stats.fragments_created,
+        destruction_cells = destruction_stats.cells_detached,
         cell_bytes = human_bytes(footprint.cell_bytes),
         palette_bytes = human_bytes(footprint.palette_bytes),
         mesh_bytes = human_bytes(stats.mesh_bytes),
