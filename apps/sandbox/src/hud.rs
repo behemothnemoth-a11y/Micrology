@@ -10,6 +10,7 @@
 
 use crate::camera::FlyCamera;
 use crate::edit::Palette;
+use crate::physics::{PHYSICS_RADIUS_CELLS, StaticColliders};
 use crate::render::{RenderOriginRes, SectionEntities};
 use crate::streaming::{StreamRes, StreamTasks};
 use crate::{GeometryRes, StatusLine, WorldRes};
@@ -157,6 +158,7 @@ pub struct Diagnostics<'w> {
     pub stream: Res<'w, StreamRes>,
     pub tasks: Res<'w, StreamTasks>,
     pub sections: Res<'w, SectionEntities>,
+    pub physics: Res<'w, StaticColliders>,
 }
 
 pub fn update(
@@ -174,6 +176,7 @@ pub fn update(
         stream,
         tasks,
         sections,
+        physics,
     } = sources;
     let Some(text) = text else {
         return;
@@ -203,6 +206,7 @@ pub fn update(
     let camera_region = global.cell().region();
     let account = stream.streamer.account();
     let budget = stream.streamer.budget();
+    let physics_stats = physics.stats();
 
     **text.into_inner() = format!(
         "Micrology · DROP 0002 · mesher: {mesher}\n\
@@ -212,6 +216,7 @@ pub fn update(
          volumes {volumes}  cells {cells}  dirty sections {dirty_sections}\n\
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
+         physics: static {physics_sections} sections  {physics_boxes} boxes  {physics_bytes}  radius {physics_radius}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -248,6 +253,10 @@ pub fn update(
         ratio = merge_ratio,
         tris = stats.triangles,
         entities = sections.len(),
+        physics_sections = physics_stats.active_sections,
+        physics_boxes = physics_stats.boxes,
+        physics_bytes = human_bytes(physics_stats.bytes),
+        physics_radius = PHYSICS_RADIUS_CELLS,
         cell_bytes = human_bytes(footprint.cell_bytes),
         palette_bytes = human_bytes(footprint.palette_bytes),
         mesh_bytes = human_bytes(stats.mesh_bytes),
