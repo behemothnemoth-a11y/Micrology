@@ -73,6 +73,11 @@ pub enum IoError {
     },
     /// Persisted region membership disagrees with fragment payload positions.
     FragmentIndexMismatch,
+    /// The next destruction sequence would reuse an existing fragment ID range.
+    FragmentSequenceRegression {
+        next: u64,
+        max_existing: u64,
+    },
     /// A fragment pose cannot map into the current region address space.
     FragmentSpatial { source: FragmentSpatialError },
     /// A path that should be a world directory is not usable as one.
@@ -145,6 +150,10 @@ impl fmt::Display for IoError {
                 f,
                 "fragment spatial index does not match the persisted fragment payloads"
             ),
+            IoError::FragmentSequenceRegression { next, max_existing } => write!(
+                f,
+                "fragment index next destruction sequence {next} is not past existing sequence {max_existing}"
+            ),
             IoError::FragmentSpatial { source } => {
                 write!(f, "fragment spatial index failed: {source}")
             }
@@ -175,6 +184,7 @@ impl std::error::Error for IoError {
             | IoError::WrongFragmentFormat { .. }
             | IoError::FragmentIndexUnknownId { .. }
             | IoError::FragmentIndexMismatch
+            | IoError::FragmentSequenceRegression { .. }
             | IoError::NotAWorldDirectory { .. } => None,
         }
     }
