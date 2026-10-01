@@ -117,7 +117,8 @@ impl DestructionHost {
             // resolve several disconnected components in one pass.
             if let Some(last) = self.requests.back_mut() {
                 last.roots.extend(roots);
-                last.waiting_for.extend(outcome.unresolved_regions.iter().copied());
+                last.waiting_for
+                    .extend(outcome.unresolved_regions.iter().copied());
                 last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
                 last.retries = 0;
                 self.stats.coalesced_requests += 1;
