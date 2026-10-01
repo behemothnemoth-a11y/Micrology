@@ -17,6 +17,7 @@
 
 use crate::WorldRes;
 use crate::camera::FlyCamera;
+use crate::render::FragmentEntities;
 use avian3d::math::{Quaternion, Vector};
 use avian3d::prelude::{
     AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
@@ -441,9 +442,11 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        renders: &FragmentEntities,
     ) -> FragmentAccount {
         let mut account = fragments.account();
         account.add_derived(bodies.derived_footprint());
+        account.add_derived(renders.derived_footprint());
         account
     }
 
@@ -451,8 +454,9 @@ impl FragmentBudgetRes {
         &self,
         fragments: &DynamicFragments,
         bodies: &FragmentBodies,
+        renders: &FragmentEntities,
     ) -> FragmentPressure {
-        self.0.pressure(self.account(fragments, bodies))
+        self.0.pressure(self.account(fragments, bodies, renders))
     }
 }
 
@@ -486,6 +490,7 @@ pub fn sync_fragment_bodies(
     mut commands: Commands,
     fragments: Res<DynamicFragments>,
     budget: Res<FragmentBudgetRes>,
+    renders: Res<FragmentEntities>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
     bodies.withheld_current = 0;
@@ -503,9 +508,9 @@ pub fn sync_fragment_bodies(
         }
     }
 
-    let mut account = budget.account(&fragments, &bodies);
+    let mut account = budget.account(&fragments, &bodies, &renders);
     for (id, fragment) in fragments.iter() {
-        if bodies.entries.contains_key(&id) {
+        if bodies.entries.contains_key(&id) || !renders.has(id) {
             continue;
         }
 
