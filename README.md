@@ -13,7 +13,7 @@ scale foundation are complete: Micrology owns, streams, edits, saves and renders
 its own bounded-memory volumetric world. DROP 0003 is now through **0003.10**:
 support topology, structural connectivity, native fragments, exact/greedy
 collision compilation, streamed static-world physics, and the dynamic fragment
-physics adapter are implemented; fragment lifecycle/budgeting is next.
+physics adapter and fragment lifecycle/budgeting are implemented; fragment persistence and spatial indexing are next.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -78,6 +78,10 @@ build; nothing reads them in normal use:
 | `MICROLOGY_BUDGET_MB` | memory ceiling (default 96) |
 | `MICROLOGY_LOAD_RADIUS` | regions fetched around the camera |
 | `MICROLOGY_UNLOAD_RADIUS` | regions kept before eviction |
+| `MICROLOGY_FRAGMENT_SOFT_MB` | fragment tracked-byte soft target (default 32) |
+| `MICROLOGY_FRAGMENT_HARD_MB` | fragment tracked-byte ceiling (default 64) |
+| `MICROLOGY_FRAGMENT_MAX_BODIES` | active fragment body cap (default 512) |
+| `MICROLOGY_FRAGMENT_MAX_BOXES` | active fragment collider-box cap (default 65,536) |
 
 ### Linux system dependencies
 
@@ -152,8 +156,7 @@ wrong by that factor. Verified on a 153 MiB world held inside a 24 MiB ceiling.
 
 ## What does not exist yet
 
-Still not implemented: live detachment feeding dynamic fragment bodies, fragment lifecycle/budgets
-and persistence, the interactive structural-destruction pipeline, LOD, an editor,
+Still not implemented: live detachment feeding dynamic fragment bodies, fragment persistence/spatial streaming, the interactive structural-destruction pipeline, LOD, an editor,
 procedural generation, scripting, networking, multiplayer, Minecraft or
 Litematica import/export, GIS ingestion, volume transforms, and any actual game.
 

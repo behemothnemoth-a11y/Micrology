@@ -10,7 +10,9 @@
 
 use crate::camera::FlyCamera;
 use crate::edit::Palette;
-use crate::physics::{DynamicFragments, FragmentBodies, PHYSICS_RADIUS_CELLS, StaticColliders};
+use crate::physics::{
+    DynamicFragments, FragmentBodies, FragmentBudgetRes, PHYSICS_RADIUS_CELLS, StaticColliders,
+};
 use crate::render::{RenderOriginRes, SectionEntities};
 use crate::streaming::{StreamRes, StreamTasks};
 use crate::{GeometryRes, StatusLine, WorldRes};
@@ -161,6 +163,7 @@ pub struct Diagnostics<'w> {
     pub physics: Res<'w, StaticColliders>,
     pub fragments: Res<'w, DynamicFragments>,
     pub fragment_bodies: Res<'w, FragmentBodies>,
+    pub fragment_budget: Res<'w, FragmentBudgetRes>,
 }
 
 pub fn update(
@@ -181,6 +184,7 @@ pub fn update(
         physics,
         fragments,
         fragment_bodies,
+        fragment_budget,
     } = sources;
     let Some(text) = text else {
         return;
@@ -211,6 +215,9 @@ pub fn update(
     let account = stream.streamer.account();
     let budget = stream.streamer.budget();
     let physics_stats = physics.stats();
+    let fragment_stats = fragments.stats();
+    let fragment_account = fragment_budget.account(&fragments, &fragment_bodies);
+    let fragment_pressure = fragment_budget.pressure(&fragments, &fragment_bodies);
 
     **text.into_inner() = format!(
         "Micrology · DROP 0003 · mesher: {mesher}\n\
@@ -221,7 +228,8 @@ pub fn update(
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
-         fragments: owned {fragment_count}  bodies {fragment_body_count}\n\
+         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  withheld {fragment_withheld}/{fragment_withheld_total}  cells {fragment_cells}\n\
+         fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -265,7 +273,17 @@ pub fn update(
         physics_built = physics_stats.rebuilt_this_frame,
         physics_radius = PHYSICS_RADIUS_CELLS,
         fragment_count = fragments.len(),
+        fragment_dynamic = fragment_stats.dynamic,
+        fragment_sleeping = fragment_stats.sleeping,
         fragment_body_count = fragment_bodies.len(),
+        fragment_withheld = fragment_bodies.withheld_current(),
+        fragment_withheld_total = fragment_bodies.withheld_total(),
+        fragment_cells = fragment_stats.cells,
+        fragment_bytes = human_bytes(fragment_account.footprint.tracked_bytes()),
+        fragment_soft = human_bytes(fragment_budget.0.soft_bytes),
+        fragment_hard = human_bytes(fragment_budget.0.hard_bytes),
+        fragment_pressure = fragment_pressure_label(fragment_pressure),
+        fragment_boxes = fragment_account.footprint.collision_boxes,
         cell_bytes = human_bytes(footprint.cell_bytes),
         palette_bytes = human_bytes(footprint.palette_bytes),
         mesh_bytes = human_bytes(stats.mesh_bytes),
@@ -306,5 +324,13 @@ fn human_bytes(bytes: u64) -> String {
         format!("{bytes}B")
     } else {
         format!("{value:.1}{}", UNITS[unit])
+    }
+}
+
+fn fragment_pressure_label(pressure: engine_destruction::FragmentPressure) -> &'static str {
+    match pressure {
+        engine_destruction::FragmentPressure::Comfortable => "ok",
+        engine_destruction::FragmentPressure::OverSoft => "OVER SOFT",
+        engine_destruction::FragmentPressure::OverHard => "OVER HARD",
     }
 }
