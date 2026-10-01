@@ -1,12 +1,11 @@
 use avian3d::math::{Quaternion, Vector};
 use avian3d::prelude::{
-    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, Position as PhysicsPosition,
-    RigidBody, Rotation as PhysicsRotation, Sleeping,
+    AngularVelocity, Collider, LinearVelocity, PhysicsPlugins, PhysicsTransformConfig,
+    Position as PhysicsPosition, RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
-use bevy::app::PluginGroup;
-use bevy::prelude::{App, DefaultPlugins, Entity};
-use bevy::window::WindowPlugin;
-use bevy::time::TimeUpdateStrategy;
+use bevy::ecs::schedule::ScheduleLabel;
+use bevy::prelude::{App, Entity, MinimalPlugins, Time};
+use bevy::transform::TransformPlugin;
 use engine_core::{CellBounds, CellPos, CellSource, MaterialId};
 use engine_destruction::{
     detach, CollisionCompiler, DestructionSequence, Fragment, FragmentPhysicsDescriptor,
@@ -256,6 +255,9 @@ fn collider_from_shape(shape: &engine_destruction::CollisionShape, origin: CellP
     Some(Collider::compound(parts))
 }
 
+#[derive(ScheduleLabel, Debug, Hash, PartialEq, Eq, Clone)]
+struct DiagnosticPhysics;
+
 fn run_physics(static_world: &World, fragment: &Fragment) -> (u64, Vec<PhysicsFrame>) {
     let static_bounds = CellBounds::new(CellPos::new(0, 0, 0), CellPos::new(63, 31, 15));
     let static_shape = GreedyCollisionCompiler.compile(static_world, static_bounds);
@@ -269,13 +271,21 @@ fn run_physics(static_world: &World, fragment: &Fragment) -> (u64, Vec<PhysicsFr
 
     let mut app = App::new();
     app.add_plugins((
-        DefaultPlugins.set(WindowPlugin {
-            primary_window: None,
-            ..Default::default()
-        }),
-        PhysicsPlugins::default(),
+        MinimalPlugins,
+        TransformPlugin,
+        PhysicsPlugins::new(DiagnosticPhysics),
     ));
-    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    // The diagnostic owns Position/Rotation directly and has no scene hierarchy
+    // to synchronize. Disable transform mirroring so this custom physics-only
+    // schedule stays independent from Bevy's render/update stack.
+    app.insert_resource(PhysicsTransformConfig {
+        propagate_before_physics: false,
+        transform_to_position: false,
+        position_to_transform: false,
+        transform_to_collider_scale: false,
+    });
+    app.finish();
+    app.cleanup();
 
     app.world_mut().spawn((
         RigidBody::Static,
@@ -311,7 +321,10 @@ fn run_physics(static_world: &World, fragment: &Fragment) -> (u64, Vec<PhysicsFr
     let mut frames = Vec::new();
     for tick in 0..=300u32 {
         if tick > 0 {
-            app.update();
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_secs_f64(1.0 / 60.0));
+            app.world_mut().run_schedule(DiagnosticPhysics);
         }
         if tick % 2 != 0 {
             continue;
