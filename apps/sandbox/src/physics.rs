@@ -321,6 +321,23 @@ mod tests {
             u64::from(u32::MAX) - 15
         );
     }
+
+    #[test]
+    fn dynamic_physics_residency_uses_the_same_local_radius_rule() {
+        let camera = engine_core::GlobalPos::new(1000.0, 20.0, -500.0);
+        assert!(global_in_physics_range(
+            engine_core::GlobalPos::new(1048.0, 68.0, -452.0),
+            camera
+        ));
+        assert!(!global_in_physics_range(
+            engine_core::GlobalPos::new(1048.001, 20.0, -500.0),
+            camera
+        ));
+        assert!(!global_in_physics_range(
+            engine_core::GlobalPos::new(-1_000_000.0, 20.0, -500.0),
+            camera
+        ));
+    }
 }
 
 /// Engine-owned fragment state currently active in the sandbox.
@@ -542,12 +559,15 @@ type FragmentBodyQuery<'w, 's> = Query<
     With<DynamicFragmentBody>,
 >;
 
-fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
-    let p = fragment.pose.translation;
+fn global_in_physics_range(p: engine_core::GlobalPos, camera: engine_core::GlobalPos) -> bool {
     let dx = (p.x - camera.x).abs();
     let dy = (p.y - camera.y).abs();
     let dz = (p.z - camera.z).abs();
     dx.max(dy).max(dz) <= PHYSICS_RADIUS_CELLS as f64
+}
+
+fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
+    global_in_physics_range(fragment.pose.translation, camera)
 }
 
 /// Reconcile engine-owned fragments with Avian bodies.
@@ -602,6 +622,9 @@ pub fn sync_fragment_bodies(
 
     let mut spawned_this_frame = 0usize;
     for (id, fragment) in fragments.iter() {
+        if !wanted.contains(&id) {
+            continue;
+        }
         if bodies.entries.contains_key(&id) {
             continue;
         }
