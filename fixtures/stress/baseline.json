@@ -12,7 +12,7 @@
     "indices": 4176,
     "triangles": 1392,
     "render_units": 8,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -30,7 +30,7 @@
     "indices": 589824,
     "triangles": 196608,
     "render_units": 8,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -48,7 +48,7 @@
     "indices": 576,
     "triangles": 192,
     "render_units": 56,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -66,7 +66,7 @@
     "indices": 4044,
     "triangles": 1348,
     "render_units": 8,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -84,7 +84,7 @@
     "indices": 36864,
     "triangles": 12288,
     "render_units": 8,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -102,7 +102,7 @@
     "indices": 57024,
     "triangles": 19008,
     "render_units": 111,
-    "resident_regions": 0,
+    "resident_regions": 1,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0
@@ -120,7 +120,7 @@
     "indices": 53136,
     "triangles": 17712,
     "render_units": 110,
-    "resident_regions": 0,
+    "resident_regions": 4,
     "queued_mesh_jobs": 0,
     "completed_mesh_jobs": 0,
     "discarded_stale_mesh_jobs": 0

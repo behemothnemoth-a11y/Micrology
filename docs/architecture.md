@@ -82,8 +82,15 @@ not a meaningful test.
 
 ### `engine_world`
 
-A sparse `BTreeMap<VolumePos, Volume>`. Only volumes holding something exist, so
-coordinates are unbounded in every direction and an empty world costs nothing.
+Two levels of sparse storage: the world owns `Region`s, and a region owns the
+volumes inside its cube. Only populated volumes exist and only non-empty regions
+are kept, so coordinates stay unbounded in every direction and an empty world
+costs nothing.
+
+Regions exist because residency needs a unit far larger than 16³: loading or
+evicting one is a single map operation rather than 512. `insert_region` and
+`remove_region` are the streaming primitives, and both mark the seam neighbours
+dirty — faces hidden against a loaded neighbour become exposed when it leaves.
 
 The world answers three questions: what is at this cell, what changed, and which
 volumes are now stale. The third is the subtle one. Clearing a cell at the edge of

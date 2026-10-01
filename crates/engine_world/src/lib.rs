@@ -21,9 +21,13 @@
 //! [`SectionGrid`](engine_core::SectionGrid). The world must never assume one
 //! volume is one unit of rendering.
 
+pub mod region;
+
+pub use region::{Region, RegionFootprint, RegionSummary};
+
 use engine_core::{
-    CellPos, CellSource, FaceDir, LocalPos, MaterialId, MaterialRegistry, Revision, VOLUME_EDGE,
-    VolumePos,
+    CellPos, CellSource, FaceDir, LocalPos, MaterialId, MaterialRegistry, RegionPos, Revision,
+    VOLUME_EDGE, VolumePos,
 };
 use engine_volume::Volume;
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,14 +36,20 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct WorldStats {
     pub volumes: usize,
+    pub regions: usize,
     pub occupied_cells: u64,
     pub materials: usize,
 }
 
-/// A sparse world of cells, stored as 16³ volumes.
+/// A sparse world of cells.
+///
+/// Storage is two levels: the world owns [`Region`]s, and a region owns the 16³
+/// volumes inside it. Regions exist because residency and persistence need a
+/// unit far larger than a volume — loading or evicting one is a single map
+/// insert or removal rather than 512 of them.
 #[derive(Clone, Debug, Default)]
 pub struct World {
-    volumes: BTreeMap<VolumePos, Volume>,
+    regions: BTreeMap<RegionPos, Region>,
     materials: MaterialRegistry,
     dirty: BTreeSet<VolumePos>,
     revision: Revision,
@@ -74,7 +84,17 @@ impl World {
     /// The material at `pos`, or `None` for an empty or unloaded cell.
     pub fn get(&self, pos: CellPos) -> Option<MaterialId> {
         let (volume_pos, local) = pos.split();
-        self.volumes.get(&volume_pos)?.get(local)
+        self.regions
+            .get(&volume_pos.region())?
+            .volume(volume_pos)?
+            .get(local)
+    }
+
+    /// Whether a populated volume exists at `pos`.
+    pub fn has_volume(&self, pos: VolumePos) -> bool {
+        self.regions
+            .get(&pos.region())
+            .is_some_and(|region| region.volume(pos).is_some())
     }
 
     /// Write one cell, returning `true` if the world actually changed.
@@ -85,22 +105,19 @@ impl World {
     pub fn set(&mut self, pos: CellPos, material: Option<MaterialId>) -> bool {
         let (volume_pos, local) = pos.split();
 
-        let changed = match self.volumes.get_mut(&volume_pos) {
-            Some(volume) => volume.set(local, material),
-            None => {
-                // Clearing a cell in a volume that does not exist is a no-op;
-                // do not allocate one just to store emptiness.
-                if material.is_none() {
-                    return false;
-                }
-                self.volumes
-                    .entry(volume_pos)
-                    .or_default()
-                    .set(local, material)
-            }
-        };
+        // Clearing a cell in a volume that does not exist is a no-op; do not
+        // allocate a region or a volume just to store emptiness.
+        if material.is_none() && !self.has_volume(volume_pos) {
+            return false;
+        }
+
+        let region = self.regions.entry(volume_pos.region()).or_default();
+        let changed = region.volume_entry(volume_pos).set(local, material);
 
         if changed {
+            // Two different dirtinesses: the region needs saving, the volume
+            // needs re-meshing.
+            region.mark_dirty();
             self.mark_dirty_with_neighbours(volume_pos, local);
             self.revision.bump();
         }
@@ -125,58 +142,156 @@ impl World {
 
     /// Install a whole volume, replacing any existing one. Used by loaders.
     pub fn insert_volume(&mut self, pos: VolumePos, volume: Volume) {
-        let was_empty = volume.is_empty();
-        self.volumes.insert(pos, volume);
-        if was_empty {
-            self.volumes.remove(&pos);
-        }
+        self.regions
+            .entry(pos.region())
+            .or_default()
+            .insert_volume(pos, volume);
         self.mark_dirty(pos);
         for dir in FaceDir::ALL {
             let neighbour = pos.step(dir);
-            if self.volumes.contains_key(&neighbour) {
+            if self.has_volume(neighbour) {
                 self.mark_dirty(neighbour);
             }
         }
         self.revision.bump();
     }
 
+    // --- regions --------------------------------------------------------
+
+    /// Install a whole region, replacing any existing one.
+    ///
+    /// The streaming primitive for "this region finished loading". Every volume
+    /// it brings, and every existing volume touching its boundary, is marked for
+    /// a geometry rebuild.
+    pub fn insert_region(&mut self, pos: RegionPos, region: Region) {
+        let arrivals: Vec<VolumePos> = region.volume_positions().collect();
+        self.regions.insert(pos, region);
+        for volume in arrivals {
+            self.mark_dirty(volume);
+            for dir in FaceDir::ALL {
+                let neighbour = volume.step(dir);
+                if neighbour.region() != pos && self.has_volume(neighbour) {
+                    self.mark_dirty(neighbour);
+                }
+            }
+        }
+        self.revision.bump();
+    }
+
+    /// Remove a region, returning it.
+    ///
+    /// The streaming primitive for "this region was evicted". Volumes in
+    /// neighbouring regions that touched it are marked dirty, because the faces
+    /// they were hiding against are now exposed.
+    pub fn remove_region(&mut self, pos: RegionPos) -> Option<Region> {
+        let region = self.regions.remove(&pos)?;
+        for volume in region.volume_positions() {
+            self.mark_dirty(volume);
+            for dir in FaceDir::ALL {
+                let neighbour = volume.step(dir);
+                if neighbour.region() != pos && self.has_volume(neighbour) {
+                    self.mark_dirty(neighbour);
+                }
+            }
+        }
+        self.revision.bump();
+        Some(region)
+    }
+
+    pub fn region(&self, pos: RegionPos) -> Option<&Region> {
+        self.regions.get(&pos)
+    }
+
+    pub fn region_mut(&mut self, pos: RegionPos) -> Option<&mut Region> {
+        self.regions.get_mut(&pos)
+    }
+
+    /// Regions in ascending position order.
+    pub fn regions(&self) -> impl Iterator<Item = (RegionPos, &Region)> {
+        self.regions.iter().map(|(pos, region)| (*pos, region))
+    }
+
+    pub fn region_positions(&self) -> impl Iterator<Item = RegionPos> + '_ {
+        self.regions.keys().copied()
+    }
+
+    pub fn region_count(&self) -> usize {
+        self.regions.len()
+    }
+
+    /// Regions holding unsaved edits, in ascending order.
+    pub fn dirty_regions(&self) -> impl Iterator<Item = RegionPos> + '_ {
+        self.regions
+            .iter()
+            .filter(|(_, region)| region.is_dirty())
+            .map(|(pos, _)| *pos)
+    }
+
+    /// A summary of every resident region, for residency accounting.
+    pub fn region_summaries(&self) -> Vec<RegionSummary> {
+        self.regions
+            .iter()
+            .map(|(pos, region)| RegionSummary {
+                pos: *pos,
+                volumes: region.volume_count(),
+                occupied_cells: region.occupied_count(),
+                footprint: region.footprint(),
+                dirty: region.is_dirty(),
+            })
+            .collect()
+    }
+
+    /// Total resident bytes across every region.
+    pub fn footprint(&self) -> RegionFootprint {
+        let mut total = RegionFootprint::default();
+        for region in self.regions.values() {
+            let f = region.footprint();
+            total.cell_bytes += f.cell_bytes;
+            total.palette_bytes += f.palette_bytes;
+        }
+        total
+    }
+
     pub fn volume(&self, pos: VolumePos) -> Option<&Volume> {
-        self.volumes.get(&pos)
+        self.regions.get(&pos.region())?.volume(pos)
     }
 
     pub fn volume_mut(&mut self, pos: VolumePos) -> Option<&mut Volume> {
-        self.volumes.get_mut(&pos)
+        self.regions.get_mut(&pos.region())?.volume_mut(pos)
     }
 
-    /// Volumes in ascending position order.
+    /// Every populated volume, in **region-major** order: ascending region, then
+    /// ascending volume within it.
+    ///
+    /// Deterministic, but not the same as globally ascending volume order —
+    /// region `(0,0,0)` yields volume `(0,1,0)` before region `(0,0,1)` yields
+    /// `(0,0,8)`. Anything needing canonical global order must sort explicitly
+    /// rather than leaning on this; the save format does.
     pub fn volumes(&self) -> impl Iterator<Item = (VolumePos, &Volume)> {
-        self.volumes.iter().map(|(pos, volume)| (*pos, volume))
+        self.regions.values().flat_map(|region| region.volumes())
     }
 
-    /// The regions that currently hold at least one populated volume, in
-    /// ascending order.
-    pub fn populated_regions(&self) -> BTreeSet<engine_core::RegionPos> {
-        self.volumes.keys().map(|pos| pos.region()).collect()
+    /// Every populated volume in ascending position order.
+    pub fn volumes_sorted(&self) -> BTreeMap<VolumePos, &Volume> {
+        self.volumes().collect()
     }
 
     pub fn volume_positions(&self) -> impl Iterator<Item = VolumePos> + '_ {
-        self.volumes.keys().copied()
+        self.volumes().map(|(pos, _)| pos)
     }
 
     pub fn volume_count(&self) -> usize {
-        self.volumes.len()
+        self.regions.values().map(|r| r.volume_count()).sum()
     }
 
     pub fn occupied_count(&self) -> u64 {
-        self.volumes
-            .values()
-            .map(|v| u64::from(v.occupied_count()))
-            .sum()
+        self.regions.values().map(|r| r.occupied_count()).sum()
     }
 
     pub fn stats(&self) -> WorldStats {
         WorldStats {
-            volumes: self.volumes.len(),
+            volumes: self.volume_count(),
+            regions: self.regions.len(),
             occupied_cells: self.occupied_count(),
             materials: self.materials.len(),
         }
@@ -198,7 +313,7 @@ impl World {
 
     /// Mark every existing volume dirty — used on load, when every mesh is stale.
     pub fn mark_all_dirty(&mut self) {
-        let positions: Vec<VolumePos> = self.volumes.keys().copied().collect();
+        let positions: Vec<VolumePos> = self.volume_positions().collect();
         self.dirty.extend(positions);
     }
 
@@ -215,16 +330,17 @@ impl World {
     /// Emptied volumes stay dirty so that a caller still gets the chance to tear
     /// down their meshes.
     pub fn compact(&mut self) {
-        let mut emptied = Vec::new();
-        for (pos, volume) in self.volumes.iter_mut() {
-            volume.compact();
-            if volume.is_empty() {
-                emptied.push(*pos);
+        let mut empty_regions = Vec::new();
+        for (region_pos, region) in self.regions.iter_mut() {
+            for emptied in region.compact() {
+                self.dirty.insert(emptied);
+            }
+            if region.allocated_volume_count() == 0 {
+                empty_regions.push(*region_pos);
             }
         }
-        for pos in emptied {
-            self.volumes.remove(&pos);
-            self.dirty.insert(pos);
+        for pos in empty_regions {
+            self.regions.remove(&pos);
         }
     }
 
@@ -242,7 +358,7 @@ impl World {
             }
             let neighbour = volume_pos.step(dir);
             // A volume that does not exist has no faces to revise.
-            if self.volumes.contains_key(&neighbour) {
+            if self.has_volume(neighbour) {
                 self.dirty.insert(neighbour);
             }
         }
@@ -264,14 +380,15 @@ impl PartialEq for World {
         if self.materials != other.materials {
             return false;
         }
-        let mine = || self.volumes.iter().filter(|(_, c)| !c.is_empty());
-        let theirs = || other.volumes.iter().filter(|(_, v)| !v.is_empty());
-        if mine().count() != theirs().count() {
-            return false;
-        }
-        mine()
-            .zip(theirs())
-            .all(|((pa, va), (pb, vb))| pa == pb && va == vb)
+        // Compared in globally sorted order, not region-major: two worlds with
+        // the same cells must compare equal however their regions are arranged.
+        let mine = self.volumes_sorted();
+        let theirs = other.volumes_sorted();
+        mine.len() == theirs.len()
+            && mine
+                .iter()
+                .zip(theirs.iter())
+                .all(|((pa, va), (pb, vb))| pa == pb && va == vb)
     }
 }
 
@@ -410,16 +527,27 @@ mod tests {
     }
 
     #[test]
-    fn compact_drops_emptied_chunks_but_keeps_them_dirty() {
+    fn compact_frees_emptied_storage_and_keeps_it_dirty() {
         let mut w = world();
         w.set(CellPos::new(100, 0, 0), Some(STONE));
         let volume_pos = CellPos::new(100, 0, 0).volume();
+        let region_pos = volume_pos.region();
         w.set(CellPos::new(100, 0, 0), None);
         w.take_dirty();
 
-        assert_eq!(w.volume_count(), 1, "the chunk lingers until compaction");
-        w.compact();
+        // An emptied volume is immediately indistinguishable from one that
+        // never existed...
         assert_eq!(w.volume_count(), 0);
+        assert_eq!(w.get(CellPos::new(100, 0, 0)), None);
+        // ...but its storage is still allocated until compaction runs.
+        assert_eq!(
+            w.region(region_pos).unwrap().allocated_volume_count(),
+            1,
+            "the storage lingers until compaction"
+        );
+
+        w.compact();
+        assert_eq!(w.region_count(), 0, "an empty region is dropped entirely");
         assert!(
             w.take_dirty().contains(&volume_pos),
             "the caller must still get a chance to tear down the stale mesh"

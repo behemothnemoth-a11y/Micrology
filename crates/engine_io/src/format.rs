@@ -53,9 +53,12 @@ pub fn to_json(world: &World) -> Result<String, IoError> {
         format: FORMAT_TAG.to_string(),
         version: FORMAT_VERSION,
         materials: world.materials().iter().cloned().collect(),
+        // Sorted explicitly rather than relying on the world's iteration order:
+        // storage is region-major, and canonical output must be in ascending
+        // volume order regardless of how the world happens to be arranged.
         chunks: world
-            .volumes()
-            .filter(|(_, volume)| !volume.is_empty())
+            .volumes_sorted()
+            .into_iter()
             .map(|(pos, volume)| {
                 // Compact a copy so the palette is sorted and dead entries are
                 // gone; the live world is left untouched.

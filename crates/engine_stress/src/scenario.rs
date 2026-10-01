@@ -251,8 +251,8 @@ pub fn measure(world: &World, cache: &SectionMeshCache) -> Counters {
         indices: geometry.indices,
         triangles: geometry.triangles,
         render_units: geometry.sections as u64,
+        resident_regions: world.region_count() as u64,
         // Filled in by later DROP 0002 passes.
-        resident_regions: 0,
         queued_mesh_jobs: 0,
         completed_mesh_jobs: 0,
         discarded_stale_mesh_jobs: 0,

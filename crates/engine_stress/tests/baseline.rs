@@ -105,10 +105,18 @@ fn each_scenario_pressures_what_it_claims_to() {
         "a solid world should cost more to store than to draw"
     );
 
-    // The streaming counters are not populated yet; they must stay zero until
-    // the passes that own them land, so a baseline diff points at real work.
+    // Regions exist as of 0002.4, so every populated scenario is resident in at
+    // least one, and never in more than it has volumes.
     for (name, counters) in &measured {
-        assert_eq!(counters.resident_regions, 0, "{name}");
+        if counters.populated_volumes > 0 {
+            assert!(counters.resident_regions >= 1, "{name}");
+            assert!(
+                counters.resident_regions <= counters.populated_volumes,
+                "{name}: more regions than volumes is impossible"
+            );
+        }
+        // The job counters belong to passes that have not landed; they must stay
+        // zero so a baseline diff points at real work.
         assert_eq!(counters.queued_mesh_jobs, 0, "{name}");
         assert_eq!(counters.completed_mesh_jobs, 0, "{name}");
         assert_eq!(counters.discarded_stale_mesh_jobs, 0, "{name}");
