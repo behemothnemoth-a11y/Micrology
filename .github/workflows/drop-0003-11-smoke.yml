@@ -9,7 +9,7 @@ env:
 
 jobs:
   smoke:
-    name: dynamic fragment runtime smoke
+    name: sandbox runtime smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
