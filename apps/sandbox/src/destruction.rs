@@ -145,7 +145,8 @@ pub fn save_fragment_state(
     host: &DestructionHost,
     fragments: &DynamicFragments,
 ) -> Result<usize, engine_io::IoError> {
-    engine_io::save_fragment_store(&stream.dir, fragments.store(), host.sequence)?;
+    let store = fragments.persistent_store();
+    engine_io::save_fragment_store(&stream.dir, &store, host.sequence)?;
     Ok(fragments.len())
 }
 
