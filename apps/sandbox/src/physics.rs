@@ -317,7 +317,6 @@ mod tests {
     }
 }
 
-
 /// Engine-owned fragment state currently active in the sandbox.
 ///
 /// Persistence and spatial streaming arrive in 0003.13. Until then this is a
