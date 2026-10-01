@@ -390,6 +390,15 @@ impl World {
         changed
     }
 
+    /// The revision of a region's support, or `None` if it is not resident.
+    ///
+    /// What a structural job fingerprints: support changing under an analysis
+    /// must invalidate it, and an unrelated cell edit in the same region must
+    /// not.
+    pub fn support_revision(&self, region: RegionPos) -> Option<Revision> {
+        self.regions.get(&region).map(|r| r.support_revision())
+    }
+
     /// Anchored cells across every resident region.
     pub fn anchor_count(&self) -> u64 {
         self.regions.values().map(|r| r.anchor_count()).sum()

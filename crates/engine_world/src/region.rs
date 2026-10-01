@@ -79,6 +79,14 @@ pub struct Region {
     anchors: BTreeMap<VolumePos, AnchorField>,
     dirty: bool,
     revision: Revision,
+    /// Bumped only by support changes.
+    ///
+    /// Separate from `revision`, which every cell edit moves. A structural job's
+    /// fingerprint has to notice a support change and must not be invalidated
+    /// by every unrelated edit in the region — using the region revision for
+    /// both would make long analyses fail constantly in a world anybody is
+    /// building in.
+    support_revision: Revision,
 }
 
 impl Region {
@@ -97,6 +105,7 @@ impl Region {
             anchors: BTreeMap::new(),
             dirty: false,
             revision: Revision::ZERO,
+            support_revision: Revision::ZERO,
         }
     }
 
@@ -130,6 +139,7 @@ impl Region {
             }
             self.dirty = true;
             self.revision.bump();
+            self.support_revision.bump();
         }
         changed
     }
@@ -147,6 +157,12 @@ impl Region {
         }
         self.dirty = true;
         self.revision.bump();
+        self.support_revision.bump();
+    }
+
+    /// The revision of this region's support, moved only by anchor changes.
+    pub fn support_revision(&self) -> Revision {
+        self.support_revision
     }
 
     pub fn volume_anchors(&self, volume: VolumePos) -> Option<&AnchorField> {

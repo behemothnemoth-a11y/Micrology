@@ -36,6 +36,12 @@
 //!    trustworthy.
 
 pub mod connectivity;
+pub mod jobs;
+
+pub use jobs::{
+    Occupancy, ResultDisposition, SnapshotLimits, StructureFingerprint, StructureJobInput,
+    StructureJobResult,
+};
 
 pub use connectivity::{
     AllResident, Classification, Component, ComponentSet, DeferReason, Residency, ResidentRegions,
