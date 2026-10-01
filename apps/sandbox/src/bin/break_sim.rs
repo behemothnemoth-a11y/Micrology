@@ -4,8 +4,9 @@ use avian3d::prelude::{
     RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::prelude::{App, Entity, MinimalPlugins};
+use bevy::transform::TransformPlugin;
 use bevy::time::TimeUpdateStrategy;
-use engine_core::{CellBounds, CellPos, CellSource, MaterialId, SupportSource};
+use engine_core::{CellBounds, CellPos, CellSource, MaterialId};
 use engine_destruction::{
     detach, CollisionCompiler, DestructionSequence, Fragment, FragmentPhysicsDescriptor,
     GreedyCollisionCompiler, SnapshotLimits, StructuralLimits, StructureJobInput,
@@ -268,7 +269,7 @@ fn run_physics(static_world: &World, fragment: &Fragment) -> (u64, Vec<PhysicsFr
         collider_from_shape(&static_shape, CellPos::ZERO).expect("static collider");
 
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, PhysicsPlugins::default()));
+    app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()));
     app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
     app.world_mut().spawn((
