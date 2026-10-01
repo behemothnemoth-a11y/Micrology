@@ -78,6 +78,7 @@ pub struct StaticColliderStats {
     pub active_volumes: usize,
     pub boxes: u64,
     pub bytes: u64,
+    pub pending_volumes: usize,
     pub rebuilt_total: u64,
     pub rebuilt_this_frame: u64,
     pub despawned_total: u64,
@@ -179,6 +180,7 @@ pub fn sync_static_colliders(
     mut colliders: ResMut<StaticColliders>,
 ) {
     colliders.stats.rebuilt_this_frame = 0;
+    colliders.stats.pending_volumes = 0;
 
     let Some(camera) = camera else {
         return;
@@ -207,9 +209,7 @@ pub fn sync_static_colliders(
         colliders.remove(&mut commands, volume);
     }
 
-    // Rebuild changed or newly relevant sections nearest-first. Empty
-    // colliders are cached too (entity=None), otherwise an allocated-but-empty
-    // volume would be recompiled every frame until world compaction.
+    // Rebuild changed or newly relevant collision volumes nearest-first.
     let mut rebuilds = Vec::new();
     for (volume, distance) in desired {
         let fingerprint = StaticCollisionFingerprint::of(&world.0, volume);
@@ -222,6 +222,7 @@ pub fn sync_static_colliders(
         }
     }
     rebuilds.sort_by_key(|(distance, volume, _)| (*distance, *volume));
+    colliders.stats.pending_volumes = rebuilds.len().saturating_sub(MAX_STATIC_REBUILDS_PER_FRAME);
 
     for (_, volume, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
         let bounds = volume_bounds(volume);
