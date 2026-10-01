@@ -140,7 +140,6 @@ fn to_bevy_mesh(data: &MeshData) -> Mesh {
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, data.positions.clone())
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals.clone())
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs.clone())
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, data.colors.clone())
     .with_inserted_indices(Indices::U32(data.indices.clone()))
 }

@@ -35,8 +35,6 @@ pub struct MeshData {
     pub normals: Vec<[f32; 3]>,
     /// Linear-space RGBA vertex colours taken from each quad's material.
     pub colors: Vec<[f32; 4]>,
-    /// UVs in cell units, so a merged quad tiles rather than stretching.
-    pub uvs: Vec<[f32; 2]>,
     pub indices: Vec<u32>,
     pub stats: MeshStats,
 }
@@ -59,7 +57,6 @@ impl MeshData {
             positions: Vec::with_capacity(quad_count * 4),
             normals: Vec::with_capacity(quad_count * 4),
             colors: Vec::with_capacity(quad_count * 4),
-            uvs: Vec::with_capacity(quad_count * 4),
             indices: Vec::with_capacity(quad_count * 6),
             stats: MeshStats::default(),
         };
@@ -69,7 +66,6 @@ impl MeshData {
             let normal = quad.dir.normal_f32();
             let rgb = materials.color_of(quad.material).to_linear_f32();
             let color = [rgb[0], rgb[1], rgb[2], 1.0];
-            let (du, dv) = (quad.du as f32, quad.dv as f32);
 
             for corner in quad.corners() {
                 mesh.positions.push([
@@ -82,9 +78,6 @@ impl MeshData {
                 mesh.normals.push(normal);
                 mesh.colors.push(color);
             }
-            mesh.uvs
-                .extend_from_slice(&[[0.0, 0.0], [du, 0.0], [du, dv], [0.0, dv]]);
-
             // Corners are counter-clockwise from outside, so both triangles wind
             // counter-clockwise and face outward.
             mesh.indices
@@ -114,7 +107,6 @@ impl MeshData {
         self.positions.len() * size_of::<[f32; 3]>()
             + self.normals.len() * size_of::<[f32; 3]>()
             + self.colors.len() * size_of::<[f32; 4]>()
-            + self.uvs.len() * size_of::<[f32; 2]>()
             + self.indices.len() * size_of::<u32>()
     }
 }

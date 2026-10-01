@@ -16,6 +16,14 @@ pub struct UnitFace {
 /// The rectangle starts at the face of `origin` pointing along `dir` and extends
 /// `du` cells along the face's `u` basis axis and `dv` cells along its `v` axis
 /// (see [`FaceDir::basis`]). An unmerged face is simply `du == dv == 1`.
+///
+/// `du` and `dv` are also what a texture coordinate is derived from, should
+/// texturing arrive: the corners' UVs are `(0,0)`, `(du,0)`, `(du,dv)`, `(0,dv)`
+/// — **in cell units, not normalised**, so a merged quad tiles rather than
+/// stretching one cell's texture across the whole rectangle. `MeshData` carried
+/// those UVs until 0002.12a and no longer does, because nothing read them and
+/// they cost 8 bytes a vertex. Nothing was lost by dropping them: they are a
+/// pure function of the quad, recoverable here whenever a shader needs them.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Quad {
     pub dir: FaceDir,
