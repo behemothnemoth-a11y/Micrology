@@ -6,13 +6,13 @@
 //! in a single rendered frame.
 
 use crate::WorldRes;
-use crate::physics::DynamicFragments;
+use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::render::{RenderOriginRes, to_bevy_mesh};
 use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use engine_core::CellPos;
-use engine_destruction::FragmentId;
+use engine_destruction::{FragmentFootprint, FragmentId, FragmentPressure};
 use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
 
 const MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME: usize = 4;
@@ -29,6 +29,8 @@ pub struct FragmentRenderStats {
     pub mesh_bytes: u64,
     pub pending_uploads: usize,
     pub uploaded_this_frame: usize,
+    pub withheld_current: u64,
+    pub withheld_total: u64,
 }
 
 /// Render entities are deliberately separate from Avian rigid bodies.
@@ -38,6 +40,8 @@ pub struct FragmentRenderStats {
 #[derive(Resource, Default)]
 pub struct FragmentEntities {
     entries: HashMap<FragmentId, FragmentRenderEntry>,
+    blocked: std::collections::BTreeSet<FragmentId>,
+    last_remaining_bytes: Option<u64>,
     material: Option<Handle<StandardMaterial>>,
     stats: FragmentRenderStats,
 }
@@ -51,10 +55,18 @@ impl FragmentEntities {
         self.stats.mesh_bytes
     }
 
+    pub fn contains(&self, id: FragmentId) -> bool {
+        self.entries.contains_key(&id)
+    }
+
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in self.entries.drain() {
             commands.entity(entry.entity).despawn();
         }
+        self.blocked.clear();
+        self.last_remaining_bytes = None;
+        self.stats.withheld_current = 0;
+        self.stats.pending_uploads = 0;
         self.refresh_stats();
     }
 
@@ -85,6 +97,8 @@ pub struct FragmentMesh;
 #[derive(SystemParam)]
 pub struct FragmentRenderSources<'w, 's> {
     fragments: Res<'w, DynamicFragments>,
+    bodies: Res<'w, FragmentBodies>,
+    budget: Res<'w, FragmentBudgetRes>,
     world: Res<'w, WorldRes>,
     origin: Res<'w, RenderOriginRes>,
     renders: ResMut<'w, FragmentEntities>,
@@ -96,6 +110,8 @@ pub struct FragmentRenderSources<'w, 's> {
 pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSources) {
     let FragmentRenderSources {
         fragments,
+        bodies,
+        budget,
         world,
         origin,
         mut renders,
@@ -105,6 +121,7 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
     } = sources;
     renders.stats.pending_uploads = 0;
     renders.stats.uploaded_this_frame = 0;
+    renders.stats.withheld_current = 0;
 
     let wanted: std::collections::BTreeSet<_> = fragments.iter().map(|(id, _)| id).collect();
     let gone: Vec<_> = renders
@@ -118,6 +135,20 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
             commands.entity(entry.entity).despawn();
         }
     }
+    renders.blocked.retain(|id| wanted.contains(id));
+
+    renders.refresh_stats();
+    let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
+    let remaining = budget
+        .0
+        .hard_bytes
+        .saturating_sub(account.footprint.tracked_bytes());
+    if renders
+        .last_remaining_bytes
+        .is_some_and(|previous| remaining > previous)
+    {
+        renders.blocked.clear();
+    }
 
     let mut uploads = 0usize;
     for (id, fragment) in fragments.iter() {
@@ -129,6 +160,10 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
             continue;
         }
 
+        if renders.blocked.contains(&id) {
+            renders.stats.withheld_current += 1;
+            continue;
+        }
         if uploads >= MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME {
             renders.stats.pending_uploads += 1;
             continue;
@@ -144,6 +179,17 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
         }
 
         let mesh_bytes = mesh.cpu_bytes() as u64;
+        let next = FragmentFootprint {
+            mesh_bytes,
+            ..FragmentFootprint::default()
+        };
+        if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
+            renders.blocked.insert(id);
+            renders.stats.withheld_current += 1;
+            renders.stats.withheld_total += 1;
+            continue;
+        }
+
         let handle = meshes.add(to_bevy_mesh(&mesh));
         let material = renders.shared_material(&mut materials);
         let entity = commands
@@ -159,9 +205,16 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
             .insert(id, FragmentRenderEntry { entity, mesh_bytes });
         uploads += 1;
         renders.stats.uploaded_this_frame += 1;
+        account.footprint += next;
     }
 
     renders.refresh_stats();
+    renders.last_remaining_bytes = Some(
+        budget
+            .0
+            .hard_bytes
+            .saturating_sub(account.footprint.tracked_bytes()),
+    );
 }
 
 fn fragment_transform(
