@@ -963,3 +963,66 @@ fn memory_stays_bounded_while_travelling_under_a_tight_budget() {
         populated_regions(&world)
     );
 }
+
+
+#[test]
+fn pinned_region_loads_outside_the_camera_radius() {
+    let mut disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    let camera = RegionPos::ZERO;
+    let pinned = RegionPos::new(6, 0, 0);
+
+    streamer.set_pinned_regions([pinned]);
+    settle(&mut streamer, &mut world, &mut disk, camera);
+
+    assert!(
+        world.region(pinned).is_some(),
+        "correctness pins must load even beyond the ordinary camera radius"
+    );
+    assert!(streamer.wanted().any(|region| region == pinned));
+    assert_eq!(streamer.pinned().collect::<Vec<_>>(), vec![pinned]);
+}
+
+#[test]
+fn pinned_region_is_not_evicted_until_the_pin_is_released() {
+    let mut disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    let pinned = RegionPos::new(5, 0, 0);
+
+    streamer.set_pinned_regions([pinned]);
+    settle(
+        &mut streamer,
+        &mut world,
+        &mut disk,
+        RegionPos::ZERO,
+    );
+    assert!(world.region(pinned).is_some());
+
+    // Keep updating with the camera nowhere near the pinned dependency.
+    for _ in 0..4 {
+        step(
+            &mut streamer,
+            &mut world,
+            &mut disk,
+            RegionPos::ZERO,
+        );
+    }
+    assert!(
+        world.region(pinned).is_some(),
+        "a pinned structural dependency must not be evicted mid-analysis"
+    );
+
+    streamer.set_pinned_regions([]);
+    settle(
+        &mut streamer,
+        &mut world,
+        &mut disk,
+        RegionPos::ZERO,
+    );
+    assert!(
+        world.region(pinned).is_none(),
+        "releasing the pin returns the region to ordinary eviction policy"
+    );
+}
