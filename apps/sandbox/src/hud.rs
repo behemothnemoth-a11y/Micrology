@@ -326,7 +326,6 @@ fn human_bytes(bytes: u64) -> String {
     }
 }
 
-
 fn fragment_pressure_label(pressure: engine_destruction::FragmentPressure) -> &'static str {
     match pressure {
         engine_destruction::FragmentPressure::Comfortable => "ok",
