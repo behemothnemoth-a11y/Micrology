@@ -328,16 +328,14 @@ pub struct DynamicFragments {
 }
 
 impl DynamicFragments {
+    #[expect(dead_code, reason = "consumed by the interactive detachment host in 0003.14")]
     pub fn insert(&mut self, fragment: Fragment) -> Option<Fragment> {
         self.fragments.insert(fragment.id, fragment)
     }
 
+    #[expect(dead_code, reason = "consumed by fragment lifecycle/streaming in 0003.12-13")]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.fragments.remove(&id)
-    }
-
-    pub fn get(&self, id: FragmentId) -> Option<&Fragment> {
-        self.fragments.get(&id)
     }
 
     pub fn get_mut(&mut self, id: FragmentId) -> Option<&mut Fragment> {
@@ -346,10 +344,6 @@ impl DynamicFragments {
 
     pub fn len(&self) -> usize {
         self.fragments.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.fragments.is_empty()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
@@ -371,7 +365,20 @@ impl FragmentBodies {
 
 /// Identifies the fragment an Avian body represents.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
-struct DynamicFragmentBody(FragmentId);
+pub(crate) struct DynamicFragmentBody(FragmentId);
+
+type FragmentBodyQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static PhysicsPosition,
+        &'static PhysicsRotation,
+        &'static LinearVelocity,
+        &'static AngularVelocity,
+        Has<Sleeping>,
+    ),
+    With<DynamicFragmentBody>,
+>;
 
 /// Reconcile engine-owned fragments with Avian bodies.
 ///
@@ -446,16 +453,7 @@ pub fn sync_fragment_bodies(
 pub fn readback_fragment_bodies(
     mut fragments: ResMut<DynamicFragments>,
     bodies: Res<FragmentBodies>,
-    query: Query<
-        (
-            &PhysicsPosition,
-            &PhysicsRotation,
-            &LinearVelocity,
-            &AngularVelocity,
-            Has<Sleeping>,
-        ),
-        With<DynamicFragmentBody>,
-    >,
+    query: FragmentBodyQuery,
 ) {
     for (id, entity) in &bodies.entities {
         let Some(fragment) = fragments.get_mut(*id) else {
