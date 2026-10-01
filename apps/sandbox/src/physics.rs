@@ -358,10 +358,6 @@ impl DynamicFragments {
         self.store.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.store.is_empty()
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
         self.store.iter()
     }
@@ -372,10 +368,6 @@ impl DynamicFragments {
 
     pub fn replace_store(&mut self, store: FragmentStore) {
         self.store = store;
-    }
-
-    pub fn clear(&mut self) {
-        self.store = FragmentStore::default();
     }
 
     pub fn account(&self) -> FragmentAccount {
