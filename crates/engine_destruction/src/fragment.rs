@@ -205,10 +205,7 @@ impl Fragment {
         id: FragmentId,
         volumes: impl IntoIterator<Item = (VolumePos, Volume)>,
         source_origin: CellPos,
-        pose: FragmentPose,
-        linear_velocity: [f32; 3],
-        angular_velocity: [f32; 3],
-        state: FragmentState,
+        physics: crate::FragmentPhysicsState,
         revision: Revision,
     ) -> Option<Self> {
         let volumes: BTreeMap<VolumePos, Volume> = volumes
@@ -235,11 +232,15 @@ impl Fragment {
             id,
             volumes,
             source_origin,
-            pose,
-            linear_velocity,
-            angular_velocity,
+            pose: physics.pose,
+            linear_velocity: physics.linear_velocity,
+            angular_velocity: physics.angular_velocity,
             bounds: CellBounds::new(min, max),
-            state,
+            state: if physics.sleeping {
+                FragmentState::Sleeping
+            } else {
+                FragmentState::Dynamic
+            },
             revision,
         })
     }
