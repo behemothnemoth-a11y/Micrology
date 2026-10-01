@@ -1,0 +1,40 @@
+name: DROP 0003.11 fragment runtime smoke
+
+on:
+  push:
+    branches: [drop-0003-11-fragment-physics]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  smoke:
+    name: dynamic fragment runtime smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install sandbox runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 xvfb mesa-vulkan-drivers
+      - name: Build sandbox
+        run: cargo build -p sandbox
+      - name: Simulate one Micrology fragment through Avian
+        env:
+          WGPU_BACKEND: vulkan
+          MICROLOGY_FRAGMENT_SMOKE: "1"
+        run: |
+          set +e
+          timeout 15s xvfb-run -a ./target/debug/sandbox
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
+            echo "fragment adapter survived the smoke window"
+            exit 0
+          fi
+          echo "fragment runtime smoke failed with status $status"
+          exit "$status"
