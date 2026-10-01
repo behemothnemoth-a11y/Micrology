@@ -150,38 +150,44 @@ fn main() {
     .add_systems(
         Update,
         (
-            camera::grab_cursor,
-            camera::fly,
-            // The origin follows the camera before anything is placed, so a
-            // section spawned this frame is positioned against the new anchor.
-            render::maintain_render_origin,
-            edit::select_material,
-            edit::edit_cells,
-            edit::save_and_load,
-            edit::toggle_compiler,
-            edit::quit,
-            // Structural classification is async. A returning result is
-            // validated before it can remove cells or create fragments.
-            destruction::dispatch_structural_jobs,
-            destruction::poll_structural_jobs,
-            // Streaming: decide residency, start I/O, dispatch compiles, and
-            // apply whatever came back that is still current.
-            streaming::drive_streaming,
-            streaming::poll_region_tasks,
-            streaming::queue_dirty_sections,
-            streaming::dispatch_mesh_jobs,
-            streaming::apply_mesh_results,
-            // Physics residency is deliberately smaller than render residency.
-            // Rebuild only nearby static colliders, from the live cell world.
-            physics::sync_static_colliders,
-            physics::sync_fragment_bodies,
-            fragment_render::sync_fragment_render,
-            hud::toggle,
-            hud::apply_visibility,
-            hud::update,
+            (
+                camera::grab_cursor,
+                camera::fly,
+                // The origin follows the camera before anything is placed, so a
+                // section spawned this frame is positioned against the new anchor.
+                render::maintain_render_origin,
+                edit::select_material,
+                edit::edit_cells,
+                edit::save_and_load,
+                edit::toggle_compiler,
+                edit::quit,
+                // Structural classification is async. A returning result is
+                // validated before it can remove cells or create fragments.
+                destruction::dispatch_structural_jobs,
+                destruction::poll_structural_jobs,
+            )
+                .chain(),
+            (
+                // Streaming: decide residency, start I/O, dispatch compiles, and
+                // apply whatever came back that is still current.
+                streaming::drive_streaming,
+                streaming::poll_region_tasks,
+                streaming::queue_dirty_sections,
+                streaming::dispatch_mesh_jobs,
+                streaming::apply_mesh_results,
+                // Physics residency is deliberately smaller than render residency.
+                // Rebuild only nearby static colliders, from the live cell world.
+                physics::sync_static_colliders,
+                physics::sync_fragment_bodies,
+                fragment_render::sync_fragment_render,
+                hud::toggle,
+                hud::apply_visibility,
+                hud::update,
+            )
+                .chain(),
         )
-            // Edits must be applied before geometry is rebuilt, and geometry
-            // before the HUD reports it, so the display never lags the world.
+            // Edits/destruction must land before streaming/geometry/physics,
+            // and all of that before the HUD reports the frame.
             .chain(),
     )
     // Dynamic fragment state remains engine-owned. Read physics back after
