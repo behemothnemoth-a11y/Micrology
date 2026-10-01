@@ -101,7 +101,7 @@ pub struct EditResources<'w> {
 pub fn edit_cells(
     cursor: Option<Single<&CursorOptions>>,
     camera: Option<Single<(&Transform, &FlyCamera)>>,
-    mut resources: EditResources,
+    resources: EditResources,
 ) {
     let EditResources {
         mouse,
