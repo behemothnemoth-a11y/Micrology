@@ -26,8 +26,8 @@ use bevy::prelude::*;
 use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
 use engine_destruction::{
     CollisionCompiler, CollisionShape, Fragment, FragmentAccount, FragmentBudget,
-    FragmentDerivedFootprint, FragmentId, FragmentPhysicsDescriptor, FragmentPhysicsState,
-    FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
+    FragmentDerivedFootprint, FragmentFootprint, FragmentId, FragmentPhysicsDescriptor,
+    FragmentPhysicsState, FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
     Rotation as FragmentRotation,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -378,11 +378,21 @@ struct FragmentBodyEntry {
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
+    withheld_current: u64,
+    withheld_total: u64,
 }
 
 impl FragmentBodies {
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    pub fn withheld_current(&self) -> u64 {
+        self.withheld_current
+    }
+
+    pub fn withheld_total(&self) -> u64 {
+        self.withheld_total
     }
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
@@ -467,8 +477,10 @@ type FragmentBodyQuery<'w, 's> = Query<
 pub fn sync_fragment_bodies(
     mut commands: Commands,
     fragments: Res<DynamicFragments>,
+    budget: Res<FragmentBudgetRes>,
     mut bodies: ResMut<FragmentBodies>,
 ) {
+    bodies.withheld_current = 0;
     let wanted: BTreeSet<_> = fragments.store.ids().collect();
 
     let gone: Vec<_> = bodies
@@ -483,12 +495,25 @@ pub fn sync_fragment_bodies(
         }
     }
 
+    let mut account = budget.account(&fragments, &bodies);
     for (id, fragment) in fragments.iter() {
         if bodies.entries.contains_key(&id) {
             continue;
         }
 
         let descriptor = FragmentPhysicsDescriptor::from_fragment(fragment);
+        let next = FragmentFootprint {
+            collision_bytes: descriptor.collision_bytes(),
+            collision_boxes: descriptor.collision_boxes() as u64,
+            physics_bodies: 1,
+            ..FragmentFootprint::default()
+        };
+        if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
+            bodies.withheld_current += 1;
+            bodies.withheld_total += 1;
+            continue;
+        }
+
         let Some(collider) = collider_from_shape(&descriptor.collider, CellPos::ZERO) else {
             continue;
         };
@@ -528,6 +553,7 @@ pub fn sync_fragment_bodies(
                 collision_bytes: descriptor.collision_bytes(),
             },
         );
+        account.footprint += next;
     }
 }
 
