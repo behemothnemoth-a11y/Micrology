@@ -1,7 +1,7 @@
 use engine_core::{CellPos, MaterialId};
 use engine_destruction::{
     Fragment, FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentFootprint,
-    FragmentId, FragmentPhysicsState, FragmentPressure, FragmentStore, FragmentState,
+    FragmentId, FragmentPhysicsState, FragmentPressure, FragmentState, FragmentStore,
 };
 use engine_world::World;
 use std::collections::BTreeSet;
@@ -84,10 +84,7 @@ fn account_keeps_bytes_and_work_units_separate() {
     assert_eq!(account.footprint.collision_bytes, 240);
     assert_eq!(account.footprint.collision_boxes, 5);
     assert_eq!(account.footprint.physics_bodies, 1);
-    assert_eq!(
-        account.footprint.tracked_bytes(),
-        storage + 12_000 + 240
-    );
+    assert_eq!(account.footprint.tracked_bytes(), storage + 12_000 + 240);
 }
 
 #[test]
