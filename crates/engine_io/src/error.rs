@@ -1,6 +1,7 @@
 //! Save/load failures.
 
 use engine_core::{RegionPos, VolumePos};
+use engine_destruction::{FragmentId, FragmentSpatialError};
 use engine_volume::VolumeError;
 use std::fmt;
 use std::path::PathBuf;
@@ -26,7 +27,7 @@ pub enum IoError {
     },
     /// A volume's support data was internally inconsistent.
     ///
-    /// Kept apart from [`IoError::BadChunk`] because the two mean different
+    /// Kept apart from `IoError::BadChunk` because the two mean different
     /// things to whoever is looking at the shard: bad cells lose what was
     /// built, bad support loses what holds it up.
     BadAnchors {
@@ -44,6 +45,40 @@ pub enum IoError {
     VolumeOutsideRegion {
         region: RegionPos,
         volume: VolumePos,
+    },
+    /// A fragment payload file is missing.
+    MissingFragment {
+        fragment: FragmentId,
+        path: PathBuf,
+    },
+    /// A fragment file identified a different ID than the path requested.
+    FragmentMismatch {
+        expected: FragmentId,
+        found: FragmentId,
+    },
+    /// A fragment payload is internally invalid.
+    BadFragment {
+        fragment: FragmentId,
+        reason: String,
+    },
+    /// A fragment-local volume could not be decoded.
+    BadFragmentVolume {
+        fragment: FragmentId,
+        volume: VolumePos,
+        source: VolumeError,
+    },
+    /// A fragment/index file used the wrong tag.
+    WrongFragmentFormat { found: String },
+    /// A region index references an ID not listed as a fragment payload.
+    FragmentIndexUnknownId {
+        region: RegionPos,
+        fragment: FragmentId,
+    },
+    /// Persisted region membership disagrees with fragment payload positions.
+    FragmentIndexMismatch,
+    /// A fragment pose cannot map into the current region address space.
+    FragmentSpatial {
+        source: FragmentSpatialError,
     },
     /// A path that should be a world directory is not usable as one.
     NotAWorldDirectory { path: PathBuf },
@@ -84,6 +119,40 @@ impl fmt::Display for IoError {
             IoError::VolumeOutsideRegion { region, volume } => {
                 write!(f, "volume {volume:?} does not belong to region {region:?}")
             }
+            IoError::MissingFragment { fragment, path } => write!(
+                f,
+                "fragment {fragment} is listed but {} is missing",
+                path.display()
+            ),
+            IoError::FragmentMismatch { expected, found } => write!(
+                f,
+                "fragment file claims to be {found} but was loaded as {expected}"
+            ),
+            IoError::BadFragment { fragment, reason } => {
+                write!(f, "fragment {fragment} is invalid: {reason}")
+            }
+            IoError::BadFragmentVolume {
+                fragment,
+                volume,
+                source,
+            } => write!(
+                f,
+                "fragment {fragment} local volume {volume:?} is invalid: {source}"
+            ),
+            IoError::WrongFragmentFormat { found } => {
+                write!(f, "expected a Micrology fragment file but found `{found}`")
+            }
+            IoError::FragmentIndexUnknownId { region, fragment } => write!(
+                f,
+                "fragment index region {region:?} references unknown fragment {fragment}"
+            ),
+            IoError::FragmentIndexMismatch => write!(
+                f,
+                "fragment spatial index does not match the persisted fragment payloads"
+            ),
+            IoError::FragmentSpatial { source } => {
+                write!(f, "fragment spatial index failed: {source}")
+            }
             IoError::NotAWorldDirectory { path } => {
                 write!(f, "{} is not a world directory", path.display())
             }
@@ -98,11 +167,19 @@ impl std::error::Error for IoError {
             IoError::Parse(source) => Some(source),
             IoError::BadChunk { source, .. } => Some(source),
             IoError::BadAnchors { source, .. } => Some(source),
+            IoError::BadFragmentVolume { source, .. } => Some(source),
+            IoError::FragmentSpatial { source } => Some(source),
             IoError::WrongFormat { .. }
             | IoError::UnsupportedVersion { .. }
             | IoError::MissingRegion { .. }
             | IoError::RegionMismatch { .. }
             | IoError::VolumeOutsideRegion { .. }
+            | IoError::MissingFragment { .. }
+            | IoError::FragmentMismatch { .. }
+            | IoError::BadFragment { .. }
+            | IoError::WrongFragmentFormat { .. }
+            | IoError::FragmentIndexUnknownId { .. }
+            | IoError::FragmentIndexMismatch
             | IoError::NotAWorldDirectory { .. } => None,
         }
     }
