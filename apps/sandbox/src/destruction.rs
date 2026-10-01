@@ -5,7 +5,8 @@
 //! live world. This module owns the host policy around retries and persistence;
 //! the engine crates remain independent from Bevy.
 
-use crate::physics::DynamicFragments;
+use crate::fragment_render::FragmentEntities;
+use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
 use bevy::prelude::*;
@@ -13,7 +14,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use engine_core::{CellPos, RegionPos};
 use engine_destruction::{
     DestructionSequence, DetachRefusal, ResultDisposition, SnapshotLimits, StructuralLimits,
-    StructureJobInput, StructureJobResult, detach,
+    StructureJobInput, StructureJobResult, detach_if,
 };
 use engine_world::EditOutcome;
 use std::collections::{BTreeSet, VecDeque};
@@ -46,6 +47,7 @@ pub struct DestructionStats {
     pub completed: u64,
     pub stale: u64,
     pub inconclusive: u64,
+    pub rejected_by_policy: u64,
     pub detached_transactions: u64,
     pub fragments_created: u64,
     pub cells_detached: u64,
@@ -123,6 +125,9 @@ pub fn load_fragment_state(
     stream: Res<StreamRes>,
     mut host: ResMut<DestructionHost>,
     mut fragments: ResMut<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    renders: Res<FragmentEntities>,
+    budget: Res<FragmentBudgetRes>,
     mut status: ResMut<StatusLine>,
 ) {
     match engine_io::load_fragment_store(&stream.dir) {
@@ -146,8 +151,9 @@ pub fn save_fragment_state(
     fragments: &DynamicFragments,
 ) -> Result<usize, engine_io::IoError> {
     let store = fragments.persistent_store();
+    let count = store.len();
     engine_io::save_fragment_store(&stream.dir, &store, host.sequence)?;
-    Ok(fragments.len())
+    Ok(count)
 }
 
 pub fn reload_fragment_state(
@@ -265,7 +271,14 @@ pub fn poll_structural_jobs(
                 }
             }
             ResultDisposition::Accepted => {
-                match detach(&mut world.0, &mut host.sequence, &result) {
+                let current_bytes =
+                    budget.account(&fragments, &bodies, renders.mesh_bytes()).footprint.tracked_bytes();
+                let hard_bytes = budget.0.hard_bytes;
+                match detach_if(&mut world.0, &mut host.sequence, &result, |candidate| {
+                    let new_storage: u64 =
+                        candidate.iter().map(|fragment| fragment.footprint_bytes()).sum();
+                    current_bytes.saturating_add(new_storage) <= hard_bytes
+                }) {
                     Ok(outcome) => {
                         let fragment_count = outcome.fragments.len();
                         let cell_count = outcome.cells_detached();
@@ -289,6 +302,12 @@ pub fn poll_structural_jobs(
                     }
                     Err(DetachRefusal::Inconclusive) => {
                         host.stats.inconclusive += 1;
+                    }
+                    Err(DetachRefusal::RejectedByPolicy) => {
+                        host.stats.rejected_by_policy += 1;
+                        status.0 =
+                            "destruction held static: fragment hard-byte budget would be exceeded"
+                                .to_string();
                     }
                 }
             }
