@@ -16,4 +16,6 @@ engine_world = { workspace = true }
 engine_geometry = { workspace = true }
 engine_io = { workspace = true }
 engine_stream = { workspace = true }
+engine_destruction = { workspace = true }
 bevy = "0.19"
+avian3d = { version = "0.7", default-features = false, features = ["3d", "f64", "parry-f64", "parallel"] }
