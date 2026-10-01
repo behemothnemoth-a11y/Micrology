@@ -320,10 +320,8 @@ pub fn fragment_index_to_json(
     store: &FragmentStore,
     sequence: DestructionSequence,
 ) -> Result<String, IoError> {
-    let spatial =
-        FragmentSpatialIndex::from_store(store).map_err(|source| IoError::FragmentSpatial {
-            source,
-        })?;
+    let spatial = FragmentSpatialIndex::from_store(store)
+        .map_err(|source| IoError::FragmentSpatial { source })?;
     let mut json = serde_json::to_string_pretty(&index_to_file(store, &spatial, sequence))?;
     json.push('\n');
     Ok(json)
@@ -369,7 +367,9 @@ pub fn load_fragment_index(dir: impl AsRef<Path>) -> Result<FragmentIndex, IoErr
     let path = fragment_index_path(&dir);
     match std::fs::read_to_string(&path) {
         Ok(json) => fragment_index_from_json(&json),
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(FragmentIndex::default()),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            Ok(FragmentIndex::default())
+        }
         Err(source) => Err(IoError::File { path, source }),
     }
 }
@@ -427,10 +427,8 @@ pub fn load_fragment_store(
 
     // Recompute from payload and compare with the persisted discovery index.
     // A stale index must never make a fragment disappear from a region.
-    let computed =
-        FragmentSpatialIndex::from_store(&store).map_err(|source| IoError::FragmentSpatial {
-            source,
-        })?;
+    let computed = FragmentSpatialIndex::from_store(&store)
+        .map_err(|source| IoError::FragmentSpatial { source })?;
     if computed != index.spatial {
         return Err(IoError::FragmentIndexMismatch);
     }
