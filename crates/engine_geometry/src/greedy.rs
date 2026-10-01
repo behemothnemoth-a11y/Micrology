@@ -16,9 +16,9 @@
 //! [`CellSource`]: engine_core::CellSource
 
 use crate::{CompileStats, Quad, QuadSet, SurfaceCompiler};
-use engine_core::{CHUNK_EDGE, CellPos, CellSource, ChunkPos, FaceDir, LocalPos, MaterialId};
+use engine_core::{CellPos, CellSource, FaceDir, LocalPos, MaterialId, VOLUME_EDGE, VolumePos};
 
-const EDGE: usize = CHUNK_EDGE as usize;
+const EDGE: usize = VOLUME_EDGE as usize;
 
 /// Merges coplanar, same-material faces into maximal rectangles.
 #[derive(Clone, Copy, Default, Debug)]
@@ -29,7 +29,7 @@ impl SurfaceCompiler for GreedyCompiler {
         "greedy"
     }
 
-    fn compile(&self, source: &dyn CellSource, chunk: ChunkPos) -> QuadSet {
+    fn compile(&self, source: &dyn CellSource, chunk: VolumePos) -> QuadSet {
         let mut quads = Vec::new();
         let mut exposed_faces = 0u32;
 

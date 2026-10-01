@@ -18,7 +18,7 @@
 //! back into unit faces and comparing the two sets, which is the habit that
 //! made the `astra-microblocks` geometry work trustworthy.
 //!
-//! [`ChunkMeshCache`] holds the compiled result per chunk and rebuilds only the
+//! [`SectionMeshCache`] holds the compiled result per chunk and rebuilds only the
 //! chunks it is told are dirty, which is the engine's local-rebuild guarantee.
 //!
 //! [`CellSource`]: engine_core::CellSource
@@ -30,7 +30,7 @@ mod greedy;
 mod mesh;
 mod quad;
 
-pub use cache::{CacheStats, CachedChunk, ChunkMeshCache, ChunkMeshUpdate};
+pub use cache::{CacheStats, CachedSection, SectionMeshCache, SectionMeshUpdate};
 pub use compiler::SurfaceCompiler;
 pub use exact::ExactCompiler;
 pub use greedy::GreedyCompiler;

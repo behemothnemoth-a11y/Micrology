@@ -4,7 +4,7 @@
 //! helper is used by every binary.
 #![allow(dead_code)]
 
-use engine_core::{CellPos, ChunkPos, MaterialId, MaterialRegistry, Rgb};
+use engine_core::{CellPos, MaterialId, MaterialRegistry, Rgb, VolumePos};
 use engine_geometry::{ExactCompiler, GreedyCompiler, QuadSet, SurfaceCompiler};
 use engine_world::World;
 
@@ -24,19 +24,19 @@ pub fn world() -> World {
     World::with_materials(materials())
 }
 
-/// A solid chunk-sized block at the given chunk address.
-pub fn solid_chunk(world: &mut World, chunk: ChunkPos, material: MaterialId) {
-    let origin = chunk.origin();
+/// A solid volume-sized block at the given volume address.
+pub fn solid_volume(world: &mut World, volume: VolumePos, material: MaterialId) {
+    let origin = volume.origin();
     let max = CellPos::new(origin.x + 15, origin.y + 15, origin.z + 15);
     world.fill_box(origin, max, Some(material));
 }
 
-pub fn exact(world: &World, chunk: ChunkPos) -> QuadSet {
-    ExactCompiler.compile(world, chunk)
+pub fn exact(world: &World, volume: VolumePos) -> QuadSet {
+    ExactCompiler.compile(world, volume)
 }
 
-pub fn greedy(world: &World, chunk: ChunkPos) -> QuadSet {
-    GreedyCompiler.compile(world, chunk)
+pub fn greedy(world: &World, volume: VolumePos) -> QuadSet {
+    GreedyCompiler.compile(world, volume)
 }
 
 /// Deterministic pseudo-random source, so "random" test worlds are reproducible

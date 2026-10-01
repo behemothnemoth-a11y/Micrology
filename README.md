@@ -69,9 +69,10 @@ so leaving it out builds fine and then panics inside winit on startup.
 crates/
   engine_core/      coordinates, materials, revisions, the CellSource trait
   engine_volume/    one 16^3 volume of cells, palette-indexed
-  engine_world/     sparse chunk map, editing, dirty tracking
-  engine_geometry/  surface extraction, greedy meshing, per-chunk mesh cache
+  engine_world/     sparse volume map, editing, dirty tracking
+  engine_geometry/  surface extraction, greedy meshing, per-section mesh cache
   engine_io/        versioned save/load
+  engine_stress/    deterministic stress scenarios and the measurement harness
 apps/
   sandbox/          the desktop app: window, camera, picking, rendering
 fixtures/worlds/    committed worlds, used to prove format stability
@@ -90,30 +91,37 @@ where engine geometry meets a graphics API.
 at its most expensive, and nothing at all when it is empty or uniform. Nothing in
 the engine will ever model a cell as an ECS entity or a rigid body.
 
-**Chunk seams are not render boundaries.** Meshers read cells in *global* space
-through one trait, so they sample a cell past the chunk they are compiling. A face
-shared with a solid neighbour is never emitted. Two solid chunks side by side lose
-all 512 faces at their seam.
+**Volume seams are not render boundaries.** Meshers read cells in *global* space
+through one trait, so they sample a cell past the volume they are compiling. A
+face shared with a solid neighbour is never emitted. Two solid volumes side by
+side lose all 512 faces at their seam.
 
 **There is always an oracle.** `ExactCompiler` emits one quad per exposed face and
 is kept permanently. `GreedyCompiler` merges coplanar same-material rectangles — a
-solid chunk collapses from 1536 faces to 6 quads. The tests expand the merged
+solid volume collapses from 1536 faces to 6 quads. The tests expand the merged
 output back into unit faces and demand it match the oracle exactly, over seeded
 pseudo-random worlds at every density. Optimised geometry is only trustworthy
 while something simple stands beside it.
 
-**Rebuilds are local.** Editing one cell re-meshes one chunk. An edit on a chunk
-boundary also re-meshes the touching neighbour, because clearing a seam cell
-exposes a face that belongs to the neighbour's mesh — the subtle half of the
+**Rebuilds are local.** Editing one cell re-meshes one render section. An edit on
+a volume boundary also re-meshes the touching neighbour, because clearing a seam
+cell exposes a face that belongs to the neighbour's mesh — the subtle half of the
 promise, and the one that leaves holes at seams when it is missed.
+
+**Storage, residency and rendering are different units.** A 16³ volume is the
+storage leaf. A region is what gets loaded, evicted and saved. A render section is
+what gets meshed and drawn. They happen to line up today; nothing is allowed to
+assume they always will.
 
 ## What does not exist yet
 
 Not started, by design: streaming, LOD, destruction, physics, collision,
 connectivity/island detection, an editor, procedural generation, scripting,
 networking, multiplayer, Minecraft or Litematica import/export, GIS ingestion,
-transforms on volume data, and any actual game. `docs/drop-0001.md` records the
-precise state and names the next step.
+transforms on volume data, and any actual game.
+
+DROP 0002 (scale: regions, streaming, async meshing) is in progress —
+`docs/drop-0002.md` tracks it pass by pass.
 
 ## Documentation
 
@@ -122,7 +130,9 @@ precise state and names the next step.
 | [`docs/architecture.md`](docs/architecture.md) | how the crates fit together, and why the boundaries sit where they do |
 | [`docs/native-world-format.md`](docs/native-world-format.md) | the save format, field by field, and how to evolve it |
 | [`docs/testing.md`](docs/testing.md) | what is covered, and how to add a case |
-| [`docs/drop-0001.md`](docs/drop-0001.md) | current status against the scope, limitations, next step |
+| [`docs/drop-0001.md`](docs/drop-0001.md) | DROP 0001 status, limitations, verification |
+| [`docs/drop-0002-scope.md`](docs/drop-0002-scope.md) | DROP 0002 scope: scale, regions, streaming |
+| [`docs/drop-0002.md`](docs/drop-0002.md) | DROP 0002 progress and recorded baselines |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 

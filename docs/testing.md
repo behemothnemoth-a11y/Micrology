@@ -15,10 +15,10 @@ A fast test loop is the point; keep it that way.
 |------|--------|
 | `crates/engine_core/src/coords.rs` | coordinate splitting across the origin, index round-trips, face bases |
 | `crates/engine_volume/src/lib.rs` | storage tier promotion/demotion, occupancy counting, palette canonicalisation, run encoding |
-| `crates/engine_world/src/lib.rs` | sparse chunks, dirty tracking including boundary neighbours, compaction |
+| `crates/engine_world/src/lib.rs` | sparse volumes, dirty tracking including boundary neighbours, compaction |
 | `crates/engine_geometry/tests/surface.rs` | the scope's fixture cases, winding, mesh conversion |
 | `crates/engine_geometry/tests/oracle.rs` | greedy-vs-exact equivalence, determinism |
-| `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild |
+| `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild; volume/section separation |
 | `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
 | `crates/engine_stress/tests/baseline.rs` | stress-scenario counters against the committed baseline |
 
@@ -28,14 +28,14 @@ Every case `03_DROP_0001_SCOPE.md` lists, and where it is:
 
 | case | test |
 |------|------|
-| empty volume | `an_empty_chunk_compiles_to_nothing` |
+| empty volume | `an_empty_volume_compiles_to_nothing` |
 | one occupied cell | `a_single_cell_emits_six_faces` |
-| solid volume | `a_solid_chunk_emits_no_internal_faces` |
+| solid volume | `a_solid_volume_emits_no_internal_faces` |
 | two adjacent cells | `two_adjacent_cells_drop_their_shared_faces` |
 | hollow cavity | `a_hollow_cavity_is_surfaced_from_the_inside` |
 | mixed-material boundary | `a_material_boundary_blocks_merging_but_not_occlusion` |
-| cells crossing a chunk boundary | `an_object_spanning_a_chunk_boundary_has_a_continuous_surface` |
-| edit → dirty mark → rebuild | `an_interior_edit_rebuilds_exactly_one_chunk` |
+| cells crossing a volume boundary | `an_object_spanning_a_volume_boundary_has_a_continuous_surface` |
+| edit → dirty mark → rebuild | `an_interior_edit_rebuilds_exactly_one_section` |
 | save → reload exact equality | `save_and_reload_are_exactly_equal` |
 | independent topology oracle preserved | all of `tests/oracle.rs` |
 
@@ -69,8 +69,8 @@ fn an_l_shaped_bar_keeps_its_inner_corner() {
     w.fill_box(CellPos::new(0, 0, 0), CellPos::new(3, 0, 0), Some(STONE));
     w.fill_box(CellPos::new(0, 1, 0), CellPos::new(0, 3, 0), Some(STONE));
 
-    let e = exact(&w, ChunkPos::ZERO);
-    let g = greedy(&w, ChunkPos::ZERO);
+    let e = exact(&w, VolumePos::ZERO);
+    let g = greedy(&w, VolumePos::ZERO);
     assert_eq!(g.unit_faces(), e.unit_faces());
     assert_eq!(e.stats.exposed_faces, 7 * 6 - 2 * 2);
 }

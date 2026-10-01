@@ -1,6 +1,6 @@
 //! Save/load failures.
 
-use engine_core::ChunkPos;
+use engine_core::VolumePos;
 use engine_volume::VolumeError;
 use std::fmt;
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ pub enum IoError {
     UnsupportedVersion { found: u32, supported: u32 },
     /// A chunk's cell data was internally inconsistent.
     BadChunk {
-        chunk: ChunkPos,
+        chunk: VolumePos,
         source: VolumeError,
     },
 }

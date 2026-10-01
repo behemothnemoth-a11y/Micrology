@@ -1,6 +1,6 @@
 //! Storage for one local volume of cells.
 //!
-//! A [`Volume`] holds `CHUNK_EDGE^3` cells. Cells are **data, never entities**:
+//! A [`Volume`] holds `VOLUME_EDGE^3` cells. Cells are **data, never entities**:
 //! the whole volume is a palette index per cell, so a full 16^3 volume costs
 //! 8 KiB at its most expensive and nothing at all when it is empty or solid.
 //!
@@ -18,7 +18,7 @@
 //! representation later (octree, RLE, bitset + palette) is a change behind this
 //! same API.
 
-use engine_core::{CHUNK_CELLS, LocalPos, MaterialId, Revision};
+use engine_core::{LocalPos, MaterialId, Revision, VOLUME_CELLS};
 use std::collections::BTreeSet;
 use std::fmt;
 
@@ -30,7 +30,7 @@ const EMPTY_SLOT: Slot = 0;
 /// Errors produced when building a volume from external data.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum VolumeError {
-    /// Run-length data did not describe exactly `CHUNK_CELLS` cells.
+    /// Run-length data did not describe exactly `VOLUME_CELLS` cells.
     CellCountMismatch { got: usize, expected: usize },
     /// A cell referenced a palette slot that does not exist.
     UnknownSlot { slot: Slot, palette_len: usize },
@@ -65,7 +65,7 @@ enum Storage {
     Empty,
     /// Every cell holds this slot. Never [`EMPTY_SLOT`] — that is `Empty`.
     Uniform(Slot),
-    Dense(Box<[Slot; CHUNK_CELLS]>),
+    Dense(Box<[Slot; VOLUME_CELLS]>),
 }
 
 /// A fixed-size volume of cells with a local material palette.
@@ -128,13 +128,13 @@ impl Volume {
             Storage::Empty => {
                 // `previous` was None and differs from `material`, so this is
                 // the first occupied cell.
-                let mut cells = Box::new([EMPTY_SLOT; CHUNK_CELLS]);
+                let mut cells = Box::new([EMPTY_SLOT; VOLUME_CELLS]);
                 cells[index] = slot;
                 self.storage = Storage::Dense(cells);
             }
             Storage::Uniform(uniform) => {
                 let uniform = *uniform;
-                let mut cells = Box::new([uniform; CHUNK_CELLS]);
+                let mut cells = Box::new([uniform; VOLUME_CELLS]);
                 cells[index] = slot;
                 self.storage = Storage::Dense(cells);
             }
@@ -162,7 +162,7 @@ impl Volume {
                 self.palette.clear();
                 self.palette.push(id);
                 self.storage = Storage::Uniform(1);
-                self.occupied = CHUNK_CELLS as u32;
+                self.occupied = VOLUME_CELLS as u32;
             }
         }
         self.revision.bump();
@@ -183,7 +183,7 @@ impl Volume {
     /// Whether every cell is occupied.
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.occupied as usize == CHUNK_CELLS
+        self.occupied as usize == VOLUME_CELLS
     }
 
     /// This volume's current revision. Bumped by every effective edit.
@@ -271,7 +271,7 @@ impl Volume {
     pub fn cell_bytes(&self) -> usize {
         match &self.storage {
             Storage::Empty | Storage::Uniform(_) => 0,
-            Storage::Dense(_) => CHUNK_CELLS * size_of::<Slot>(),
+            Storage::Dense(_) => VOLUME_CELLS * size_of::<Slot>(),
         }
     }
 
@@ -291,12 +291,12 @@ impl Volume {
     }
 
     /// Cells as run-length encoded `(slot, length)` pairs in canonical index
-    /// order. Lengths always sum to `CHUNK_CELLS`.
+    /// order. Lengths always sum to `VOLUME_CELLS`.
     pub fn slot_runs(&self) -> Vec<SlotRun> {
         let mut runs: Vec<SlotRun> = Vec::new();
         match &self.storage {
-            Storage::Empty => runs.push((EMPTY_SLOT, CHUNK_CELLS as u32)),
-            Storage::Uniform(slot) => runs.push((*slot, CHUNK_CELLS as u32)),
+            Storage::Empty => runs.push((EMPTY_SLOT, VOLUME_CELLS as u32)),
+            Storage::Uniform(slot) => runs.push((*slot, VOLUME_CELLS as u32)),
             Storage::Dense(cells) => {
                 for &slot in cells.iter() {
                     match runs.last_mut() {
@@ -314,7 +314,7 @@ impl Volume {
     /// The result is always compacted, so a round trip through
     /// [`Volume::slot_runs`] and back is idempotent.
     pub fn from_slot_runs(palette: Vec<MaterialId>, runs: &[SlotRun]) -> Result<Self, VolumeError> {
-        let mut cells = Box::new([EMPTY_SLOT; CHUNK_CELLS]);
+        let mut cells = Box::new([EMPTY_SLOT; VOLUME_CELLS]);
         let mut written = 0usize;
         let mut occupied = 0u32;
 
@@ -326,16 +326,16 @@ impl Volume {
                 });
             }
             let length = length as usize;
-            if length > CHUNK_CELLS {
+            if length > VOLUME_CELLS {
                 return Err(VolumeError::RunTooLong {
                     length: length as u32,
                 });
             }
             let end = written + length;
-            if end > CHUNK_CELLS {
+            if end > VOLUME_CELLS {
                 return Err(VolumeError::CellCountMismatch {
                     got: end,
-                    expected: CHUNK_CELLS,
+                    expected: VOLUME_CELLS,
                 });
             }
             if slot != EMPTY_SLOT {
@@ -345,10 +345,10 @@ impl Volume {
             written = end;
         }
 
-        if written != CHUNK_CELLS {
+        if written != VOLUME_CELLS {
             return Err(VolumeError::CellCountMismatch {
                 got: written,
-                expected: CHUNK_CELLS,
+                expected: VOLUME_CELLS,
             });
         }
 
@@ -383,14 +383,14 @@ impl Volume {
     /// Find or add a palette slot for `id`.
     ///
     /// The palette is a short linear scan in practice — a volume can hold at
-    /// most `CHUNK_CELLS` distinct materials. Repeated repainting could still
+    /// most `VOLUME_CELLS` distinct materials. Repeated repainting could still
     /// grow dead entries without bound, so the palette is garbage collected
     /// once it reaches that ceiling, which keeps it under `u16::MAX` forever.
     fn intern(&mut self, id: MaterialId) -> Slot {
         if let Some(index) = self.palette.iter().position(|m| *m == id) {
             return (index + 1) as Slot;
         }
-        if self.palette.len() >= CHUNK_CELLS {
+        if self.palette.len() >= VOLUME_CELLS {
             self.compact();
             if let Some(index) = self.palette.iter().position(|m| *m == id) {
                 return (index + 1) as Slot;
@@ -428,7 +428,7 @@ impl Eq for Volume {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_core::CHUNK_EDGE;
+    use engine_core::VOLUME_EDGE;
 
     const STONE: MaterialId = MaterialId(1);
     const DIRT: MaterialId = MaterialId(2);
@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(volume.occupied_count(), 0);
         assert!(volume.iter().all(|(_, m)| m.is_none()));
         assert_eq!(volume.palette(), &[]);
-        assert_eq!(volume.slot_runs(), vec![(0, CHUNK_CELLS as u32)]);
+        assert_eq!(volume.slot_runs(), vec![(0, VOLUME_CELLS as u32)]);
     }
 
     #[test]
@@ -469,9 +469,9 @@ mod tests {
     fn fill_makes_a_full_volume_without_allocating_cells() {
         let mut volume = Volume::filled(STONE);
         assert!(volume.is_full());
-        assert_eq!(volume.occupied_count(), CHUNK_CELLS as u32);
+        assert_eq!(volume.occupied_count(), VOLUME_CELLS as u32);
         assert!(matches!(volume.storage, Storage::Uniform(_)));
-        assert_eq!(volume.slot_runs(), vec![(1, CHUNK_CELLS as u32)]);
+        assert_eq!(volume.slot_runs(), vec![(1, VOLUME_CELLS as u32)]);
 
         volume.fill(None);
         assert!(volume.is_empty());
@@ -485,7 +485,7 @@ mod tests {
         let p = LocalPos::at(8, 8, 8);
         assert!(volume.set(p, None));
         assert!(matches!(volume.storage, Storage::Dense(_)));
-        assert_eq!(volume.occupied_count(), CHUNK_CELLS as u32 - 1);
+        assert_eq!(volume.occupied_count(), VOLUME_CELLS as u32 - 1);
 
         assert!(volume.set(p, Some(STONE)));
         volume.compact();
@@ -535,7 +535,7 @@ mod tests {
     #[test]
     fn run_encoding_round_trips() {
         let mut volume = Volume::new();
-        for i in 0..CHUNK_EDGE as u8 {
+        for i in 0..VOLUME_EDGE as u8 {
             volume.set(
                 LocalPos::at(i, i, i),
                 Some(if i % 2 == 0 { STONE } else { DIRT }),
@@ -546,7 +546,7 @@ mod tests {
         let runs = volume.slot_runs();
         assert_eq!(
             runs.iter().map(|(_, n)| *n as usize).sum::<usize>(),
-            CHUNK_CELLS
+            VOLUME_CELLS
         );
 
         let rebuilt = Volume::from_slot_runs(volume.palette().to_vec(), &runs).unwrap();
@@ -570,25 +570,25 @@ mod tests {
             Volume::from_slot_runs(vec![STONE], &[(1, 10)]),
             Err(VolumeError::CellCountMismatch {
                 got: 10,
-                expected: CHUNK_CELLS
+                expected: VOLUME_CELLS
             })
         );
         assert_eq!(
-            Volume::from_slot_runs(vec![STONE], &[(2, CHUNK_CELLS as u32)]),
+            Volume::from_slot_runs(vec![STONE], &[(2, VOLUME_CELLS as u32)]),
             Err(VolumeError::UnknownSlot {
                 slot: 2,
                 palette_len: 1
             })
         );
         assert!(matches!(
-            Volume::from_slot_runs(vec![STONE], &[(1, CHUNK_CELLS as u32 + 1)]),
+            Volume::from_slot_runs(vec![STONE], &[(1, VOLUME_CELLS as u32 + 1)]),
             Err(VolumeError::RunTooLong { .. })
         ));
     }
 
     #[test]
     fn duplicate_palette_entries_are_merged_on_load() {
-        let runs = [(1, 1), (2, 1), (0, CHUNK_CELLS as u32 - 2)];
+        let runs = [(1, 1), (2, 1), (0, VOLUME_CELLS as u32 - 2)];
         let volume = Volume::from_slot_runs(vec![STONE, STONE], &runs).unwrap();
         assert_eq!(volume.palette(), &[STONE]);
         assert_eq!(volume.occupied_count(), 2);
@@ -613,7 +613,7 @@ mod tests {
 
         let mut mixed = Volume::filled(STONE);
         mixed.set(LocalPos::at(0, 0, 0), Some(DIRT));
-        assert_eq!(mixed.cell_bytes(), CHUNK_CELLS * 2, "promoted to dense");
+        assert_eq!(mixed.cell_bytes(), VOLUME_CELLS * 2, "promoted to dense");
         assert_eq!(mixed.palette_bytes(), 2 * size_of::<MaterialId>());
 
         // Demoting gives the memory back.

@@ -1,72 +1,85 @@
 //! The incremental rebuild path: edit a cell, mark the smallest affected region
 //! dirty, rebuild only that, and get geometry identical to a full rebuild.
+//!
+//! Also the volume/section separation: the world reports dirty *volumes*, the
+//! cache rebuilds *sections*, and the mapping between them is a policy the rest
+//! of the engine is not allowed to assume.
 
 mod common;
 
 use common::*;
-use engine_core::{CellPos, ChunkPos};
-use engine_geometry::{ChunkMeshCache, ChunkMeshUpdate, GreedyCompiler, SurfaceCompiler};
+use engine_core::{CellPos, RenderSectionId, SectionGrid, VolumePos};
+use engine_geometry::{GreedyCompiler, SectionMeshCache, SectionMeshUpdate, SurfaceCompiler};
 use engine_world::World;
 
-fn rebuild(cache: &mut ChunkMeshCache, w: &mut World) -> Vec<ChunkMeshUpdate> {
+fn rebuild(cache: &mut SectionMeshCache, w: &mut World) -> Vec<SectionMeshUpdate> {
     let dirty = w.take_dirty();
     cache.rebuild(w, w.materials(), &GreedyCompiler, dirty)
 }
 
+fn one_volume_cache() -> SectionMeshCache {
+    SectionMeshCache::new(SectionGrid::ONE_VOLUME)
+}
+
+/// The section drawing a volume, under the one-volume grid.
+fn section(x: i32, y: i32, z: i32) -> RenderSectionId {
+    SectionGrid::ONE_VOLUME.section_for(VolumePos::new(x, y, z))
+}
+
 /// Compile a world from scratch into a fresh cache.
-fn full_rebuild(w: &World) -> ChunkMeshCache {
-    let mut cache = ChunkMeshCache::new();
-    let all: Vec<ChunkPos> = w.chunk_positions().collect();
+fn full_rebuild(w: &World, grid: SectionGrid) -> SectionMeshCache {
+    let mut cache = SectionMeshCache::new(grid);
+    let all: Vec<VolumePos> = w.volume_positions().collect();
     cache.rebuild(w, w.materials(), &GreedyCompiler, all);
     cache
 }
 
 #[test]
-fn the_first_build_meshes_every_occupied_chunk() {
+fn the_first_build_meshes_every_occupied_section() {
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::new(0, 0, 0), STONE);
-    solid_chunk(&mut w, ChunkPos::new(1, 0, 0), STONE);
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
+    solid_volume(&mut w, VolumePos::new(1, 0, 0), STONE);
 
-    let mut cache = ChunkMeshCache::new();
+    let mut cache = one_volume_cache();
     let updates = rebuild(&mut cache, &mut w);
 
     assert_eq!(
         updates,
         vec![
-            ChunkMeshUpdate::Built(ChunkPos::new(0, 0, 0)),
-            ChunkMeshUpdate::Built(ChunkPos::new(1, 0, 0)),
+            SectionMeshUpdate::Built(section(0, 0, 0)),
+            SectionMeshUpdate::Built(section(1, 0, 0)),
         ]
     );
     assert_eq!(cache.len(), 2);
 
     let stats = cache.stats();
     assert_eq!(stats.occupied_cells, 2 * 4096);
-    assert_eq!(stats.quads, 10, "five visible sides per chunk");
+    assert_eq!(stats.quads, 10, "five visible sides per volume");
     assert_eq!(stats.vertices, 40);
     assert_eq!(stats.triangles, 20);
 }
 
 #[test]
-fn an_interior_edit_rebuilds_exactly_one_chunk() {
+fn an_interior_edit_rebuilds_exactly_one_section() {
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::new(0, 0, 0), STONE);
-    solid_chunk(&mut w, ChunkPos::new(1, 0, 0), STONE);
-    let mut cache = ChunkMeshCache::new();
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
+    solid_volume(&mut w, VolumePos::new(1, 0, 0), STONE);
+    let mut cache = one_volume_cache();
     rebuild(&mut cache, &mut w);
 
-    let untouched = cache.get(ChunkPos::new(1, 0, 0)).unwrap().clone();
+    let untouched = cache.get(section(1, 0, 0)).unwrap().clone();
 
     w.set(CellPos::new(8, 8, 8), None);
     let updates = rebuild(&mut cache, &mut w);
 
     assert_eq!(
         updates,
-        vec![ChunkMeshUpdate::Built(ChunkPos::new(0, 0, 0))],
+        vec![SectionMeshUpdate::Built(section(0, 0, 0))],
         "an interior edit must not touch the neighbour"
     );
-    assert_eq!(cache.last_rebuild_chunks(), 1);
+    assert_eq!(cache.last_rebuild_sections(), 1);
     assert_eq!(
-        cache.get(ChunkPos::new(1, 0, 0)).unwrap(),
+        cache.get(section(1, 0, 0)).unwrap(),
         &untouched,
         "the neighbour's geometry must be bit-for-bit unchanged"
     );
@@ -75,27 +88,27 @@ fn an_interior_edit_rebuilds_exactly_one_chunk() {
 #[test]
 fn a_seam_edit_rebuilds_both_sides() {
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::new(0, 0, 0), STONE);
-    solid_chunk(&mut w, ChunkPos::new(1, 0, 0), STONE);
-    let mut cache = ChunkMeshCache::new();
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
+    solid_volume(&mut w, VolumePos::new(1, 0, 0), STONE);
+    let mut cache = one_volume_cache();
     rebuild(&mut cache, &mut w);
 
-    let before = cache.get(ChunkPos::new(0, 0, 0)).unwrap().clone();
+    let before = cache.get(section(0, 0, 0)).unwrap().clone();
 
-    // Carve a hole in chunk 1 right against the seam.
+    // Carve a cell out of volume 1 right against the seam.
     w.set(CellPos::new(16, 8, 8), None);
     let updates = rebuild(&mut cache, &mut w);
 
     assert_eq!(
         updates,
         vec![
-            ChunkMeshUpdate::Built(ChunkPos::new(0, 0, 0)),
-            ChunkMeshUpdate::Built(ChunkPos::new(1, 0, 0)),
+            SectionMeshUpdate::Built(section(0, 0, 0)),
+            SectionMeshUpdate::Built(section(1, 0, 0)),
         ],
-        "chunk 0 grows a newly exposed face and must be rebuilt too"
+        "volume 0 grows a newly exposed face and must be rebuilt too"
     );
-    let after = cache.get(ChunkPos::new(0, 0, 0)).unwrap();
-    assert_ne!(&before, after, "chunk 0's surface genuinely changed");
+    let after = cache.get(section(0, 0, 0)).unwrap();
+    assert_ne!(&before, after, "volume 0's surface genuinely changed");
     assert_eq!(
         after.quads.stats.exposed_faces,
         before.quads.stats.exposed_faces + 1
@@ -105,9 +118,9 @@ fn a_seam_edit_rebuilds_both_sides() {
 #[test]
 fn an_incremental_rebuild_matches_a_full_rebuild() {
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::new(0, 0, 0), STONE);
-    solid_chunk(&mut w, ChunkPos::new(1, 0, 0), DIRT);
-    let mut cache = ChunkMeshCache::new();
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
+    solid_volume(&mut w, VolumePos::new(1, 0, 0), DIRT);
+    let mut cache = one_volume_cache();
     rebuild(&mut cache, &mut w);
 
     // A run of edits of every kind: carve, add, repaint, across a seam.
@@ -118,31 +131,32 @@ fn an_incremental_rebuild_matches_a_full_rebuild() {
     w.set(CellPos::new(0, 0, 0), None);
     rebuild(&mut cache, &mut w);
 
-    let fresh = full_rebuild(&w);
+    let fresh = full_rebuild(&w, SectionGrid::ONE_VOLUME);
     assert_eq!(
-        cache.chunks().collect::<Vec<_>>(),
-        fresh.chunks().collect::<Vec<_>>(),
+        cache.sections().collect::<Vec<_>>(),
+        fresh.sections().collect::<Vec<_>>(),
         "incremental geometry must equal a from-scratch compile"
     );
     assert_eq!(cache.stats(), fresh.stats());
 }
 
 #[test]
-fn emptying_a_chunk_removes_its_mesh() {
+fn emptying_a_volume_removes_its_section_mesh() {
     let mut w = world();
     w.set(CellPos::new(100, 0, 0), Some(STONE));
-    let chunk = CellPos::new(100, 0, 0).chunk();
+    let volume = CellPos::new(100, 0, 0).volume();
+    let id = SectionGrid::ONE_VOLUME.section_for(volume);
 
-    let mut cache = ChunkMeshCache::new();
+    let mut cache = one_volume_cache();
     assert_eq!(
         rebuild(&mut cache, &mut w),
-        vec![ChunkMeshUpdate::Built(chunk)]
+        vec![SectionMeshUpdate::Built(id)]
     );
 
     w.set(CellPos::new(100, 0, 0), None);
     assert_eq!(
         rebuild(&mut cache, &mut w),
-        vec![ChunkMeshUpdate::Removed(chunk)],
+        vec![SectionMeshUpdate::Removed(id)],
         "the renderer must be told to tear the mesh down"
     );
     assert!(cache.is_empty());
@@ -150,10 +164,15 @@ fn emptying_a_chunk_removes_its_mesh() {
 }
 
 #[test]
-fn a_rebuild_of_an_already_empty_chunk_reports_nothing() {
+fn a_rebuild_of_an_already_empty_section_reports_nothing() {
     let mut w = world();
-    let mut cache = ChunkMeshCache::new();
-    let updates = cache.rebuild(&w, w.materials(), &GreedyCompiler, [ChunkPos::ZERO]);
+    let mut cache = one_volume_cache();
+    let updates = cache.rebuild(
+        &w,
+        w.materials(),
+        &GreedyCompiler,
+        [VolumePos::new(0, 0, 0)],
+    );
     assert!(
         updates.is_empty(),
         "nothing was built and nothing was removed"
@@ -165,14 +184,14 @@ fn a_rebuild_of_an_already_empty_chunk_reports_nothing() {
     w.set(CellPos::new(0, 0, 0), None);
     w.compact();
     let updates = rebuild(&mut cache, &mut w);
-    assert_eq!(updates, vec![ChunkMeshUpdate::Removed(ChunkPos::ZERO)]);
+    assert_eq!(updates, vec![SectionMeshUpdate::Removed(section(0, 0, 0))]);
 }
 
 #[test]
 fn a_no_op_edit_rebuilds_nothing() {
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::ZERO, STONE);
-    let mut cache = ChunkMeshCache::new();
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
+    let mut cache = one_volume_cache();
     rebuild(&mut cache, &mut w);
 
     assert!(!w.set(CellPos::new(5, 5, 5), Some(STONE)));
@@ -188,21 +207,21 @@ fn rebuilding_is_cheap_relative_to_the_whole_world() {
     let mut w = world();
     for x in 0..4 {
         for z in 0..4 {
-            solid_chunk(&mut w, ChunkPos::new(x, 0, z), STONE);
+            solid_volume(&mut w, VolumePos::new(x, 0, z), STONE);
         }
     }
-    let mut cache = ChunkMeshCache::new();
+    let mut cache = one_volume_cache();
     rebuild(&mut cache, &mut w);
     assert_eq!(cache.len(), 16);
-    let full_chunks = cache.last_rebuild_chunks();
+    let full_sections = cache.last_rebuild_sections();
 
     w.set(CellPos::new(8, 8, 8), None);
     rebuild(&mut cache, &mut w);
-    assert_eq!(full_chunks, 16);
+    assert_eq!(full_sections, 16);
     assert_eq!(
-        cache.last_rebuild_chunks(),
+        cache.last_rebuild_sections(),
         1,
-        "one interior edit in a 16-chunk world must rebuild one chunk"
+        "one interior edit in a 16-volume world must rebuild one section"
     );
 }
 
@@ -211,16 +230,148 @@ fn the_exact_compiler_can_drive_the_cache_too() {
     // The cache is compiler-agnostic, so the oracle can be swapped in to debug a
     // suspected meshing bug without touching anything else.
     let mut w = world();
-    solid_chunk(&mut w, ChunkPos::ZERO, STONE);
+    solid_volume(&mut w, VolumePos::new(0, 0, 0), STONE);
     let dirty = w.take_dirty();
 
-    let mut cache = ChunkMeshCache::new();
+    let mut cache = one_volume_cache();
     cache.rebuild(&w, w.materials(), &engine_geometry::ExactCompiler, dirty);
     assert_eq!(cache.stats().quads, 6 * 16 * 16);
 
-    let greedy_set = GreedyCompiler.compile(&w, ChunkPos::ZERO);
+    let greedy_set = GreedyCompiler.compile(&w, VolumePos::new(0, 0, 0));
     assert_eq!(
-        cache.get(ChunkPos::ZERO).unwrap().quads.unit_faces(),
+        cache.get(section(0, 0, 0)).unwrap().quads.unit_faces(),
         greedy_set.unit_faces()
+    );
+}
+
+// --- the volume / section separation ----------------------------------------
+
+#[test]
+fn a_grouped_grid_draws_many_volumes_as_one_section() {
+    // Eight volumes, grouped 2x2x2 into a single render section. The world model
+    // is untouched; only the cache's grid changed.
+    let grid = SectionGrid::new(2).unwrap();
+    let mut w = world();
+    for x in 0..2 {
+        for y in 0..2 {
+            for z in 0..2 {
+                solid_volume(&mut w, VolumePos::new(x, y, z), STONE);
+            }
+        }
+    }
+
+    let mut cache = SectionMeshCache::new(grid);
+    let updates = rebuild(&mut cache, &mut w);
+
+    assert_eq!(updates.len(), 1, "eight volumes, one submission");
+    assert_eq!(cache.len(), 1);
+    assert_eq!(cache.stats().occupied_cells, 8 * 4096);
+
+    // The 2x2x2 block of solid volumes is one 32-cell cube: internal seams are
+    // gone, and the outer shell is 6 sides of 32x32 cells.
+    assert_eq!(cache.stats().exposed_faces, 6 * 32 * 32);
+}
+
+#[test]
+fn grouping_concatenates_and_never_merges_across_volumes() {
+    let grid = SectionGrid::new(2).unwrap();
+    let mut w = world();
+    for x in 0..2 {
+        for y in 0..2 {
+            for z in 0..2 {
+                solid_volume(&mut w, VolumePos::new(x, y, z), STONE);
+            }
+        }
+    }
+
+    let grouped = full_rebuild(&w, grid);
+    let per_volume = full_rebuild(&w, SectionGrid::ONE_VOLUME);
+
+    // Same surface, expressed as the same unit faces either way.
+    let grouped_faces: std::collections::BTreeSet<_> = grouped
+        .sections()
+        .flat_map(|(_, s)| s.quads.unit_faces())
+        .collect();
+    let split_faces: std::collections::BTreeSet<_> = per_volume
+        .sections()
+        .flat_map(|(_, s)| s.quads.unit_faces())
+        .collect();
+    assert_eq!(
+        grouped_faces, split_faces,
+        "grouping must not change the surface"
+    );
+
+    // And the same quads, because grouping concatenates rather than merging:
+    // a 2x2 patch of volume faces stays four 16x16 quads, not one 32x32 quad.
+    assert_eq!(
+        grouped.stats().quads,
+        per_volume.stats().quads,
+        "cross-volume merging is out of scope and must not have happened"
+    );
+    assert_eq!(grouped.stats().vertices, per_volume.stats().vertices);
+    assert_eq!(
+        grouped.len(),
+        1,
+        "but it is all delivered as a single render section"
+    );
+    assert_eq!(per_volume.len(), 8);
+}
+
+#[test]
+fn one_dirty_volume_rebuilds_its_whole_section_and_no_other() {
+    let grid = SectionGrid::new(2).unwrap();
+    let mut w = world();
+    // Two separate 2x2x2 groups, far enough apart to be different sections.
+    for x in [0, 1, 8, 9] {
+        solid_volume(&mut w, VolumePos::new(x, 0, 0), STONE);
+    }
+    let mut cache = SectionMeshCache::new(grid);
+    rebuild(&mut cache, &mut w);
+    assert_eq!(cache.len(), 2);
+
+    let far_section = grid.section_for(VolumePos::new(8, 0, 0));
+    let untouched = cache.get(far_section).unwrap().clone();
+
+    w.set(CellPos::new(8, 8, 8), None);
+    let updates = rebuild(&mut cache, &mut w);
+
+    assert_eq!(updates.len(), 1);
+    assert_eq!(
+        updates[0].section(),
+        grid.section_for(VolumePos::new(0, 0, 0))
+    );
+    assert_eq!(
+        cache.get(far_section).unwrap(),
+        &untouched,
+        "a distant section must not be re-uploaded"
+    );
+}
+
+#[test]
+fn several_dirty_volumes_in_one_section_collapse_to_one_rebuild() {
+    let grid = SectionGrid::new(2).unwrap();
+    let mut w = world();
+    for x in 0..2 {
+        for y in 0..2 {
+            for z in 0..2 {
+                solid_volume(&mut w, VolumePos::new(x, y, z), STONE);
+            }
+        }
+    }
+    let mut cache = SectionMeshCache::new(grid);
+    rebuild(&mut cache, &mut w);
+
+    // Touch four different volumes that all belong to the same section.
+    w.set(CellPos::new(1, 1, 1), None);
+    w.set(CellPos::new(17, 1, 1), None);
+    w.set(CellPos::new(1, 17, 1), None);
+    w.set(CellPos::new(1, 1, 17), None);
+    assert!(w.dirty_count() >= 4, "several volumes are dirty");
+
+    let updates = rebuild(&mut cache, &mut w);
+    assert_eq!(
+        updates.len(),
+        1,
+        "one section covers them all, so it is rebuilt once"
     );
 }

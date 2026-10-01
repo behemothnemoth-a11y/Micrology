@@ -18,7 +18,7 @@ block-registry ids as material ids, no Minecraft chunk coordinates as an
 unavoidable abstraction, no block entities. Conversion belongs in import/export
 adapters that do not exist yet.
 
-**Cells are data, never entities.** A chunk may be an entity. A compiled mesh may
+**Cells are data, never entities.** A render section may be an entity. A compiled mesh may
 be an entity. An individual cell is a `u16` in an array. Never model a cell as an
 ECS entity or a rigid body — not for picking, not for physics, not for lighting.
 
@@ -30,9 +30,16 @@ machinery. If you optimise geometry further, add the implementation *and* extend
 thing it validates is not an oracle.
 
 **Rebuild locally.** Changing one cell must never re-mesh the world. If you touch
-`World::set` or the dirty-tracking logic, remember that an edit on a chunk
+`World::set` or the dirty-tracking logic, remember that an edit on a volume
 boundary affects the neighbour's geometry too, and that
 `crates/engine_geometry/tests/incremental.rs` is what catches getting it wrong.
+
+**Keep the spatial roles separate.** A 16³ *volume* is the storage leaf. A
+*region* is the residency and persistence unit. A *render section* is what the
+renderer is handed. They currently line up, and nothing may assume they always
+will: go through `SectionGrid` rather than using a volume address as a section
+address, and never reintroduce a type that is "a chunk" meaning all three at
+once. That conflation is what DROP 0002 exists to undo.
 
 **Determinism is a feature.** Meshing, coordinate transforms and serialization
 must be reproducible: same input, same bytes, same quad order. Several tests
@@ -64,7 +71,7 @@ clean trait, and test it. Then optimise against it.
 engine_core  <- engine_volume <- engine_world
 engine_core  <- engine_geometry
 engine_core + engine_volume + engine_world -> engine_io
-all of the above -> apps/sandbox
+all of the above -> engine_stress, apps/sandbox
 ```
 
 `engine_geometry` depends only on `engine_core` and must stay that way: it reads
@@ -88,6 +95,11 @@ If you change the save format, bump `FORMAT_VERSION`, say what changed in
 `cargo run -p engine_io --example make_fixtures`. CI fails if the committed
 fixtures are no longer canonical output, which is the point — a format change
 should be a visible, reviewed diff, and old files must still load.
+
+If you change engine behaviour in a way that moves the stress counters,
+regenerate with `cargo run --release -p engine_stress --bin stress -- --write`
+and justify the diff in the commit message. If a refactor was supposed to change
+nothing, the baseline not moving is the proof.
 
 ## Conventions
 

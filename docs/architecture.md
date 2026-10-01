@@ -28,11 +28,12 @@ suite in about a second.
 
 The vocabulary every other crate shares.
 
-Three coordinate spaces: `CellPos` (global cell address, the authoring space),
-`ChunkPos` (which chunk owns it), `LocalPos` (offset inside the chunk, always
-`0..16`). Splitting uses `div_euclid`/`rem_euclid` so the grid is uniform across
-the origin — cell `-1` belongs to chunk `-1`, not chunk `0`. Off-by-one here is
-invisible until something builds in negative space.
+Coordinate spaces: `CellPos` (global cell address, the authoring space),
+`VolumePos` (which storage volume owns it), `LocalPos` (offset inside the volume,
+always `0..16`), plus `RegionPos` and `RenderSectionId` for the layers above.
+Splitting uses `div_euclid`/`rem_euclid` throughout so every grid is uniform
+across the origin — cell `-1` belongs to volume `-1`, not volume `0`. Off-by-one
+here is invisible until something builds in negative space.
 
 `FaceDir` carries more weight than it looks. Each of the six directions exposes an
 in-plane basis `(u, v)` chosen so that `u × v` equals the outward normal. Every
@@ -49,9 +50,10 @@ needs; the type is additive-extensible and the save format ignores unknown keys.
 came from rather than a dirty flag, which distinguishes "unchanged" from "changed
 and changed back".
 
-`CHUNK_EDGE = 16` lives here. It is 16 because that is the microcell size the
-`astra-microblocks` research used, which keeps fixtures portable. It is a tunable
-constant, not a world limit — and crucially not a render boundary.
+`VOLUME_EDGE = 16` lives here, alongside `REGION_EDGE_VOLUMES = 8`. Sixteen is
+the microcell size the `astra-microblocks` research used, which keeps fixtures
+portable. Both are tunable constants defined once, not world limits — and
+crucially neither is a render boundary.
 
 ### `engine_volume`
 
@@ -80,19 +82,19 @@ not a meaningful test.
 
 ### `engine_world`
 
-A sparse `BTreeMap<ChunkPos, Chunk>`. Only chunks holding something exist, so
+A sparse `BTreeMap<VolumePos, Volume>`. Only volumes holding something exist, so
 coordinates are unbounded in every direction and an empty world costs nothing.
 
 The world answers three questions: what is at this cell, what changed, and which
-chunks must be re-meshed. The third is the subtle one. Clearing a cell at the edge
-of a chunk can *expose* a face that belongs to the **neighbouring** chunk's mesh,
+volumes are now stale. The third is the subtle one. Clearing a cell at the edge of
+a volume can *expose* a face that belongs to the **neighbouring** volume's mesh,
 so a boundary edit marks the neighbour dirty too — up to three neighbours for a
-corner cell. Miss this and you get holes and stale walls at chunk seams, visible
+corner cell. Miss this and you get holes and stale walls at volume seams, visible
 only in specific places and maddening to track down.
 
-Deliberate non-decisions: a chunk is currently exactly one volume, and regions
-above chunks do not exist. Decoupling chunk size from volume size, and adding a
-region tier, is phase B.
+The world reports dirty **volumes**, never render sections. Which sections those
+belong to is the renderer's business, resolved through `SectionGrid`. That
+separation is deliberate and load-bearing — see *Spatial roles* below.
 
 ### `engine_geometry`
 
@@ -106,13 +108,13 @@ shares code with the thing it validates is not an oracle.
 `GreedyCompiler` sweeps each of the six directions as a stack of slices, builds a
 2D mask of exposed faces per slice, and consumes the mask into maximal
 same-material rectangles — grow along `u`, then grow that strip along `v`. A solid
-chunk collapses from 1536 unit faces to 6 quads. Merging never crosses a material
+volume collapses from 1536 unit faces to 6 quads. Merging never crosses a material
 boundary.
 
-Both read cells in global space, so they sample one cell *outside* the chunk they
-are compiling. That is the whole mechanism for cross-chunk hidden-face removal:
-chunk seams simply are not render boundaries, and nothing special has to happen at
-them.
+Both read cells in global space, so they sample one cell *outside* the volume they
+are compiling. That is the whole mechanism for cross-volume hidden-face removal:
+volume seams simply are not render boundaries, and nothing special has to happen
+at them.
 
 Both are deterministic — fixed direction order, ascending slices, ascending `v`
 then `u` — so the same cells always yield the same quads in the same order. The
@@ -120,52 +122,66 @@ then `u` — so the same cells always yield the same quads in the same order. Th
 compilers' output can be compared for equality. That comparison is the engine's
 entire correctness story for optimised meshing.
 
-`ChunkMeshCache` holds the compiled result per chunk and rebuilds only the chunks
-it is handed. It does not depend on `engine_world` — it takes a `CellSource` and a
-list of dirty chunks — which is what lets the incremental rebuild path be tested
-without a window.
+`SectionMeshCache` holds the compiled result per render section and rebuilds only
+the sections whose volumes are dirty, deduplicating several dirty volumes that
+share a section. It does not depend on `engine_world` — it takes a `CellSource`
+and a list of dirty volumes — which is what lets the incremental rebuild path be
+tested without a window.
 
 ### `engine_io`
 
 Transparent, versioned JSON with run-length encoded cells. Readable, diffable,
 hand-editable while the data model is still moving; compactness is explicitly not
-a goal yet. See [`native-world-format.md`](native-world-format.md).
+a goal yet. See [`native-world-format.md`](native-world-format.md). Format v1
+calls a storage volume a "chunk" because that is what the engine called it when
+the format was written; those field names are frozen.
+
+### `engine_stress`
+
+Deterministic stress scenarios and the measurement harness over them. Counters
+are reproducible and asserted in CI; timings are diagnostic and never committed.
+See [`testing.md`](testing.md).
 
 ### `apps/sandbox`
 
 The thinnest app that proves the engine. Window, free-fly camera, one entity per
-chunk, a DDA ray through the cell grid for picking, and three edit actions. Picking
+section, a DDA ray through the cell grid for picking, and three edit actions. Picking
 walks the cell data directly — no mesh intersection, no physics engine, because
 the world data *is* the collision representation.
 
 ## The editing cycle
 
 ```text
-input → World::set → chunk (and boundary neighbours) marked dirty
-      → ChunkMeshCache::rebuild(dirty) → MeshData
-      → Bevy mesh handle replaced on the existing chunk entity
+input → World::set → volume (and boundary neighbours) marked dirty
+      → SectionMeshCache::rebuild(dirty volumes)
+      → volumes mapped to sections, deduplicated
+      → MeshData → Bevy mesh handle replaced on the existing section entity
 ```
 
-One frame, one cell changed, one or two chunks re-meshed, one buffer re-uploaded.
-Nothing else in the world is touched, and the HUD reports exactly how many chunks
-the last rebuild visited so the claim is checkable rather than asserted.
+One frame, one cell changed, one or two sections re-meshed, one buffer
+re-uploaded. Nothing else in the world is touched, and the HUD reports exactly how
+many sections the last rebuild visited so the claim is checkable rather than
+asserted.
 
 ## Where the next layers attach
 
 These are attachment points, not plans — none of this is implemented.
 
-- **Streaming (phase B)** goes above `engine_world`: a region tier over chunks, an
-  async load/compile queue feeding `ChunkMeshCache`, camera-relative residency.
-  The dirty set is already an ordered queue of work; it becomes a scheduler input.
+- **Streaming (DROP 0002, in progress)** goes above `engine_world`: `RegionPos`
+  exists, the region *container* and residency state machine do not yet. An async
+  load/compile queue feeds `SectionMeshCache`; the dirty set is already an ordered
+  queue of work and becomes the scheduler's input.
 - **Destruction (phase C)** attaches at `World::set`. The data path already
   supports arbitrary local topology change with local rebuilds. What is missing is
   connectivity analysis and turning detached regions into bodies — and the rule
   that no cell ever becomes a rigid body still holds.
 - **LOD** attaches at `SurfaceCompiler`: a compiler that reads a downsampled
   `CellSource` is a different implementation of the same trait, and the oracle
-  still validates the full-resolution one.
+  still validates the full-resolution one. Note the oracle proves *unit-face
+  equality*, which a downsampled representation will not satisfy and was never
+  meant to — LOD needs its own correctness properties.
 - **Generation (phase E)** can implement `CellSource` without storing anything,
   so geometry compilation works against generated terrain before any save exists.
-  Delta saves then mean persisting only the chunks that differ from the seed.
+  Delta saves then mean persisting only the regions that differ from the seed.
 - **Import/export (phase G)** sits beside `engine_io` and maps foreign ids onto
   `MaterialId`. No core crate learns about the foreign format.

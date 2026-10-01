@@ -1,7 +1,7 @@
 //! The surface compilation interface.
 
 use crate::QuadSet;
-use engine_core::{CellSource, ChunkPos};
+use engine_core::{CellSource, VolumePos};
 
 /// Compiles the exposed surfaces of one chunk into quads.
 ///
@@ -17,5 +17,5 @@ pub trait SurfaceCompiler {
     fn name(&self) -> &'static str;
 
     /// Compile the surfaces of `chunk`.
-    fn compile(&self, source: &dyn CellSource, chunk: ChunkPos) -> QuadSet;
+    fn compile(&self, source: &dyn CellSource, chunk: VolumePos) -> QuadSet;
 }

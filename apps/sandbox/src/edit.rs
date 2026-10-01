@@ -7,7 +7,7 @@
 //! of an editor.
 
 use crate::camera::{FlyCamera, cursor_grabbed};
-use crate::render::{self, ChunkEntities};
+use crate::render::{self, SectionEntities};
 use crate::scene;
 use crate::{GeometryRes, SavePath, StatusLine, WorldRes};
 use bevy::input::mouse::AccumulatedMouseScroll;
@@ -225,7 +225,7 @@ pub fn save_and_load(
     path: Res<SavePath>,
     mut world: ResMut<WorldRes>,
     mut geometry: ResMut<GeometryRes>,
-    mut chunks: ResMut<ChunkEntities>,
+    mut sections: ResMut<SectionEntities>,
     mut status: ResMut<StatusLine>,
 ) {
     if keys.just_pressed(KeyCode::F5) {
@@ -242,7 +242,7 @@ pub fn save_and_load(
                 // Every mesh belongs to the previous world; start clean. The
                 // loader has already marked every chunk dirty.
                 geometry.cache.clear();
-                render::clear_chunk_entities(&mut commands, &mut chunks);
+                render::clear_section_entities(&mut commands, &mut sections);
                 status.0 = format!("loaded {}", path.0.display());
             }
             Err(error) => status.0 = format!("load failed: {error}"),

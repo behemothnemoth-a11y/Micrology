@@ -1,50 +1,58 @@
-//! Per-chunk compiled geometry, rebuilt locally.
+//! Compiled geometry per render section, rebuilt locally.
 //!
-//! This is the other half of the dirty-tracking promise: [`World`] says *which*
-//! chunks changed, and this cache rebuilds exactly those and nothing else
-//! (design principle 5). Changing one cell never touches the geometry of a chunk
-//! that did not change.
+//! This is the other half of the dirty-tracking promise: the world says *which
+//! volumes* changed, and this cache rebuilds only the render sections those
+//! volumes belong to (design principle 5).
 //!
-//! The cache is deliberately renderer-agnostic and does not depend on the world
-//! crate — it takes a [`CellSource`] and a list of dirty chunks. That keeps it
-//! testable without a window, which is how the incremental rebuild path is
-//! verified.
+//! The volume/section distinction is the point. The world deals in storage
+//! volumes; the renderer deals in sections. A [`SectionGrid`] maps between them,
+//! and today it maps one-to-one — which is a fine implementation and a terrible
+//! assumption, so nothing here is allowed to make it. Raising the grid's edge
+//! groups several volumes into one submission with no change to the world model
+//! and no change to the meshers.
 //!
-//! [`World`]: https://docs.rs/engine_world
+//! Grouping concatenates; it does not merge. A section covering eight volumes
+//! compiles all eight and joins the quads. Cross-volume merging would change
+//! the geometry and needs its own correctness story, so it stays out.
+//!
+//! The cache is renderer-agnostic and does not depend on the world crate — it
+//! takes a [`CellSource`] and a list of dirty volumes. That is what lets the
+//! incremental rebuild path be tested without a window.
 
 use crate::{MeshData, QuadSet, SurfaceCompiler};
-use engine_core::{CellSource, ChunkPos, MaterialRegistry};
-use std::collections::BTreeMap;
+use engine_core::{CellSource, MaterialRegistry, RenderSectionId, SectionGrid, VolumePos};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-/// Compiled geometry for one chunk.
+/// Compiled geometry for one render section.
 #[derive(Clone, PartialEq, Debug)]
-pub struct CachedChunk {
+pub struct CachedSection {
     pub quads: QuadSet,
     pub mesh: MeshData,
 }
 
-/// What a rebuild pass did to one chunk.
+/// What a rebuild pass did to one section.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ChunkMeshUpdate {
+pub enum SectionMeshUpdate {
     /// Geometry was compiled and should be uploaded or replaced.
-    Built(ChunkPos),
-    /// The chunk no longer has any surface; tear its mesh down.
-    Removed(ChunkPos),
+    Built(RenderSectionId),
+    /// The section no longer has any surface; tear its mesh down.
+    Removed(RenderSectionId),
 }
 
-impl ChunkMeshUpdate {
-    pub fn chunk(self) -> ChunkPos {
+impl SectionMeshUpdate {
+    pub fn section(self) -> RenderSectionId {
         match self {
-            ChunkMeshUpdate::Built(pos) | ChunkMeshUpdate::Removed(pos) => pos,
+            SectionMeshUpdate::Built(id) | SectionMeshUpdate::Removed(id) => id,
         }
     }
 }
 
-/// Totals across every cached chunk, for the HUD and for measuring claims.
+/// Totals across every cached section, for the HUD and for measuring claims.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct CacheStats {
-    pub chunks: usize,
+    /// Render sections currently holding geometry.
+    pub sections: usize,
     pub occupied_cells: u64,
     pub exposed_faces: u64,
     pub quads: u64,
@@ -55,25 +63,48 @@ pub struct CacheStats {
     pub mesh_bytes: u64,
 }
 
-/// Holds the compiled surface of every non-empty chunk.
-#[derive(Clone, Default, Debug)]
-pub struct ChunkMeshCache {
-    entries: BTreeMap<ChunkPos, CachedChunk>,
+/// Holds the compiled surface of every render section that has one.
+#[derive(Clone, Debug)]
+pub struct SectionMeshCache {
+    grid: SectionGrid,
+    entries: BTreeMap<RenderSectionId, CachedSection>,
     last_rebuild: Duration,
-    last_rebuild_chunks: usize,
+    last_rebuild_sections: usize,
 }
 
-impl ChunkMeshCache {
-    pub fn new() -> Self {
-        Self::default()
+impl Default for SectionMeshCache {
+    fn default() -> Self {
+        Self::new(SectionGrid::ONE_VOLUME)
+    }
+}
+
+impl SectionMeshCache {
+    /// A cache that groups volumes into sections according to `grid`.
+    pub fn new(grid: SectionGrid) -> Self {
+        Self {
+            grid,
+            entries: BTreeMap::new(),
+            last_rebuild: Duration::ZERO,
+            last_rebuild_sections: 0,
+        }
     }
 
-    pub fn get(&self, chunk: ChunkPos) -> Option<&CachedChunk> {
-        self.entries.get(&chunk)
+    /// How volumes map onto sections in this cache.
+    pub fn grid(&self) -> SectionGrid {
+        self.grid
     }
 
-    pub fn chunks(&self) -> impl Iterator<Item = (ChunkPos, &CachedChunk)> {
-        self.entries.iter().map(|(pos, entry)| (*pos, entry))
+    pub fn get(&self, section: RenderSectionId) -> Option<&CachedSection> {
+        self.entries.get(&section)
+    }
+
+    /// The section a volume is drawn by, whether or not it is cached.
+    pub fn section_for(&self, volume: VolumePos) -> RenderSectionId {
+        self.grid.section_for(volume)
+    }
+
+    pub fn sections(&self) -> impl Iterator<Item = (RenderSectionId, &CachedSection)> {
+        self.entries.iter().map(|(id, entry)| (*id, entry))
     }
 
     pub fn len(&self) -> usize {
@@ -84,19 +115,19 @@ impl ChunkMeshCache {
         self.entries.is_empty()
     }
 
-    /// Time spent in the most recent [`ChunkMeshCache::rebuild`].
+    /// Time spent in the most recent [`SectionMeshCache::rebuild`].
     pub fn last_rebuild_time(&self) -> Duration {
         self.last_rebuild
     }
 
-    /// How many chunks the most recent rebuild visited.
-    pub fn last_rebuild_chunks(&self) -> usize {
-        self.last_rebuild_chunks
+    /// How many sections the most recent rebuild visited.
+    pub fn last_rebuild_sections(&self) -> usize {
+        self.last_rebuild_sections
     }
 
     pub fn stats(&self) -> CacheStats {
         let mut stats = CacheStats {
-            chunks: self.entries.len(),
+            sections: self.entries.len(),
             ..CacheStats::default()
         };
         for entry in self.entries.values() {
@@ -111,35 +142,61 @@ impl ChunkMeshCache {
         stats
     }
 
-    /// Recompile the listed chunks and nothing else.
+    /// Recompile the sections owning the given dirty volumes, and nothing else.
     ///
-    /// Returns one update per chunk visited, in the order visited, so a caller
-    /// can apply exactly the corresponding renderer changes.
+    /// Several dirty volumes in one section collapse to a single rebuild, which
+    /// is why this takes volumes rather than sections: the caller should not have
+    /// to know the mapping in order to avoid redundant work.
+    ///
+    /// Returns one update per section visited, in ascending section order, so a
+    /// caller can apply exactly the corresponding renderer changes.
     pub fn rebuild(
         &mut self,
         source: &dyn CellSource,
         materials: &MaterialRegistry,
         compiler: &dyn SurfaceCompiler,
-        dirty: impl IntoIterator<Item = ChunkPos>,
-    ) -> Vec<ChunkMeshUpdate> {
+        dirty_volumes: impl IntoIterator<Item = VolumePos>,
+    ) -> Vec<SectionMeshUpdate> {
+        let sections: BTreeSet<RenderSectionId> = dirty_volumes
+            .into_iter()
+            .map(|volume| self.grid.section_for(volume))
+            .collect();
+        self.rebuild_sections(source, materials, compiler, sections)
+    }
+
+    /// Recompile specific sections. Prefer [`SectionMeshCache::rebuild`], which
+    /// does the volume-to-section mapping and the deduplication for you.
+    pub fn rebuild_sections(
+        &mut self,
+        source: &dyn CellSource,
+        materials: &MaterialRegistry,
+        compiler: &dyn SurfaceCompiler,
+        sections: impl IntoIterator<Item = RenderSectionId>,
+    ) -> Vec<SectionMeshUpdate> {
         let started = std::time::Instant::now();
         let mut updates = Vec::new();
 
-        for chunk in dirty {
-            let quads = compiler.compile(source, chunk);
+        for section in sections {
+            // Every volume of the section contributes, not only the dirty ones:
+            // the section is one buffer, so it is rebuilt whole.
+            let mut quads = QuadSet::default();
+            for volume in self.grid.volumes_in(section) {
+                quads.extend(compiler.compile(source, volume));
+            }
+
             if quads.is_empty() {
-                if self.entries.remove(&chunk).is_some() {
-                    updates.push(ChunkMeshUpdate::Removed(chunk));
+                if self.entries.remove(&section).is_some() {
+                    updates.push(SectionMeshUpdate::Removed(section));
                 }
                 continue;
             }
             let mesh = MeshData::from_quads(&quads, materials);
-            self.entries.insert(chunk, CachedChunk { quads, mesh });
-            updates.push(ChunkMeshUpdate::Built(chunk));
+            self.entries.insert(section, CachedSection { quads, mesh });
+            updates.push(SectionMeshUpdate::Built(section));
         }
 
         self.last_rebuild = started.elapsed();
-        self.last_rebuild_chunks = updates.len();
+        self.last_rebuild_sections = updates.len();
         updates
     }
 

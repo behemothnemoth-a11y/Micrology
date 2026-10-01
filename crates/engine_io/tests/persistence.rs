@@ -1,7 +1,7 @@
 //! Save/load behaviour: round-trip fidelity, byte determinism, version
 //! handling, and the promise that geometry survives a reload unchanged.
 
-use engine_core::{CellPos, ChunkPos, MaterialId, MaterialRegistry, Rgb};
+use engine_core::{CellPos, MaterialId, MaterialRegistry, Rgb, VolumePos};
 use engine_geometry::{GreedyCompiler, SurfaceCompiler};
 use engine_io::{FORMAT_TAG, FORMAT_VERSION, IoError};
 use engine_world::World;
@@ -81,7 +81,7 @@ fn save_and_reload_are_exactly_equal() {
 
     assert_eq!(reloaded, world);
     assert_eq!(reloaded.occupied_count(), world.occupied_count());
-    assert_eq!(reloaded.chunk_count(), world.chunk_count());
+    assert_eq!(reloaded.volume_count(), world.volume_count());
     // Spot-check the carved cell and a negative coordinate.
     assert_eq!(reloaded.get(CellPos::new(4, 4, 4)), None);
     assert_eq!(reloaded.get(CellPos::new(-5, -5, -5)), Some(STONE));
@@ -128,14 +128,14 @@ fn emptied_chunks_are_not_written() {
         !json.contains("\"cells\""),
         "a world with no occupied cells must not write chunk data:\n{json}"
     );
-    assert_eq!(engine_io::from_json(&json).unwrap().chunk_count(), 0);
+    assert_eq!(engine_io::from_json(&json).unwrap().volume_count(), 0);
 }
 
 #[test]
 fn a_loaded_world_is_entirely_dirty() {
     let world = engine_io::from_json(&engine_io::to_json(&sample()).unwrap()).unwrap();
-    let dirty: Vec<ChunkPos> = world.dirty_chunks().collect();
-    let chunks: Vec<ChunkPos> = world.chunk_positions().collect();
+    let dirty: Vec<VolumePos> = world.dirty_volumes().collect();
+    let chunks: Vec<VolumePos> = world.volume_positions().collect();
 
     for chunk in &chunks {
         assert!(
@@ -155,8 +155,8 @@ fn geometry_is_unchanged_by_a_save_and_reload() {
 
     let reloaded = engine_io::from_json(&engine_io::to_json(&world).unwrap()).unwrap();
 
-    let chunks: Vec<ChunkPos> = world.chunk_positions().collect();
-    assert_eq!(chunks, reloaded.chunk_positions().collect::<Vec<_>>());
+    let chunks: Vec<VolumePos> = world.volume_positions().collect();
+    assert_eq!(chunks, reloaded.volume_positions().collect::<Vec<_>>());
     for chunk in chunks {
         let before = GreedyCompiler.compile(&world, chunk);
         let after = GreedyCompiler.compile(&reloaded, chunk);
@@ -264,7 +264,7 @@ fn inconsistent_cell_data_names_the_offending_chunk() {
         }}"#
     );
     match engine_io::from_json(&json) {
-        Err(IoError::BadChunk { chunk, .. }) => assert_eq!(chunk, ChunkPos::new(2, 3, 4)),
+        Err(IoError::BadChunk { chunk, .. }) => assert_eq!(chunk, VolumePos::new(2, 3, 4)),
         other => panic!("expected a chunk error, got {other:?}"),
     }
 }
@@ -296,7 +296,7 @@ fn the_committed_fixture_still_loads() {
         .unwrap_or_else(|e| panic!("fixture {} failed to load: {e}", path.display()));
 
     assert_eq!(world.materials().len(), 3);
-    assert_eq!(world.chunk_count(), 3);
+    assert_eq!(world.volume_count(), 3);
     assert_eq!(world.get(CellPos::new(0, 0, 0)), Some(STONE));
     assert_eq!(world.get(CellPos::new(0, 3, 0)), Some(MaterialId(3)));
     assert_eq!(world.get(CellPos::new(6, 6, 6)), None, "the carved cavity");

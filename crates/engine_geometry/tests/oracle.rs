@@ -10,15 +10,15 @@
 mod common;
 
 use common::*;
-use engine_core::{CHUNK_EDGE, CellPos, ChunkPos, MaterialId};
+use engine_core::{CellPos, MaterialId, VOLUME_EDGE, VolumePos};
 use engine_geometry::{MeshData, QuadSet};
 use engine_world::World;
 
-/// Build a reproducible scrambled world and return the chunks worth checking.
+/// Build a reproducible scrambled world and return the volumes worth checking.
 fn scrambled(seed: u64, fill_percent: u32, material_count: u32) -> World {
     let mut rng = Rng::new(seed);
     let mut w = world();
-    let span = CHUNK_EDGE * 2;
+    let span = VOLUME_EDGE * 2;
 
     for y in 0..span {
         for z in 0..span {
@@ -33,14 +33,14 @@ fn scrambled(seed: u64, fill_percent: u32, material_count: u32) -> World {
     w
 }
 
-fn assert_agrees(w: &World, chunk: ChunkPos) -> (QuadSet, QuadSet) {
-    let e = exact(w, chunk);
-    let g = greedy(w, chunk);
+fn assert_agrees(w: &World, volume: VolumePos) -> (QuadSet, QuadSet) {
+    let e = exact(w, volume);
+    let g = greedy(w, volume);
 
     assert_eq!(
         g.unit_faces(),
         e.unit_faces(),
-        "greedy output disagrees with the oracle for {chunk:?}"
+        "greedy output disagrees with the oracle for {volume:?}"
     );
     assert_eq!(
         g.stats.exposed_faces, e.stats.exposed_faces,
@@ -64,8 +64,8 @@ fn greedy_matches_the_oracle_across_densities() {
     for fill in [1u32, 5, 25, 50, 75, 95, 100] {
         for seed in 0..4u64 {
             let w = scrambled(seed * 977 + u64::from(fill), fill, 3);
-            for chunk in w.chunk_positions().collect::<Vec<_>>() {
-                assert_agrees(&w, chunk);
+            for volume in w.volume_positions().collect::<Vec<_>>() {
+                assert_agrees(&w, volume);
             }
         }
     }
@@ -76,8 +76,8 @@ fn greedy_matches_the_oracle_with_many_materials() {
     // Lots of distinct materials means almost nothing can merge; the mesher must
     // degrade to the exact result rather than merging something it should not.
     let w = scrambled(4242, 90, 64);
-    for chunk in w.chunk_positions().collect::<Vec<_>>() {
-        let (e, g) = assert_agrees(&w, chunk);
+    for volume in w.volume_positions().collect::<Vec<_>>() {
+        let (e, g) = assert_agrees(&w, volume);
         assert!(g.len() <= e.len());
     }
 }
@@ -94,10 +94,10 @@ fn greedy_matches_the_oracle_around_negative_coordinates() {
         );
         w.set(pos, Some(MaterialId(1 + rng.below(3))));
     }
-    let chunks: Vec<ChunkPos> = w.chunk_positions().collect();
-    assert!(chunks.iter().any(|c| c.x < 0 && c.y < 0 && c.z < 0));
-    for chunk in chunks {
-        assert_agrees(&w, chunk);
+    let volumes: Vec<VolumePos> = w.volume_positions().collect();
+    assert!(volumes.iter().any(|v| v.x < 0 && v.y < 0 && v.z < 0));
+    for volume in volumes {
+        assert_agrees(&w, volume);
     }
 }
 
@@ -110,8 +110,8 @@ fn merging_actually_merges_on_realistic_terrain() {
 
     let mut exact_quads = 0;
     let mut greedy_quads = 0;
-    for chunk in w.chunk_positions().collect::<Vec<_>>() {
-        let (e, g) = assert_agrees(&w, chunk);
+    for volume in w.volume_positions().collect::<Vec<_>>() {
+        let (e, g) = assert_agrees(&w, volume);
         exact_quads += e.len();
         greedy_quads += g.len();
     }
@@ -126,16 +126,16 @@ fn merging_actually_merges_on_realistic_terrain() {
 #[test]
 fn compilation_is_deterministic() {
     let w = scrambled(7, 40, 4);
-    for chunk in w.chunk_positions().collect::<Vec<_>>() {
-        let first = greedy(&w, chunk);
-        let second = greedy(&w, chunk);
+    for volume in w.volume_positions().collect::<Vec<_>>() {
+        let first = greedy(&w, volume);
+        let second = greedy(&w, volume);
         assert_eq!(
             first.quads, second.quads,
             "quad order and contents must be reproducible"
         );
 
-        let exact_first = exact(&w, chunk);
-        assert_eq!(exact_first.quads, exact(&w, chunk).quads);
+        let exact_first = exact(&w, volume);
+        assert_eq!(exact_first.quads, exact(&w, volume).quads);
 
         let mesh_a = MeshData::from_quads(&first, w.materials());
         let mesh_b = MeshData::from_quads(&second, w.materials());
@@ -171,30 +171,30 @@ fn edit_order_does_not_change_the_compiled_surface() {
 
     assert_eq!(forwards, backwards);
     assert_eq!(
-        greedy(&forwards, ChunkPos::ZERO).quads,
-        greedy(&backwards, ChunkPos::ZERO).quads,
+        greedy(&forwards, VolumePos::ZERO).quads,
+        greedy(&backwards, VolumePos::ZERO).quads,
         "identical cells must compile identically whatever order they were built in"
     );
 }
 
 #[test]
 fn a_rebuilt_chunk_matches_a_freshly_built_one() {
-    // The incremental-rebuild promise: editing and re-compiling one chunk gives
+    // The incremental-rebuild promise: editing and re-compiling one volume gives
     // the same geometry as compiling that state from scratch.
     let mut edited = world();
-    solid_chunk(&mut edited, ChunkPos::ZERO, STONE);
+    solid_volume(&mut edited, VolumePos::ZERO, STONE);
     edited.set(CellPos::new(5, 5, 5), None);
     edited.set(CellPos::new(5, 6, 5), None);
     edited.set(CellPos::new(0, 0, 0), Some(DIRT));
 
     let mut fresh = world();
-    for (pos, chunk) in edited.chunks() {
-        fresh.insert_chunk(pos, chunk.volume().clone());
+    for (pos, volume) in edited.volumes() {
+        fresh.insert_volume(pos, volume.clone());
     }
 
     assert_eq!(
-        greedy(&edited, ChunkPos::ZERO).quads,
-        greedy(&fresh, ChunkPos::ZERO).quads
+        greedy(&edited, VolumePos::ZERO).quads,
+        greedy(&fresh, VolumePos::ZERO).quads
     );
-    assert_agrees(&edited, ChunkPos::ZERO);
+    assert_agrees(&edited, VolumePos::ZERO);
 }

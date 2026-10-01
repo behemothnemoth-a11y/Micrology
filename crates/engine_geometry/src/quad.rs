@@ -92,12 +92,12 @@ impl Quad {
 /// Design principle 8: performance claims need measurements. These are counts
 /// of the geometry produced and say nothing about frame rate.
 ///
-/// Timings deliberately live elsewhere ([`ChunkMeshCache::last_rebuild_time`]).
+/// Timings deliberately live elsewhere ([`SectionMeshCache::last_rebuild_time`]).
 /// A wall-clock reading varies between runs, and a [`QuadSet`] has to stay a
 /// pure value that two compilers' output can be compared for equality — that
 /// comparison is the engine's whole correctness story for optimised meshing.
 ///
-/// [`ChunkMeshCache::last_rebuild_time`]: crate::ChunkMeshCache::last_rebuild_time
+/// [`SectionMeshCache::last_rebuild_time`]: crate::SectionMeshCache::last_rebuild_time
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct CompileStats {
     /// Occupied cells inside the compiled chunk.
@@ -146,5 +146,19 @@ impl QuadSet {
     /// Total unit-face area of every quad, counting overlaps twice.
     pub fn total_area(&self) -> u32 {
         self.quads.iter().map(|q| q.area()).sum()
+    }
+
+    /// Absorb another set, summing the counters.
+    ///
+    /// Used to gather the quads of several volumes into one render section.
+    /// This is concatenation, never merging: quads from different volumes keep
+    /// their own geometry and nothing is combined across the boundary between
+    /// them. Cross-volume merging is a separate decision with its own
+    /// correctness obligations.
+    pub fn extend(&mut self, other: QuadSet) {
+        self.quads.extend(other.quads);
+        self.stats.occupied_cells += other.stats.occupied_cells;
+        self.stats.exposed_faces += other.stats.exposed_faces;
+        self.stats.quads += other.stats.quads;
     }
 }

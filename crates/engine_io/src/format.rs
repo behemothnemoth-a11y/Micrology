@@ -1,7 +1,7 @@
 //! The on-disk schema and its translation to and from a live [`World`].
 
 use crate::IoError;
-use engine_core::{ChunkPos, Material, MaterialId, MaterialRegistry};
+use engine_core::{Material, MaterialId, MaterialRegistry, VolumePos};
 use engine_volume::{SlotRun, Volume};
 use engine_world::World;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,12 @@ use std::path::Path;
 
 /// Identifies the file as an engine-native world.
 pub const FORMAT_TAG: &str = "micrology.world";
+
+// Note on vocabulary: version 1 of the wire format says "chunks" because that
+// is what the engine called a storage volume when the format was written. The
+// engine now distinguishes volumes from regions and render sections, but the
+// v1 field names are frozen — renaming them would break every existing file for
+// no benefit. Format v2 uses the current vocabulary.
 
 /// The format version this build writes and reads.
 ///
@@ -30,7 +36,7 @@ struct WorldFile {
 
 #[derive(Serialize, Deserialize)]
 struct ChunkFile {
-    pos: ChunkPos,
+    pos: VolumePos,
     /// Cell value `n >= 1` resolves to `palette[n - 1]`; `0` is an empty cell.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     palette: Vec<MaterialId>,
@@ -48,12 +54,12 @@ pub fn to_json(world: &World) -> Result<String, IoError> {
         version: FORMAT_VERSION,
         materials: world.materials().iter().cloned().collect(),
         chunks: world
-            .chunks()
-            .filter(|(_, chunk)| !chunk.is_empty())
-            .map(|(pos, chunk)| {
+            .volumes()
+            .filter(|(_, volume)| !volume.is_empty())
+            .map(|(pos, volume)| {
                 // Compact a copy so the palette is sorted and dead entries are
                 // gone; the live world is left untouched.
-                let mut volume = chunk.volume().clone();
+                let mut volume = volume.clone();
                 volume.compact();
                 ChunkFile {
                     pos,
@@ -92,7 +98,7 @@ pub fn from_json(json: &str) -> Result<World, IoError> {
                 source,
             }
         })?;
-        world.insert_chunk(chunk.pos, volume);
+        world.insert_volume(chunk.pos, volume);
     }
 
     // Every mesh for a freshly loaded world is missing, not merely stale.

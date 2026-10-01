@@ -4,9 +4,9 @@
 //!
 //! * [`CellPos`] — a global cell address. This is the authoring/editing space
 //!   and the only space that game code should normally need.
-//! * [`ChunkPos`] — which chunk owns a cell. Chunks are the unit of storage,
+//! * [`VolumePos`] — which chunk owns a cell. Chunks are the unit of storage,
 //!   dirty tracking and mesh compilation.
-//! * [`LocalPos`] — a cell's offset inside its chunk, always `0..CHUNK_EDGE`.
+//! * [`LocalPos`] — a cell's offset inside its chunk, always `0..VOLUME_EDGE`.
 //!
 //! Negative coordinates are handled with euclidean division so that the cell
 //! grid is uniform across the origin; `-1` belongs to chunk `-1`, not chunk `0`.
@@ -21,10 +21,10 @@ use std::fmt;
 /// fixtures portable. It is a tunable constant, **not** a world limit: nothing
 /// outside this module may assume 16, and the renderer is explicitly free to
 /// merge geometry across chunk boundaries.
-pub const CHUNK_EDGE: i32 = 16;
+pub const VOLUME_EDGE: i32 = 16;
 
-/// Number of cells in one chunk (`CHUNK_EDGE^3`).
-pub const CHUNK_CELLS: usize = (CHUNK_EDGE * CHUNK_EDGE * CHUNK_EDGE) as usize;
+/// Number of cells in one chunk (`VOLUME_EDGE^3`).
+pub const VOLUME_CELLS: usize = (VOLUME_EDGE * VOLUME_EDGE * VOLUME_EDGE) as usize;
 
 /// Error returned when a coordinate falls outside its valid range.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -38,7 +38,7 @@ impl fmt::Display for PosError {
         write!(
             f,
             "local position {:?} is outside 0..{}",
-            self.value, CHUNK_EDGE
+            self.value, VOLUME_EDGE
         )
     }
 }
@@ -101,11 +101,11 @@ impl CellPos {
 
     /// The chunk that owns this cell.
     #[inline]
-    pub const fn chunk(self) -> ChunkPos {
-        ChunkPos::new(
-            self.x.div_euclid(CHUNK_EDGE),
-            self.y.div_euclid(CHUNK_EDGE),
-            self.z.div_euclid(CHUNK_EDGE),
+    pub const fn volume(self) -> VolumePos {
+        VolumePos::new(
+            self.x.div_euclid(VOLUME_EDGE),
+            self.y.div_euclid(VOLUME_EDGE),
+            self.z.div_euclid(VOLUME_EDGE),
         )
     }
 
@@ -113,25 +113,25 @@ impl CellPos {
     #[inline]
     pub const fn local(self) -> LocalPos {
         LocalPos {
-            x: self.x.rem_euclid(CHUNK_EDGE) as u8,
-            y: self.y.rem_euclid(CHUNK_EDGE) as u8,
-            z: self.z.rem_euclid(CHUNK_EDGE) as u8,
+            x: self.x.rem_euclid(VOLUME_EDGE) as u8,
+            y: self.y.rem_euclid(VOLUME_EDGE) as u8,
+            z: self.z.rem_euclid(VOLUME_EDGE) as u8,
         }
     }
 
     /// Split into chunk address and in-chunk offset.
     #[inline]
-    pub const fn split(self) -> (ChunkPos, LocalPos) {
-        (self.chunk(), self.local())
+    pub const fn split(self) -> (VolumePos, LocalPos) {
+        (self.volume(), self.local())
     }
 
     /// Rebuild a global address from a chunk and an in-chunk offset.
     #[inline]
-    pub const fn from_parts(chunk: ChunkPos, local: LocalPos) -> Self {
+    pub const fn from_parts(chunk: VolumePos, local: LocalPos) -> Self {
         Self {
-            x: chunk.x * CHUNK_EDGE + local.x as i32,
-            y: chunk.y * CHUNK_EDGE + local.y as i32,
-            z: chunk.z * CHUNK_EDGE + local.z as i32,
+            x: chunk.x * VOLUME_EDGE + local.x as i32,
+            y: chunk.y * VOLUME_EDGE + local.y as i32,
+            z: chunk.z * VOLUME_EDGE + local.z as i32,
         }
     }
 
@@ -177,14 +177,14 @@ impl CellPos {
 #[derive(
     Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Debug, Serialize, Deserialize,
 )]
-pub struct ChunkPos {
+pub struct VolumePos {
     pub x: i32,
     pub y: i32,
     pub z: i32,
 }
 
-impl ChunkPos {
-    pub const ZERO: ChunkPos = ChunkPos::new(0, 0, 0);
+impl VolumePos {
+    pub const ZERO: VolumePos = VolumePos::new(0, 0, 0);
 
     #[inline]
     pub const fn new(x: i32, y: i32, z: i32) -> Self {
@@ -195,9 +195,9 @@ impl ChunkPos {
     #[inline]
     pub const fn origin(self) -> CellPos {
         CellPos::new(
-            self.x * CHUNK_EDGE,
-            self.y * CHUNK_EDGE,
-            self.z * CHUNK_EDGE,
+            self.x * VOLUME_EDGE,
+            self.y * VOLUME_EDGE,
+            self.z * VOLUME_EDGE,
         )
     }
 
@@ -213,7 +213,7 @@ impl ChunkPos {
     }
 }
 
-/// A cell offset inside a chunk. Each component is always `0..CHUNK_EDGE`.
+/// A cell offset inside a chunk. Each component is always `0..VOLUME_EDGE`.
 #[derive(
     Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Debug, Serialize, Deserialize,
 )]
@@ -229,7 +229,7 @@ impl LocalPos {
     /// Build a local position, validating each component.
     #[inline]
     pub const fn new(x: u8, y: u8, z: u8) -> Result<Self, PosError> {
-        let edge = CHUNK_EDGE as u8;
+        let edge = VOLUME_EDGE as u8;
         if x < edge && y < edge && z < edge {
             Ok(Self { x, y, z })
         } else {
@@ -253,25 +253,25 @@ impl LocalPos {
 
     /// Linear index of this position within a chunk.
     ///
-    /// The canonical layout is `x + CHUNK_EDGE * (z + CHUNK_EDGE * y)`, so
+    /// The canonical layout is `x + VOLUME_EDGE * (z + VOLUME_EDGE * y)`, so
     /// iterating indices ascending walks `x` fastest, then `z`, then `y`.
     /// Every ordered traversal in the engine uses this order so that output is
     /// reproducible.
     #[inline]
     pub const fn index(self) -> usize {
-        let edge = CHUNK_EDGE as usize;
+        let edge = VOLUME_EDGE as usize;
         self.x as usize + edge * (self.z as usize + edge * self.y as usize)
     }
 
     /// Inverse of [`LocalPos::index`].
     #[inline]
     pub const fn from_index(index: usize) -> Result<Self, PosError> {
-        if index >= CHUNK_CELLS {
+        if index >= VOLUME_CELLS {
             return Err(PosError {
                 value: (index as i32, -1, -1),
             });
         }
-        let edge = CHUNK_EDGE as usize;
+        let edge = VOLUME_EDGE as usize;
         let x = index % edge;
         let z = (index / edge) % edge;
         let y = index / (edge * edge);
@@ -284,7 +284,7 @@ impl LocalPos {
 
     /// Iterate every local position in canonical index order.
     pub fn iter_all() -> impl Iterator<Item = LocalPos> {
-        (0..CHUNK_CELLS).map(|i| LocalPos::from_index(i).expect("index in range"))
+        (0..VOLUME_CELLS).map(|i| LocalPos::from_index(i).expect("index in range"))
     }
 
     /// The component along `axis`.
@@ -420,13 +420,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chunk_split_is_euclidean_across_the_origin() {
-        assert_eq!(CellPos::new(0, 0, 0).chunk(), ChunkPos::new(0, 0, 0));
-        assert_eq!(CellPos::new(15, 15, 15).chunk(), ChunkPos::new(0, 0, 0));
-        assert_eq!(CellPos::new(16, 0, 0).chunk(), ChunkPos::new(1, 0, 0));
-        assert_eq!(CellPos::new(-1, -1, -1).chunk(), ChunkPos::new(-1, -1, -1));
-        assert_eq!(CellPos::new(-16, 0, 0).chunk(), ChunkPos::new(-1, 0, 0));
-        assert_eq!(CellPos::new(-17, 0, 0).chunk(), ChunkPos::new(-2, 0, 0));
+    fn volume_split_is_euclidean_across_the_origin() {
+        assert_eq!(CellPos::new(0, 0, 0).volume(), VolumePos::new(0, 0, 0));
+        assert_eq!(CellPos::new(15, 15, 15).volume(), VolumePos::new(0, 0, 0));
+        assert_eq!(CellPos::new(16, 0, 0).volume(), VolumePos::new(1, 0, 0));
+        assert_eq!(
+            CellPos::new(-1, -1, -1).volume(),
+            VolumePos::new(-1, -1, -1)
+        );
+        assert_eq!(CellPos::new(-16, 0, 0).volume(), VolumePos::new(-1, 0, 0));
+        assert_eq!(CellPos::new(-17, 0, 0).volume(), VolumePos::new(-2, 0, 0));
 
         assert_eq!(CellPos::new(-1, -1, -1).local(), LocalPos::at(15, 15, 15));
         assert_eq!(CellPos::new(-16, -16, -16).local(), LocalPos::at(0, 0, 0));
@@ -445,7 +448,7 @@ mod tests {
 
     #[test]
     fn local_index_round_trips_and_is_dense() {
-        let mut seen = vec![false; CHUNK_CELLS];
+        let mut seen = vec![false; VOLUME_CELLS];
         for p in LocalPos::iter_all() {
             let i = p.index();
             assert!(!seen[i], "duplicate index {i} for {p:?}");
@@ -460,7 +463,7 @@ mod tests {
         assert!(LocalPos::new(16, 0, 0).is_err());
         assert!(LocalPos::new(0, 200, 0).is_err());
         assert!(LocalPos::new(15, 15, 15).is_ok());
-        assert!(LocalPos::from_index(CHUNK_CELLS).is_err());
+        assert!(LocalPos::from_index(VOLUME_CELLS).is_err());
     }
 
     #[test]

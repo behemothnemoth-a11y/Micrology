@@ -1,71 +1,47 @@
-//! Chunked world storage, editing and dirty-region tracking.
+//! World storage, editing and dirty-volume tracking.
 //!
-//! A [`World`] is a sparse map of chunks. Only chunks that hold something exist,
-//! so an otherwise empty world costs nothing and coordinates are unbounded in
-//! every direction (design principle 9).
+//! A [`World`] is a sparse map of storage volumes. Only volumes that hold
+//! something exist, so an otherwise empty world costs nothing and coordinates
+//! are unbounded in every direction (design principle 9).
 //!
-//! The world's job in DROP 0001 is to answer three questions:
+//! The world answers three questions:
 //!
 //! 1. what material is at this cell? ([`CellSource`])
 //! 2. what changed? ([`World::take_dirty`])
-//! 3. what is the smallest set of chunks that must be re-meshed?
+//! 3. what is the smallest set of volumes whose geometry is now stale?
 //!
-//! Point 3 is subtler than it looks. Clearing a cell on a chunk's boundary can
-//! *expose* a face that belongs to the neighbouring chunk's mesh, so an edit on
+//! Point 3 is subtler than it looks. Clearing a cell on a volume's boundary can
+//! *expose* a face that belongs to the neighbouring volume's mesh, so an edit on
 //! a boundary marks the neighbour dirty too. Getting this wrong leaves holes or
-//! stale walls at chunk seams, which is exactly the class of bug the
-//! cross-chunk tests guard against.
+//! stale walls at volume seams, which is exactly the class of bug the
+//! cross-volume tests guard against.
+//!
+//! The world deals in **volumes**, not render sections. Which sections those
+//! dirty volumes belong to is the renderer's business, resolved through
+//! [`SectionGrid`](engine_core::SectionGrid). The world must never assume one
+//! volume is one unit of rendering.
 
 use engine_core::{
-    CHUNK_EDGE, CellPos, CellSource, ChunkPos, FaceDir, LocalPos, MaterialId, MaterialRegistry,
-    Revision,
+    CellPos, CellSource, FaceDir, LocalPos, MaterialId, MaterialRegistry, Revision, VOLUME_EDGE,
+    VolumePos,
 };
 use engine_volume::Volume;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// One chunk of the world: a local volume plus its bookkeeping.
-#[derive(Clone, Debug, Default)]
-pub struct Chunk {
-    volume: Volume,
-}
-
-impl Chunk {
-    pub fn new(volume: Volume) -> Self {
-        Self { volume }
-    }
-
-    pub fn volume(&self) -> &Volume {
-        &self.volume
-    }
-
-    pub fn volume_mut(&mut self) -> &mut Volume {
-        &mut self.volume
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.volume.is_empty()
-    }
-
-    /// Bumped by every effective edit to this chunk; use it to key mesh caches.
-    pub fn revision(&self) -> Revision {
-        self.volume.revision()
-    }
-}
-
 /// Aggregate counts, for the measurements design principle 8 asks for.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct WorldStats {
-    pub chunks: usize,
+    pub volumes: usize,
     pub occupied_cells: u64,
     pub materials: usize,
 }
 
-/// A sparse, chunked world of cells.
+/// A sparse world of cells, stored as 16³ volumes.
 #[derive(Clone, Debug, Default)]
 pub struct World {
-    chunks: BTreeMap<ChunkPos, Chunk>,
+    volumes: BTreeMap<VolumePos, Volume>,
     materials: MaterialRegistry,
-    dirty: BTreeSet<ChunkPos>,
+    dirty: BTreeSet<VolumePos>,
     revision: Revision,
 }
 
@@ -97,8 +73,8 @@ impl World {
 
     /// The material at `pos`, or `None` for an empty or unloaded cell.
     pub fn get(&self, pos: CellPos) -> Option<MaterialId> {
-        let (chunk_pos, local) = pos.split();
-        self.chunks.get(&chunk_pos)?.volume.get(local)
+        let (volume_pos, local) = pos.split();
+        self.volumes.get(&volume_pos)?.get(local)
     }
 
     /// Write one cell, returning `true` if the world actually changed.
@@ -107,23 +83,25 @@ impl World {
     /// geometry could be affected because the edited cell sits on a shared
     /// boundary.
     pub fn set(&mut self, pos: CellPos, material: Option<MaterialId>) -> bool {
-        let (chunk_pos, local) = pos.split();
+        let (volume_pos, local) = pos.split();
 
-        let changed = match self.chunks.get_mut(&chunk_pos) {
-            Some(chunk) => chunk.volume.set(local, material),
+        let changed = match self.volumes.get_mut(&volume_pos) {
+            Some(volume) => volume.set(local, material),
             None => {
-                // Clearing a cell in a chunk that does not exist is a no-op; do
-                // not allocate a chunk just to store emptiness.
+                // Clearing a cell in a volume that does not exist is a no-op;
+                // do not allocate one just to store emptiness.
                 if material.is_none() {
                     return false;
                 }
-                let chunk = self.chunks.entry(chunk_pos).or_default();
-                chunk.volume.set(local, material)
+                self.volumes
+                    .entry(volume_pos)
+                    .or_default()
+                    .set(local, material)
             }
         };
 
         if changed {
-            self.mark_dirty_with_neighbours(chunk_pos, local);
+            self.mark_dirty_with_neighbours(volume_pos, local);
             self.revision.bump();
         }
         changed
@@ -145,61 +123,67 @@ impl World {
         changed
     }
 
-    /// Install a whole chunk, replacing any existing one. Used by loaders.
-    pub fn insert_chunk(&mut self, pos: ChunkPos, volume: Volume) {
+    /// Install a whole volume, replacing any existing one. Used by loaders.
+    pub fn insert_volume(&mut self, pos: VolumePos, volume: Volume) {
         let was_empty = volume.is_empty();
-        self.chunks.insert(pos, Chunk::new(volume));
+        self.volumes.insert(pos, volume);
         if was_empty {
-            self.chunks.remove(&pos);
+            self.volumes.remove(&pos);
         }
         self.mark_dirty(pos);
         for dir in FaceDir::ALL {
             let neighbour = pos.step(dir);
-            if self.chunks.contains_key(&neighbour) {
+            if self.volumes.contains_key(&neighbour) {
                 self.mark_dirty(neighbour);
             }
         }
         self.revision.bump();
     }
 
-    pub fn chunk(&self, pos: ChunkPos) -> Option<&Chunk> {
-        self.chunks.get(&pos)
+    pub fn volume(&self, pos: VolumePos) -> Option<&Volume> {
+        self.volumes.get(&pos)
     }
 
-    pub fn chunk_mut(&mut self, pos: ChunkPos) -> Option<&mut Chunk> {
-        self.chunks.get_mut(&pos)
+    pub fn volume_mut(&mut self, pos: VolumePos) -> Option<&mut Volume> {
+        self.volumes.get_mut(&pos)
     }
 
-    /// Chunks in ascending position order.
-    pub fn chunks(&self) -> impl Iterator<Item = (ChunkPos, &Chunk)> {
-        self.chunks.iter().map(|(pos, chunk)| (*pos, chunk))
+    /// Volumes in ascending position order.
+    pub fn volumes(&self) -> impl Iterator<Item = (VolumePos, &Volume)> {
+        self.volumes.iter().map(|(pos, volume)| (*pos, volume))
     }
 
-    pub fn chunk_positions(&self) -> impl Iterator<Item = ChunkPos> + '_ {
-        self.chunks.keys().copied()
+    /// The regions that currently hold at least one populated volume, in
+    /// ascending order.
+    pub fn populated_regions(&self) -> BTreeSet<engine_core::RegionPos> {
+        self.volumes.keys().map(|pos| pos.region()).collect()
     }
 
-    pub fn chunk_count(&self) -> usize {
-        self.chunks.len()
+    pub fn volume_positions(&self) -> impl Iterator<Item = VolumePos> + '_ {
+        self.volumes.keys().copied()
+    }
+
+    pub fn volume_count(&self) -> usize {
+        self.volumes.len()
     }
 
     pub fn occupied_count(&self) -> u64 {
-        self.chunks
+        self.volumes
             .values()
-            .map(|c| u64::from(c.volume.occupied_count()))
+            .map(|v| u64::from(v.occupied_count()))
             .sum()
     }
 
     pub fn stats(&self) -> WorldStats {
         WorldStats {
-            chunks: self.chunks.len(),
+            volumes: self.volumes.len(),
             occupied_cells: self.occupied_count(),
             materials: self.materials.len(),
         }
     }
 
-    /// Chunks awaiting a geometry rebuild, in ascending position order.
-    pub fn dirty_chunks(&self) -> impl Iterator<Item = ChunkPos> + '_ {
+    /// Volumes awaiting a geometry rebuild, in ascending position order.
+    pub fn dirty_volumes(&self) -> impl Iterator<Item = VolumePos> + '_ {
         self.dirty.iter().copied()
     }
 
@@ -207,58 +191,58 @@ impl World {
         self.dirty.len()
     }
 
-    /// Mark a chunk as needing a geometry rebuild.
-    pub fn mark_dirty(&mut self, pos: ChunkPos) {
+    /// Mark a volume as needing a geometry rebuild.
+    pub fn mark_dirty(&mut self, pos: VolumePos) {
         self.dirty.insert(pos);
     }
 
-    /// Mark every existing chunk dirty — used on load, when every mesh is stale.
+    /// Mark every existing volume dirty — used on load, when every mesh is stale.
     pub fn mark_all_dirty(&mut self) {
-        let positions: Vec<ChunkPos> = self.chunks.keys().copied().collect();
+        let positions: Vec<VolumePos> = self.volumes.keys().copied().collect();
         self.dirty.extend(positions);
     }
 
     /// Take the dirty set, leaving it empty.
     ///
-    /// Iteration order is ascending position, so a rebuild pass visits chunks
+    /// Iteration order is ascending position, so a rebuild pass visits volumes
     /// in the same order every run.
-    pub fn take_dirty(&mut self) -> BTreeSet<ChunkPos> {
+    pub fn take_dirty(&mut self) -> BTreeSet<VolumePos> {
         std::mem::take(&mut self.dirty)
     }
 
-    /// Canonicalise every chunk and drop the ones that became empty.
+    /// Canonicalise every volume and drop the ones that became empty.
     ///
-    /// Emptied chunks stay dirty so that a caller still gets the chance to tear
+    /// Emptied volumes stay dirty so that a caller still gets the chance to tear
     /// down their meshes.
     pub fn compact(&mut self) {
         let mut emptied = Vec::new();
-        for (pos, chunk) in self.chunks.iter_mut() {
-            chunk.volume.compact();
-            if chunk.volume.is_empty() {
+        for (pos, volume) in self.volumes.iter_mut() {
+            volume.compact();
+            if volume.is_empty() {
                 emptied.push(*pos);
             }
         }
         for pos in emptied {
-            self.chunks.remove(&pos);
+            self.volumes.remove(&pos);
             self.dirty.insert(pos);
         }
     }
 
-    fn mark_dirty_with_neighbours(&mut self, chunk_pos: ChunkPos, local: LocalPos) {
-        self.dirty.insert(chunk_pos);
+    fn mark_dirty_with_neighbours(&mut self, volume_pos: VolumePos, local: LocalPos) {
+        self.dirty.insert(volume_pos);
         for dir in FaceDir::ALL {
             let component = i32::from(local.component(dir.axis()));
             let on_boundary = if dir.is_positive() {
-                component == CHUNK_EDGE - 1
+                component == VOLUME_EDGE - 1
             } else {
                 component == 0
             };
             if !on_boundary {
                 continue;
             }
-            let neighbour = chunk_pos.step(dir);
-            // A chunk that does not exist has no faces to revise.
-            if self.chunks.contains_key(&neighbour) {
+            let neighbour = volume_pos.step(dir);
+            // A volume that does not exist has no faces to revise.
+            if self.volumes.contains_key(&neighbour) {
                 self.dirty.insert(neighbour);
             }
         }
@@ -272,22 +256,22 @@ impl CellSource for World {
     }
 }
 
-/// Worlds compare by material registry and cell contents. Chunks that exist but
-/// hold nothing are indistinguishable from chunks that do not exist, which is
+/// Worlds compare by material registry and cell contents. Volumes that exist but
+/// hold nothing are indistinguishable from volumes that do not exist, which is
 /// what lets a save/reload round trip compare equal.
 impl PartialEq for World {
     fn eq(&self, other: &Self) -> bool {
         if self.materials != other.materials {
             return false;
         }
-        let mine = || self.chunks.iter().filter(|(_, c)| !c.is_empty());
-        let theirs = || other.chunks.iter().filter(|(_, c)| !c.is_empty());
+        let mine = || self.volumes.iter().filter(|(_, c)| !c.is_empty());
+        let theirs = || other.volumes.iter().filter(|(_, v)| !v.is_empty());
         if mine().count() != theirs().count() {
             return false;
         }
         mine()
             .zip(theirs())
-            .all(|((pa, ca), (pb, cb))| pa == pb && ca.volume == cb.volume)
+            .all(|((pa, va), (pb, vb))| pa == pb && va == vb)
     }
 }
 
@@ -311,7 +295,7 @@ mod tests {
     #[test]
     fn an_empty_world_has_no_chunks() {
         let w = world();
-        assert_eq!(w.chunk_count(), 0);
+        assert_eq!(w.volume_count(), 0);
         assert_eq!(w.get(CellPos::new(0, 0, 0)), None);
         assert_eq!(w.get(CellPos::new(-9999, 400, 12)), None);
         assert_eq!(w.occupied_count(), 0);
@@ -321,17 +305,17 @@ mod tests {
     fn setting_a_cell_creates_exactly_one_chunk() {
         let mut w = world();
         assert!(w.set(CellPos::new(3, 4, 5), Some(STONE)));
-        assert_eq!(w.chunk_count(), 1);
+        assert_eq!(w.volume_count(), 1);
         assert_eq!(w.get(CellPos::new(3, 4, 5)), Some(STONE));
         assert_eq!(w.occupied_count(), 1);
-        assert_eq!(w.dirty_chunks().collect::<Vec<_>>(), vec![ChunkPos::ZERO]);
+        assert_eq!(w.dirty_volumes().collect::<Vec<_>>(), vec![VolumePos::ZERO]);
     }
 
     #[test]
     fn clearing_an_unloaded_cell_allocates_nothing() {
         let mut w = world();
         assert!(!w.set(CellPos::new(500, 500, 500), None));
-        assert_eq!(w.chunk_count(), 0);
+        assert_eq!(w.volume_count(), 0);
         assert_eq!(w.dirty_count(), 0);
     }
 
@@ -340,8 +324,8 @@ mod tests {
         let mut w = world();
         w.set(CellPos::new(-1, -1, -1), Some(STONE));
         assert_eq!(
-            w.chunk_positions().collect::<Vec<_>>(),
-            vec![ChunkPos::new(-1, -1, -1)]
+            w.volume_positions().collect::<Vec<_>>(),
+            vec![VolumePos::new(-1, -1, -1)]
         );
         assert_eq!(w.get(CellPos::new(-1, -1, -1)), Some(STONE));
         assert_eq!(w.get(CellPos::new(0, 0, 0)), None);
@@ -356,7 +340,7 @@ mod tests {
         assert!(w.set(CellPos::new(8, 8, 8), None));
         assert_eq!(
             w.take_dirty().into_iter().collect::<Vec<_>>(),
-            vec![ChunkPos::ZERO]
+            vec![VolumePos::ZERO]
         );
     }
 
@@ -370,7 +354,7 @@ mod tests {
         assert!(w.set(CellPos::new(15, 8, 8), None));
         assert_eq!(
             w.take_dirty().into_iter().collect::<Vec<_>>(),
-            vec![ChunkPos::new(0, 0, 0), ChunkPos::new(1, 0, 0)],
+            vec![VolumePos::new(0, 0, 0), VolumePos::new(1, 0, 0)],
             "removing a cell at a seam exposes a face in the neighbour's mesh"
         );
     }
@@ -379,12 +363,12 @@ mod tests {
     fn a_corner_edit_dirties_up_to_three_neighbours() {
         let mut w = world();
         for pos in [
-            ChunkPos::new(0, 0, 0),
-            ChunkPos::new(1, 0, 0),
-            ChunkPos::new(0, 1, 0),
-            ChunkPos::new(0, 0, 1),
+            VolumePos::new(0, 0, 0),
+            VolumePos::new(1, 0, 0),
+            VolumePos::new(0, 1, 0),
+            VolumePos::new(0, 0, 1),
         ] {
-            w.insert_chunk(pos, Volume::filled(STONE));
+            w.insert_volume(pos, Volume::filled(STONE));
         }
         w.take_dirty();
 
@@ -392,10 +376,10 @@ mod tests {
         assert_eq!(
             w.take_dirty().into_iter().collect::<Vec<_>>(),
             vec![
-                ChunkPos::new(0, 0, 0),
-                ChunkPos::new(0, 0, 1),
-                ChunkPos::new(0, 1, 0),
-                ChunkPos::new(1, 0, 0),
+                VolumePos::new(0, 0, 0),
+                VolumePos::new(0, 0, 1),
+                VolumePos::new(0, 1, 0),
+                VolumePos::new(1, 0, 0),
             ]
         );
     }
@@ -408,7 +392,7 @@ mod tests {
         w.set(CellPos::new(0, 0, 0), Some(DIRT));
         assert_eq!(
             w.take_dirty().into_iter().collect::<Vec<_>>(),
-            vec![ChunkPos::ZERO],
+            vec![VolumePos::ZERO],
             "there are no neighbouring chunks to revise"
         );
     }
@@ -429,15 +413,15 @@ mod tests {
     fn compact_drops_emptied_chunks_but_keeps_them_dirty() {
         let mut w = world();
         w.set(CellPos::new(100, 0, 0), Some(STONE));
-        let chunk_pos = CellPos::new(100, 0, 0).chunk();
+        let volume_pos = CellPos::new(100, 0, 0).volume();
         w.set(CellPos::new(100, 0, 0), None);
         w.take_dirty();
 
-        assert_eq!(w.chunk_count(), 1, "the chunk lingers until compaction");
+        assert_eq!(w.volume_count(), 1, "the chunk lingers until compaction");
         w.compact();
-        assert_eq!(w.chunk_count(), 0);
+        assert_eq!(w.volume_count(), 0);
         assert!(
-            w.take_dirty().contains(&chunk_pos),
+            w.take_dirty().contains(&volume_pos),
             "the caller must still get a chance to tear down the stale mesh"
         );
     }
@@ -447,7 +431,7 @@ mod tests {
         let mut w = world();
         let changed = w.fill_box(CellPos::new(-1, 0, 0), CellPos::new(0, 0, 0), Some(STONE));
         assert_eq!(changed, 2);
-        assert_eq!(w.chunk_count(), 2);
+        assert_eq!(w.volume_count(), 2);
         assert_eq!(
             w.fill_box(CellPos::new(-1, 0, 0), CellPos::new(0, 0, 0), Some(STONE)),
             0,

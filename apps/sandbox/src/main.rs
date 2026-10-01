@@ -24,7 +24,7 @@ mod scene;
 
 use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowPlugin};
-use engine_geometry::{ChunkMeshCache, GreedyCompiler, SurfaceCompiler};
+use engine_geometry::{GreedyCompiler, SectionMeshCache, SurfaceCompiler};
 use engine_world::World as EngineWorld;
 use std::path::PathBuf;
 
@@ -38,7 +38,7 @@ pub struct WorldRes(pub EngineWorld);
 /// Compiled geometry, plus which compiler produced it.
 #[derive(Resource)]
 pub struct GeometryRes {
-    pub cache: ChunkMeshCache,
+    pub cache: SectionMeshCache,
     /// Boxed so the oracle can be swapped in at runtime with `G`, which is the
     /// fastest way to tell a meshing bug from a world-data bug.
     pub compiler: Box<dyn SurfaceCompiler + Send + Sync>,
@@ -47,7 +47,10 @@ pub struct GeometryRes {
 impl Default for GeometryRes {
     fn default() -> Self {
         Self {
-            cache: ChunkMeshCache::new(),
+            // One volume per render section for now. Raising this groups
+            // volumes into fewer, larger submissions with no change to the
+            // world model — which is the point of routing through a grid.
+            cache: SectionMeshCache::new(engine_core::SectionGrid::ONE_VOLUME),
             compiler: Box::new(GreedyCompiler),
         }
     }
@@ -82,7 +85,7 @@ fn main() {
     .insert_resource(SavePath(save_path_from_args()))
     .init_resource::<GeometryRes>()
     .init_resource::<StatusLine>()
-    .init_resource::<render::ChunkEntities>()
+    .init_resource::<render::SectionEntities>()
     .init_resource::<edit::Palette>()
     .add_systems(Startup, (scene::setup_world, scene::setup_view, hud::setup))
     .add_systems(

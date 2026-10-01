@@ -1,9 +1,14 @@
-//! Turning compiled chunk geometry into Bevy meshes.
+//! Turning compiled geometry into Bevy meshes.
 //!
-//! One entity per chunk. The engine says which chunks changed, this module
-//! replaces exactly those meshes and despawns the entities of chunks that no
-//! longer have a surface. A chunk whose cells did not change is never touched,
-//! so its mesh is never re-uploaded.
+//! One entity per **render section**, not per storage volume. Today a section is
+//! one volume, so the two coincide — but this module only ever speaks in
+//! [`RenderSectionId`], so grouping several volumes per submission later is a
+//! change to the cache's [`SectionGrid`] and nothing else.
+//!
+//! The engine says which sections changed, this module replaces exactly those
+//! meshes and despawns the entities of sections that no longer have a surface. A
+//! section whose cells did not change is never touched, so its mesh is never
+//! re-uploaded.
 
 use crate::{GeometryRes, WorldRes};
 use bevy::asset::RenderAssetUsages;
@@ -11,23 +16,24 @@ use bevy::mesh::Indices;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
-use engine_core::ChunkPos;
-use engine_geometry::{ChunkMeshUpdate, MeshData};
+use engine_core::RenderSectionId;
+use engine_geometry::{MeshData, SectionMeshUpdate};
 
-/// Maps each chunk to the entity drawing it.
+/// Maps each render section to the entity drawing it.
 #[derive(Resource, Default)]
-pub struct ChunkEntities {
-    entities: HashMap<ChunkPos, Entity>,
+pub struct SectionEntities {
+    entities: HashMap<RenderSectionId, Entity>,
     /// Shared material; colour comes from the mesh's vertex colours.
     material: Option<Handle<StandardMaterial>>,
 }
 
-/// Rebuild the geometry of every chunk the world marked dirty, and nothing else.
+/// Rebuild the geometry of every section the world's dirty volumes touch, and
+/// nothing else.
 pub fn rebuild_dirty_chunks(
     mut commands: Commands,
     mut world: ResMut<WorldRes>,
     mut geometry: ResMut<GeometryRes>,
-    mut chunks: ResMut<ChunkEntities>,
+    mut sections: ResMut<SectionEntities>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -44,7 +50,7 @@ pub fn rebuild_dirty_chunks(
         dirty,
     );
 
-    let material = chunks
+    let material = sections
         .material
         .get_or_insert_with(|| {
             materials.add(StandardMaterial {
@@ -58,14 +64,14 @@ pub fn rebuild_dirty_chunks(
 
     for update in updates {
         match update {
-            ChunkMeshUpdate::Built(pos) => {
+            SectionMeshUpdate::Built(pos) => {
                 let cached = geometry
                     .cache
                     .get(pos)
-                    .expect("a chunk reported as built is in the cache");
+                    .expect("a section reported as built is in the cache");
                 let handle = meshes.add(to_bevy_mesh(&cached.mesh));
 
-                match chunks.entities.get(&pos) {
+                match sections.entities.get(&pos) {
                     // Replacing the handle on the existing entity avoids the
                     // churn of despawning and respawning on every edit.
                     Some(entity) => {
@@ -79,15 +85,15 @@ pub fn rebuild_dirty_chunks(
                                 // Compiled positions are already in world
                                 // space: one cell is one world unit.
                                 Transform::IDENTITY,
-                                ChunkMesh,
+                                SectionMesh,
                             ))
                             .id();
-                        chunks.entities.insert(pos, entity);
+                        sections.entities.insert(pos, entity);
                     }
                 }
             }
-            ChunkMeshUpdate::Removed(pos) => {
-                if let Some(entity) = chunks.entities.remove(&pos) {
+            SectionMeshUpdate::Removed(pos) => {
+                if let Some(entity) = sections.entities.remove(&pos) {
                     commands.entity(entity).despawn();
                 }
             }
@@ -95,12 +101,12 @@ pub fn rebuild_dirty_chunks(
     }
 }
 
-/// Marks an entity as a rendered chunk.
+/// Marks an entity as a rendered section.
 ///
-/// Which chunk it draws lives in [`ChunkEntities`] rather than being duplicated
-/// here; this is purely a tag for querying chunk geometry in bulk.
+/// Which section it draws lives in [`SectionEntities`] rather than being
+/// duplicated here; this is purely a tag for querying section geometry in bulk.
 #[derive(Component)]
-pub struct ChunkMesh;
+pub struct SectionMesh;
 
 /// Convert engine mesh data into a Bevy mesh.
 ///
@@ -117,9 +123,9 @@ fn to_bevy_mesh(data: &MeshData) -> Mesh {
     .with_inserted_indices(Indices::U32(data.indices.clone()))
 }
 
-/// Drop every chunk entity, for when a different world is loaded.
-pub fn clear_chunk_entities(commands: &mut Commands, chunks: &mut ChunkEntities) {
-    for (_, entity) in chunks.entities.drain() {
+/// Drop every section entity, for when a different world is loaded.
+pub fn clear_section_entities(commands: &mut Commands, sections: &mut SectionEntities) {
+    for (_, entity) in sections.entities.drain() {
         commands.entity(entity).despawn();
     }
 }

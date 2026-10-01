@@ -10,7 +10,7 @@
 //! oracle.
 
 use crate::{CompileStats, Quad, QuadSet, SurfaceCompiler};
-use engine_core::{CellPos, CellSource, ChunkPos, FaceDir, LocalPos};
+use engine_core::{CellPos, CellSource, FaceDir, LocalPos, VolumePos};
 
 /// Emits every exposed cell face as its own quad.
 #[derive(Clone, Copy, Default, Debug)]
@@ -21,7 +21,7 @@ impl SurfaceCompiler for ExactCompiler {
         "exact"
     }
 
-    fn compile(&self, source: &dyn CellSource, chunk: ChunkPos) -> QuadSet {
+    fn compile(&self, source: &dyn CellSource, chunk: VolumePos) -> QuadSet {
         let mut quads = Vec::new();
         let mut occupied_cells = 0;
 

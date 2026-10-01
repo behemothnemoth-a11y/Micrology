@@ -115,22 +115,22 @@ pub fn update(
 
     **text.into_inner() = format!(
         "Micrology · DROP 0001 · mesher: {mesher}\n\
-         chunks {chunks} (meshed {meshed})   cells {cells}\n\
+         volumes {volumes} (sections {meshed})   cells {cells}\n\
          exposed faces {faces}   quads {quads}  ({ratio:.1}x merged)\n\
          vertices {vertices}   triangles {triangles}\n\
-         last rebuild: {rebuilt} chunk(s) in {rebuild_ms:.2} ms\n\
+         last rebuild: {rebuilt} section(s) in {rebuild_ms:.2} ms\n\
          material: {material}   fps {fps:.0}\n\
          {status}",
         mesher = geometry.compiler.name(),
-        chunks = world_stats.chunks,
-        meshed = stats.chunks,
+        volumes = world_stats.volumes,
+        meshed = stats.sections,
         cells = world_stats.occupied_cells,
         faces = stats.exposed_faces,
         quads = stats.quads,
         ratio = merge_ratio,
         vertices = stats.vertices,
         triangles = stats.triangles,
-        rebuilt = geometry.cache.last_rebuild_chunks(),
+        rebuilt = geometry.cache.last_rebuild_sections(),
         rebuild_ms = geometry.cache.last_rebuild_time().as_secs_f64() * 1000.0,
         material = palette.current_name(),
         status = status.0,

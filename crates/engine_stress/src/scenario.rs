@@ -18,8 +18,10 @@
 
 use crate::report::{Counters, Report, Timings};
 use crate::rng::Rng;
-use engine_core::{CHUNK_EDGE, CellPos, ChunkPos, MaterialId, MaterialRegistry, Rgb};
-use engine_geometry::{ChunkMeshCache, GreedyCompiler};
+use engine_core::{
+    CellPos, MaterialId, MaterialRegistry, Rgb, SectionGrid, VOLUME_EDGE, VolumePos,
+};
+use engine_geometry::{GreedyCompiler, SectionMeshCache};
 use engine_world::World;
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -152,18 +154,18 @@ impl Scenario {
             Scenario::BoundaryStorm => {
                 // Edits placed exactly on volume faces, edges and corners, which
                 // is what forces neighbouring sections to be rebuilt too.
-                let edge = CHUNK_EDGE - 1;
+                let edge = VOLUME_EDGE - 1;
                 let mut edits = Vec::new();
                 for step in 0..20 {
-                    let t = step % CHUNK_EDGE;
+                    let t = step % VOLUME_EDGE;
                     // Faces of the volume at chunk (0,0,0), on all three axes.
                     edits.push((CellPos::new(edge, t, t), None));
                     edits.push((CellPos::new(t, edge, t), None));
                     edits.push((CellPos::new(t, t, edge), None));
                     // The matching cells just across each seam.
-                    edits.push((CellPos::new(CHUNK_EDGE, t, t), None));
-                    edits.push((CellPos::new(t, CHUNK_EDGE, t), None));
-                    edits.push((CellPos::new(t, t, CHUNK_EDGE), None));
+                    edits.push((CellPos::new(VOLUME_EDGE, t, t), None));
+                    edits.push((CellPos::new(t, VOLUME_EDGE, t), None));
+                    edits.push((CellPos::new(t, t, VOLUME_EDGE), None));
                     // Corners, where three neighbours are affected at once.
                     edits.push((CellPos::new(edge, edge, edge), Some(MaterialId(3))));
                     edits.push((CellPos::new(edge, edge, edge), None));
@@ -185,8 +187,8 @@ impl Scenario {
         let mut world = self.build();
         let world_build = build_started.elapsed();
 
-        let mut cache = ChunkMeshCache::new();
-        let sections: Vec<ChunkPos> = world.chunk_positions().collect();
+        let mut cache = SectionMeshCache::new(SectionGrid::ONE_VOLUME);
+        let sections: Vec<VolumePos> = world.volume_positions().collect();
 
         let compile_started = Instant::now();
         cache.rebuild(&world, world.materials(), &GreedyCompiler, sections);
@@ -224,13 +226,12 @@ impl Scenario {
 }
 
 /// Read every deterministic counter off a world and its compiled geometry.
-pub fn measure(world: &World, cache: &ChunkMeshCache) -> Counters {
+pub fn measure(world: &World, cache: &SectionMeshCache) -> Counters {
     let mut cell_storage_bytes = 0u64;
     let mut palette_bytes = 0u64;
     let mut materials = BTreeSet::new();
 
-    for (_, chunk) in world.chunks() {
-        let volume = chunk.volume();
+    for (_, volume) in world.volumes() {
         cell_storage_bytes += volume.cell_bytes() as u64;
         palette_bytes += volume.palette_bytes() as u64;
         materials.extend(volume.materials());
@@ -238,7 +239,7 @@ pub fn measure(world: &World, cache: &ChunkMeshCache) -> Counters {
 
     let geometry = cache.stats();
     Counters {
-        populated_volumes: world.chunk_count() as u64,
+        populated_volumes: world.volume_count() as u64,
         occupied_cells: world.occupied_count(),
         distinct_materials: materials.len() as u64,
         cell_storage_bytes,
@@ -249,7 +250,7 @@ pub fn measure(world: &World, cache: &ChunkMeshCache) -> Counters {
         vertices: geometry.vertices,
         indices: geometry.indices,
         triangles: geometry.triangles,
-        render_units: geometry.chunks as u64,
+        render_units: geometry.sections as u64,
         // Filled in by later DROP 0002 passes.
         resident_regions: 0,
         queued_mesh_jobs: 0,
@@ -265,9 +266,9 @@ fn fill_chunks(
     cz: i32,
     cell: impl Fn(i32, i32, i32) -> Option<MaterialId>,
 ) {
-    for y in 0..cy * CHUNK_EDGE {
-        for z in 0..cz * CHUNK_EDGE {
-            for x in 0..cx * CHUNK_EDGE {
+    for y in 0..cy * VOLUME_EDGE {
+        for z in 0..cz * VOLUME_EDGE {
+            for x in 0..cx * VOLUME_EDGE {
                 if let Some(material) = cell(x, y, z) {
                     world.set(CellPos::new(x, y, z), Some(material));
                 }
@@ -285,8 +286,8 @@ fn height_at(x: i32, z: i32) -> i32 {
 }
 
 fn terrain(world: &mut World, cx: i32, cz: i32) {
-    for z in 0..cz * CHUNK_EDGE {
-        for x in 0..cx * CHUNK_EDGE {
+    for z in 0..cz * VOLUME_EDGE {
+        for x in 0..cx * VOLUME_EDGE {
             let height = height_at(x, z);
             world.fill_box(
                 CellPos::new(x, 0, z),
@@ -301,8 +302,8 @@ fn terrain(world: &mut World, cx: i32, cz: i32) {
 /// A long corridor, deliberately shaped so most of it is never near the camera
 /// at once. The streaming passes use this as their travel fixture.
 fn terrain_strip(world: &mut World, length_chunks: i32, width_chunks: i32) {
-    for z in 0..width_chunks * CHUNK_EDGE {
-        for x in 0..length_chunks * CHUNK_EDGE {
+    for z in 0..width_chunks * VOLUME_EDGE {
+        for x in 0..length_chunks * VOLUME_EDGE {
             let height = height_at(x, z).min(20);
             world.fill_box(
                 CellPos::new(x, 0, z),
