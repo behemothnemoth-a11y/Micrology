@@ -39,7 +39,7 @@
 use crate::rng::Rng;
 use engine_core::{CellPos, MaterialId, REGION_EDGE_CELLS, SectionGrid, VOLUME_EDGE, VolumePos};
 use engine_geometry::{GreedyCompiler, SectionMeshCache};
-use engine_world::World;
+use engine_world::{World, WorldEditBatch};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -505,13 +505,14 @@ impl StructuralScenario {
         let anchor_cells = built.anchors.len() as u64;
         built.world.take_dirty();
 
-        let started = Instant::now();
-        let mut cells_removed = 0u64;
+        // The damage goes through the batch path, which is also what hands
+        // back where a connectivity search would have to start.
+        let mut batch = WorldEditBatch::new();
         for cell in self.damage() {
-            if built.world.set(cell, None) {
-                cells_removed += 1;
-            }
+            batch.remove(cell);
         }
+        let started = Instant::now();
+        let outcome = built.world.apply(&batch);
         let batch_edit = started.elapsed();
 
         // Static geometry after the damage. Destruction changes how the world
@@ -534,7 +535,8 @@ impl StructuralScenario {
                 anchor_cells,
                 structure_volumes,
                 structure_regions,
-                cells_removed,
+                cells_removed: outcome.removed_cells.len() as u64,
+                candidate_roots: outcome.structural_candidates.len() as u64,
                 static_quads: geometry.quads,
                 static_mesh_bytes: geometry.mesh_bytes,
                 // Everything else lands as its pass does.

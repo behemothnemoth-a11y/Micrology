@@ -21,9 +21,11 @@
 //! [`SectionGrid`](engine_core::SectionGrid). The world must never assume one
 //! volume is one unit of rendering.
 
+pub mod edit;
 pub mod pick;
 pub mod region;
 
+pub use edit::{EditOutcome, WorldEditBatch};
 pub use pick::{RayHit, raycast};
 pub use region::{Region, RegionFootprint, RegionSummary};
 
@@ -139,18 +141,13 @@ impl World {
 
     /// Fill the inclusive cell box `min..=max`, returning the number of cells
     /// that changed.
+    ///
+    /// Goes through the batch path, so every bulk write in the engine exercises
+    /// the transaction rather than leaving it to destruction alone.
     pub fn fill_box(&mut self, min: CellPos, max: CellPos, material: Option<MaterialId>) -> u64 {
-        let mut changed = 0;
-        for y in min.y.min(max.y)..=min.y.max(max.y) {
-            for z in min.z.min(max.z)..=min.z.max(max.z) {
-                for x in min.x.min(max.x)..=min.x.max(max.x) {
-                    if self.set(CellPos::new(x, y, z), material) {
-                        changed += 1;
-                    }
-                }
-            }
-        }
-        changed
+        let mut batch = WorldEditBatch::new();
+        batch.fill_box(min, max, material);
+        self.apply(&batch).changed_cells
     }
 
     /// Install a whole volume, replacing any existing one. Used by loaders.

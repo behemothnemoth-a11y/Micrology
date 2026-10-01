@@ -210,7 +210,6 @@ fn analysis_counters_stay_zero_until_their_pass_lands() {
     // reviewable diff rather than as a new file. Until then they must be zero,
     // so a baseline diff points at real work.
     for (name, c) in &measured() {
-        assert_eq!(c.candidate_roots, 0, "{name}");
         assert_eq!(c.cells_visited, 0, "{name}");
         assert_eq!(c.components_discovered, 0, "{name}");
         assert_eq!(c.supported_components, 0, "{name}");
@@ -223,6 +222,24 @@ fn analysis_counters_stay_zero_until_their_pass_lands() {
         assert_eq!(c.collision_boxes_exact, 0, "{name}");
         assert_eq!(c.collision_boxes_merged, 0, "{name}");
         assert_eq!(c.collision_bytes, 0, "{name}");
+    }
+}
+
+#[test]
+fn every_scenario_discovers_somewhere_to_start_searching() {
+    // Candidate roots come from 0003.2's `EditOutcome`: the surviving occupied
+    // cells next to a hole. A scenario with none would have nothing for
+    // connectivity to analyse, so its "0 detached" would be vacuous.
+    for (name, c) in &measured() {
+        assert!(
+            c.candidate_roots > 0,
+            "{name} severed {} cells and left nothing adjacent to search from",
+            c.cells_removed
+        );
+        assert!(
+            c.candidate_roots < c.structure_cells,
+            "{name}: every cell is a root, so the damage removed nothing useful"
+        );
     }
 }
 
