@@ -93,10 +93,7 @@ pub struct FragmentRenderSources<'w, 's> {
     transforms: Query<'w, 's, &'static mut Transform, With<FragmentMesh>>,
 }
 
-pub fn sync_fragment_render(
-    mut commands: Commands,
-    sources: FragmentRenderSources,
-) {
+pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSources) {
     let FragmentRenderSources {
         fragments,
         world,
