@@ -154,6 +154,7 @@ pub enum SaveOutcome {
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct StreamCounts {
     pub wanted_regions: usize,
+    pub demanded_regions: usize,
     pub active_loads: usize,
     pub active_saves: usize,
     pub loads_started: u64,
@@ -184,6 +185,10 @@ pub struct RegionStreamer {
     active_loads: BTreeMap<RegionPos, u64>,
     active_saves: BTreeMap<RegionPos, Revision>,
     wanted: BTreeSet<RegionPos>,
+    /// Extra residency requested by engine/game systems independently of the
+    /// camera. These regions share normal I/O and memory budgets but stay
+    /// pinned against distance eviction until the caller releases them.
+    demanded: BTreeSet<RegionPos>,
     last_camera: Option<RegionPos>,
     budget: MemoryBudget,
     account: MemoryAccount,
@@ -200,6 +205,7 @@ impl RegionStreamer {
             active_loads: BTreeMap::new(),
             active_saves: BTreeMap::new(),
             wanted: BTreeSet::new(),
+            demanded: BTreeSet::new(),
             last_camera: None,
             budget: MemoryBudget::default(),
             account: MemoryAccount::default(),
@@ -280,14 +286,34 @@ impl RegionStreamer {
         &mut self.residency
     }
 
-    /// Regions the camera currently wants resident.
+    /// Regions currently wanted by any residency source: camera or explicit
+    /// external demand.
     pub fn wanted(&self) -> impl Iterator<Item = RegionPos> + '_ {
         self.wanted.iter().copied()
+    }
+
+    /// Replace the exact set of regions temporarily demanded independently of
+    /// the camera. The caller owns lifetime/priority policy; the streamer owns
+    /// deduplication, I/O bounds, memory pressure and eviction safety.
+    pub fn set_demanded_regions(
+        &mut self,
+        regions: impl IntoIterator<Item = RegionPos>,
+    ) {
+        self.demanded = regions.into_iter().collect();
+    }
+
+    pub fn demanded(&self) -> impl Iterator<Item = RegionPos> + '_ {
+        self.demanded.iter().copied()
+    }
+
+    pub fn is_demanded(&self, region: RegionPos) -> bool {
+        self.demanded.contains(&region)
     }
 
     pub fn counts(&self) -> StreamCounts {
         StreamCounts {
             wanted_regions: self.wanted.len(),
+            demanded_regions: self.demanded.len(),
             active_loads: self.active_loads.len(),
             active_saves: self.active_saves.len(),
             ..self.counts
@@ -349,7 +375,9 @@ impl RegionStreamer {
         }
         self.last_camera = Some(camera);
 
-        self.wanted = self.desired_set(camera);
+        let camera_wanted = self.desired_set(camera);
+        self.wanted = camera_wanted.clone();
+        self.wanted.extend(self.demanded.iter().copied());
         let mut actions = Vec::new();
 
         // Anything wanted is not leaving, whatever was decided before.
@@ -363,21 +391,29 @@ impl RegionStreamer {
         // Start loads for wanted regions that are not here yet, nearest first so
         // a bounded budget is spent where it matters.
         let reach = self.effective_load_radius();
-        let mut candidates: Vec<(i32, RegionPos)> = self
+        let mut candidates: Vec<(bool, i32, RegionPos)> = self
             .wanted
             .iter()
             .filter(|region| self.residency.state(**region) == ResidencyState::Unloaded)
-            .map(|region| (camera.chebyshev_distance(*region), *region))
+            .map(|region| {
+                (
+                    !self.demanded.contains(region),
+                    camera.chebyshev_distance(*region),
+                    *region,
+                )
+            })
             .collect();
         candidates.sort();
 
-        for (distance, region) in candidates {
+        for (_, distance, region) in candidates {
             if self.active_loads.len() >= self.config.max_active_loads {
                 break;
             }
-            if distance > reach {
-                // Wanted, but memory says not yet. It stays wanted, so it will
-                // be fetched once there is room.
+            let demanded = self.demanded.contains(&region);
+            if distance > reach && (!demanded || self.pressure() == Pressure::OverHard) {
+                // Camera reach shrinks under pressure. External demand can
+                // bypass distance while there is still memory headroom, but it
+                // never pushes a world farther past the hard ceiling.
                 self.counts.loads_withheld += 1;
                 continue;
             }
@@ -399,6 +435,9 @@ impl RegionStreamer {
         let over_budget = self.pressure() != Pressure::Comfortable;
         let resident: Vec<RegionPos> = self.resident_regions(world);
         for region in resident {
+            if self.wanted.contains(&region) {
+                continue;
+            }
             if camera.chebyshev_distance(region) <= keep {
                 continue;
             }
@@ -568,7 +607,7 @@ impl RegionStreamer {
         self.residency.mark_edited(region);
     }
 
-    /// Whether a region is currently wanted by the camera.
+    /// Whether a region is currently wanted by the camera or explicit demand.
     pub fn is_wanted(&self, region: RegionPos) -> bool {
         self.wanted.contains(&region)
     }
@@ -635,6 +674,7 @@ impl RegionStreamer {
         self.active_loads.clear();
         self.active_saves.clear();
         self.wanted.clear();
+        self.demanded.clear();
         self.last_camera = None;
     }
 }
