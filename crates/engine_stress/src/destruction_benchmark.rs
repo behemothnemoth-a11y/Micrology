@@ -9,13 +9,15 @@ use engine_world::World;
 use serde::{Deserialize, Serialize};
 
 pub const DESTRUCTION_BENCHMARK_PATH: &str = "fixtures/destruction/benchmark-pack.json";
-pub const DESTRUCTION_BENCHMARK_VERSION: u32 = 1;
+pub const DESTRUCTION_BENCHMARK_VERSION: u32 = 2;
 pub const BASELINE_MATERIAL: MaterialId = MaterialId(9000);
 
-pub const WALL_MIN: CellPos = CellPos::new(32, 0, 32);
-pub const WALL_MAX: CellPos = CellPos::new(63, 17, 36);
-pub const WALL_HIT_CENTER: CellPos = CellPos::new(47, 9, 36);
-pub const WALL_EDGE_HIT: CellPos = CellPos::new(33, 9, 36);
+pub const FOOTING_MIN: CellPos = CellPos::new(30, 0, 31);
+pub const FOOTING_MAX: CellPos = CellPos::new(65, 0, 37);
+pub const WALL_MIN: CellPos = CellPos::new(32, 1, 32);
+pub const WALL_MAX: CellPos = CellPos::new(63, 18, 36);
+pub const WALL_HIT_CENTER: CellPos = CellPos::new(48, 10, 36);
+pub const WALL_EDGE_HIT: CellPos = CellPos::new(33, 10, 36);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -104,6 +106,8 @@ pub struct WallFixtureSpec {
     pub material_name: String,
     pub min: [i32; 3],
     pub max: [i32; 3],
+    pub footing_min: [i32; 3],
+    pub footing_max: [i32; 3],
     pub anchored_y: i32,
     pub occupied_cells: u64,
     pub anchored_cells: u64,
@@ -157,12 +161,9 @@ pub fn baseline_materials() -> MaterialRegistry {
 /// accidentally becomes a streaming-boundary test.
 pub fn baseline_wall() -> World {
     let mut world = World::with_materials(baseline_materials());
+    world.fill_box(FOOTING_MIN, FOOTING_MAX, Some(BASELINE_MATERIAL));
+    world.set_anchor_box(FOOTING_MIN, FOOTING_MAX, true);
     world.fill_box(WALL_MIN, WALL_MAX, Some(BASELINE_MATERIAL));
-    world.set_anchor_box(
-        CellPos::new(WALL_MIN.x, WALL_MIN.y, WALL_MIN.z),
-        CellPos::new(WALL_MAX.x, WALL_MIN.y, WALL_MAX.z),
-        true,
-    );
     world
 }
 
@@ -176,17 +177,14 @@ fn fnv_u64(mut hash: u64, value: u64) -> u64 {
 
 pub fn baseline_wall_checksum(world: &World) -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for y in WALL_MIN.y..=WALL_MAX.y {
-        for z in WALL_MIN.z..=WALL_MAX.z {
-            for x in WALL_MIN.x..=WALL_MAX.x {
-                let cell = CellPos::new(x, y, z);
-                let material = world.material_at(cell).map(|id| id.0).unwrap_or(0);
-                hash = fnv_u64(hash, x as i64 as u64);
-                hash = fnv_u64(hash, y as i64 as u64);
-                hash = fnv_u64(hash, z as i64 as u64);
-                hash = fnv_u64(hash, u64::from(material));
-                hash = fnv_u64(hash, u64::from(world.is_anchor(cell)));
-            }
+    for (volume_pos, volume) in world.volumes_sorted() {
+        for (local, material) in volume.iter_occupied() {
+            let cell = CellPos::from_parts(volume_pos, local);
+            hash = fnv_u64(hash, cell.x as i64 as u64);
+            hash = fnv_u64(hash, cell.y as i64 as u64);
+            hash = fnv_u64(hash, cell.z as i64 as u64);
+            hash = fnv_u64(hash, u64::from(material.0));
+            hash = fnv_u64(hash, u64::from(world.is_anchor(cell)));
         }
     }
     format!("{hash:016x}")
@@ -402,8 +400,8 @@ fn case_spec(case: DestructionBenchmarkCase) -> DestructionCaseSpec {
 pub fn destruction_benchmark_pack() -> DestructionBenchmarkPack {
     let world = baseline_wall();
     let occupied_cells = world.occupied_count();
-    let anchored_cells =
-        (WALL_MAX.x - WALL_MIN.x + 1) as u64 * (WALL_MAX.z - WALL_MIN.z + 1) as u64;
+    let anchored_cells = (FOOTING_MAX.x - FOOTING_MIN.x + 1) as u64
+        * (FOOTING_MAX.z - FOOTING_MIN.z + 1) as u64;
 
     DestructionBenchmarkPack {
         version: DESTRUCTION_BENCHMARK_VERSION,
@@ -412,7 +410,9 @@ pub fn destruction_benchmark_pack() -> DestructionBenchmarkPack {
             material_name: "baseline_structural_test_material".into(),
             min: [WALL_MIN.x, WALL_MIN.y, WALL_MIN.z],
             max: [WALL_MAX.x, WALL_MAX.y, WALL_MAX.z],
-            anchored_y: WALL_MIN.y,
+            footing_min: [FOOTING_MIN.x, FOOTING_MIN.y, FOOTING_MIN.z],
+            footing_max: [FOOTING_MAX.x, FOOTING_MAX.y, FOOTING_MAX.z],
+            anchored_y: FOOTING_MIN.y,
             occupied_cells,
             anchored_cells,
             populated_volumes: world.volume_count() as u64,
@@ -464,27 +464,27 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn baseline_wall_is_one_material_one_region_and_bottom_anchored() {
+    fn baseline_wall_is_one_material_one_region_on_an_anchored_footing() {
         let world = baseline_wall();
         assert_eq!(world.materials().len(), 1);
-        assert_eq!(world.occupied_count(), 32 * 18 * 5);
+        assert_eq!(world.occupied_count(), 3132);
         assert_eq!(world.region_count(), 1);
-        assert_eq!(world.volume_count(), 4);
+        assert_eq!(world.volume_count(), 10);
 
         let mut anchors = 0u64;
-        for y in WALL_MIN.y..=WALL_MAX.y {
-            for z in WALL_MIN.z..=WALL_MAX.z {
-                for x in WALL_MIN.x..=WALL_MAX.x {
-                    let cell = CellPos::new(x, y, z);
-                    assert_eq!(world.material_at(cell), Some(BASELINE_MATERIAL));
-                    if world.is_anchor(cell) {
-                        anchors += 1;
-                        assert_eq!(y, WALL_MIN.y);
-                    }
+        for (volume_pos, volume) in world.volumes_sorted() {
+            for (local, material) in volume.iter_occupied() {
+                let cell = CellPos::from_parts(volume_pos, local);
+                assert_eq!(material, BASELINE_MATERIAL);
+                if world.is_anchor(cell) {
+                    anchors += 1;
+                    assert_eq!(cell.y, FOOTING_MIN.y);
+                    assert!(cell.x >= FOOTING_MIN.x && cell.x <= FOOTING_MAX.x);
+                    assert!(cell.z >= FOOTING_MIN.z && cell.z <= FOOTING_MAX.z);
                 }
             }
         }
-        assert_eq!(anchors, 32 * 5);
+        assert_eq!(anchors, 36 * 7);
     }
 
     #[test]
