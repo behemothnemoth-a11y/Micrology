@@ -734,9 +734,9 @@ fn external_demand_is_withheld_past_the_hard_memory_ceiling() {
     streamer.set_demanded_regions([far]);
     let actions = streamer.update(&mut world, RegionPos::ZERO);
     assert!(
-        !actions
-            .iter()
-            .any(|action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)),
+        !actions.iter().any(
+            |action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)
+        ),
         "external demand must not push residency farther past the hard ceiling"
     );
     assert!(streamer.is_demanded(far));
@@ -746,9 +746,9 @@ fn external_demand_is_withheld_past_the_hard_memory_ceiling() {
     streamer.note_memory(using(0));
     let actions = streamer.update(&mut world, RegionPos::ZERO);
     assert!(
-        actions
-            .iter()
-            .any(|action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)),
+        actions.iter().any(
+            |action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)
+        ),
         "withheld demand must not be forgotten"
     );
 }
