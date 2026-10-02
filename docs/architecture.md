@@ -149,6 +149,16 @@ Deterministic stress scenarios and the measurement harness over them. Counters
 are reproducible and asserted in CI; timings are diagnostic and never committed.
 See [`testing.md`](testing.md).
 
+### `engine_mechanics`
+
+Optional material mechanics and structural capacity, downstream of
+`engine_destruction` so that material-aware damage can be new implementations of
+the existing policy traits rather than a changed contract. Mechanical properties
+live in a side table keyed by `MaterialId` rather than on `Material`, and an
+empty table is a valid permanent state. Every quantity is fixed-point integer;
+no floating point enters the capacity path. Nothing participates unless a host
+opts in. See [`drop-0005-scope.md`](drop-0005-scope.md).
+
 ### `apps/sandbox`
 
 The thinnest app that proves the engine. Window, free-fly camera, one entity per
