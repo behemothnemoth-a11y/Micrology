@@ -8,12 +8,16 @@ import/export format and a test ecosystem — never the foundation. No core crat
 depends on Minecraft, Fabric, NBT, block entities or a block registry, and none
 ever will; that belongs behind import/export adapters.
 
-The engine is in **DROP 0003 — Destruction Foundation**. The world kernel and
-scale foundation are complete: Micrology owns, streams, edits, saves and renders
-its own bounded-memory volumetric world. DROP 0003 is now through **0003.10**:
-support topology, structural connectivity, native fragments, exact/greedy
-collision compilation, streamed static-world physics, and the dynamic fragment
-physics adapter and fragment lifecycle/budgeting are implemented; fragment persistence and spatial indexing are next.
+The engine is in **DROP 0005 — Material Mechanics and Structural Capacity**.
+The world kernel, scale foundation and destruction system are complete:
+Micrology owns, streams, edits, saves and renders its own bounded-memory
+volumetric world, and destroys it exactly — structural connectivity, native
+volumetric fragments, collision compiled from cell data, fragment persistence
+and residency, applied damage, progressive local damage, force coupling and
+bounded secondary destruction. DROP 0005 adds mechanical difference between
+materials and the first model of structural capacity, and is through **0005.0**:
+the mechanics crate, its fixed-point numeric type and the participation contract
+that keeps every physical system optional.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -163,10 +167,18 @@ Litematica import/export, GIS ingestion, volume transforms, and any actual game.
 Static collision is live in the sandbox through Avian, but physics backend types
 remain outside all engine crates.
 
-DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complete**
-— see [the report](docs/drop-0002-report.md). DROP 0003 (structural destruction:
-connectivity, volumetric fragments, collision, physics) is in progress —
-[`docs/drop-0003.md`](docs/drop-0003.md) tracks it pass by pass.
+DROP 0002 (scale: regions, streaming, async meshing, memory budget) is
+**complete** — see [the report](docs/drop-0002-report.md). DROP 0003 (structural
+destruction: connectivity, volumetric fragments, collision, physics) and DROP
+0004 (destruction at scale, applied damage, force coupling, re-fracture, chaos)
+are **complete**. DROP 0005 (material mechanics and structural capacity) is in
+progress — [`docs/drop-0005.md`](docs/drop-0005.md) tracks it pass by pass.
+
+No physical system is mandatory for a valid world. A floating island or an
+impossible castle is valid authored data and does not need a fake
+infinite-strength material to stay up; gravity, anchoring, connectivity
+detachment, damage, fragment physics and mechanics are separable and
+individually optional.
 
 ## Documentation
 
@@ -181,6 +193,10 @@ connectivity, volumetric fragments, collision, physics) is in progress —
 | [`docs/drop-0002-report.md`](docs/drop-0002-report.md) | DROP 0002 report: what shipped, what it measures, what DROP 0003 inherits |
 | [`docs/drop-0003-scope.md`](docs/drop-0003-scope.md) | DROP 0003 scope: structural destruction and volumetric fragments |
 | [`docs/drop-0003.md`](docs/drop-0003.md) | DROP 0003 pass by pass |
+| [`docs/drop-0004-scope.md`](docs/drop-0004-scope.md) | DROP 0004 scope: destruction at scale and applied damage |
+| [`docs/drop-0004.md`](docs/drop-0004.md) | DROP 0004 pass by pass |
+| [`docs/drop-0005-scope.md`](docs/drop-0005-scope.md) | DROP 0005 scope: material mechanics and structural capacity |
+| [`docs/drop-0005.md`](docs/drop-0005.md) | DROP 0005 pass by pass |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 
