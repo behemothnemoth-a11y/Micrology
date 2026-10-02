@@ -13,6 +13,7 @@
 use crate::camera::{FlyCamera, cursor_grabbed};
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
+use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
 use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
@@ -179,6 +180,8 @@ pub struct SaveLoadResources<'w> {
     geometry: ResMut<'w, GeometryRes>,
     sections: ResMut<'w, SectionEntities>,
     fragments: ResMut<'w, DynamicFragments>,
+    fragment_stream: ResMut<'w, FragmentStreamRes>,
+    fragment_tasks: ResMut<'w, FragmentStreamTasks>,
     fragment_bodies: ResMut<'w, FragmentBodies>,
     fragment_renders: ResMut<'w, FragmentEntities>,
     destruction: ResMut<'w, DestructionHost>,
@@ -197,6 +200,8 @@ pub fn save_and_load(
         mut geometry,
         mut sections,
         mut fragments,
+        mut fragment_stream,
+        mut fragment_tasks,
         mut fragment_bodies,
         mut fragment_renders,
         mut destruction,
@@ -221,7 +226,12 @@ pub fn save_and_load(
             Err(error) => format!("region save FAILED: {error}"),
         };
         let fragment_status =
-            match crate::destruction::save_fragment_state(&stream, &destruction, &fragments) {
+            match crate::destruction::save_fragment_state(
+                &stream,
+                &destruction,
+                &fragments,
+                &mut fragment_stream,
+            ) {
                 Ok(count) => format!("{count} fragment(s)"),
                 Err(error) => format!("fragment save FAILED: {error}"),
             };
@@ -242,6 +252,8 @@ pub fn save_and_load(
             &stream,
             &mut destruction,
             &mut fragments,
+            &mut fragment_stream,
+            &mut fragment_tasks,
         ) {
             Ok(count) => format!("reloading world + {count} fragment(s) from disk"),
             Err(error) => format!("world reloading; fragment reload FAILED: {error}"),
