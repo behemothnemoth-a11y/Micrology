@@ -28,7 +28,12 @@
     Seconds to wait after launch before recording, so shader compilation and
     the first streaming pass are not in frame.
 
+.PARAMETER CheckOnly
+    Verify Rust, FFmpeg, ffprobe, and the ddagrab filter, then exit without
+    building, launching Micrology, or touching any desktop windows.
+
 .EXAMPLE
+    .\tools\capture-demo.ps1 -CheckOnly
     .\tools\capture-demo.ps1 -Demo impact -Section drop0004_9_hardware
     .\tools\capture-demo.ps1 -Demo collapse -Section drop0005_hardware
 #>
@@ -45,12 +50,13 @@ param(
 
     [int]$Framerate = 30,
 
-    [switch]$KeepRaw
+    [switch]$KeepRaw,
+
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$windowTitle = 'Micrology — DROP 0004 sandbox'
 
 # --- Preflight -------------------------------------------------------------
 
@@ -60,8 +66,9 @@ function Require-Command([string]$name, [string]$hint) {
     }
 }
 
-Require-Command 'cargo'  'Install the Rust toolchain.'
-Require-Command 'ffmpeg' 'Install FFmpeg (winget install Gyan.FFmpeg) and reopen the terminal.'
+Require-Command 'cargo'   'Install the Rust toolchain.'
+Require-Command 'ffmpeg'  'Install FFmpeg (winget install Gyan.FFmpeg) and reopen the terminal.'
+Require-Command 'ffprobe' 'Install FFmpeg (winget install Gyan.FFmpeg) and reopen the terminal.'
 
 # ddagrab ships only in reasonably recent Windows builds of FFmpeg. Fail here
 # with a clear reason rather than producing a blank-white file later.
@@ -72,6 +79,23 @@ This FFmpeg has no ddagrab filter, so it cannot capture a Vulkan surface.
 Install a recent Windows build (winget install Gyan.FFmpeg) and try again.
 Do not fall back to gdigrab: it records the Micrology window as blank white.
 '@
+}
+
+if ($CheckOnly) {
+    $cargoVersion = (& cargo --version 2>&1 | Select-Object -First 1)
+    $ffmpegVersion = (& ffmpeg -hide_banner -version 2>&1 | Select-Object -First 1)
+    $ffmpegPath = (Get-Command ffmpeg).Source
+    $ffprobePath = (Get-Command ffprobe).Source
+    Write-Host ''
+    Write-Host 'Micrology capture preflight: PASS' -ForegroundColor Green
+    Write-Host "  Rust     $cargoVersion"
+    Write-Host "  FFmpeg   $ffmpegVersion"
+    Write-Host "  ffmpeg   $ffmpegPath"
+    Write-Host "  ffprobe  $ffprobePath"
+    Write-Host '  ddagrab  available (required for Vulkan capture)'
+    Write-Host ''
+    Write-Host 'No build was run and no desktop windows were changed.' -ForegroundColor DarkGray
+    exit 0
 }
 
 $envName = switch ($Demo) {
@@ -88,18 +112,23 @@ $videoName = "Micrology_$($Section)_$($Demo).mp4"
 $videoPath = Join-Path $outDir $videoName
 $thumbPath = Join-Path $outDir 'thumbnail.png'
 
-# --- Win32 window control --------------------------------------------------
+# --- Window geometry (read-only) ------------------------------------------
+#
+# Capture must not rearrange Justin's desktop. The only Win32 calls here read
+# the Micrology window state/rectangle so the full-desktop ddagrab frame can be
+# cropped afterward. No minimize, restore, resize, move, topmost, or foreground
+# operations belong in this script.
+
+Add-Type -AssemblyName System.Windows.Forms
 
 if (-not ('Win32Window' -as [type])) {
     Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public class Win32Window {
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-    public const int SW_RESTORE  = 9;
-    public const int SW_MAXIMIZE = 3;
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 }
 '@
 }
@@ -118,6 +147,8 @@ try {
 # --- Launch ----------------------------------------------------------------
 
 Write-Host "Launching with $envName=1..." -ForegroundColor Cyan
+Write-Host 'Capture is non-invasive: no other desktop windows will be moved or minimized.' -ForegroundColor DarkGray
+Write-Host 'Keep the Micrology window unobstructed while recording.' -ForegroundColor Yellow
 $exe = Join-Path $repo 'target/release/sandbox.exe'
 if (-not (Test-Path $exe)) { throw "Built binary not found at $exe" }
 
@@ -130,7 +161,8 @@ try {
 }
 
 try {
-    # Wait for the window to actually exist before touching it.
+    # Wait for Micrology to create its native window. We only observe it; capture
+    # never changes focus, size, position, z-order, or any other desktop window.
     $deadline = (Get-Date).AddSeconds(60)
     while (-not $proc.MainWindowHandle -or $proc.MainWindowHandle -eq [IntPtr]::Zero) {
         if ((Get-Date) -gt $deadline) { throw 'Sandbox window never appeared within 60s.' }
@@ -138,19 +170,30 @@ try {
         $proc.Refresh()
     }
 
-    $handle = $proc.MainWindowHandle
-    if ([Win32Window]::IsIconic($handle)) {
-        [Win32Window]::ShowWindow($handle, [Win32Window]::SW_RESTORE) | Out-Null
-    }
-    [Win32Window]::ShowWindow($handle, [Win32Window]::SW_MAXIMIZE) | Out-Null
-    [Win32Window]::SetForegroundWindow($handle) | Out-Null
-
     Write-Host "Warming up for ${Warmup}s (shader compile, first stream pass)..." -ForegroundColor Cyan
     Start-Sleep -Seconds $Warmup
+    $proc.Refresh()
+    if ($proc.HasExited) {
+        throw "Sandbox exited during the ${Warmup}s warm-up; reduce -Warmup or lengthen the demo hold."
+    }
 
-    # --- Record ------------------------------------------------------------
-    # ddagrab hands back GPU frames; hwdownload+format brings them to system
-    # memory so a normal encoder can take them.
+    # Winit may recreate its native window during renderer initialization. Read
+    # the final handle after warm-up and use it only for validation/cropping.
+    $handle = $proc.MainWindowHandle
+    if (-not $handle -or $handle -eq [IntPtr]::Zero) {
+        throw 'Sandbox lost its window handle before recording.'
+    }
+    if ([Win32Window]::IsIconic($handle)) {
+        throw 'Micrology is minimized. Restore it and rerun; this script will not alter your desktop windows.'
+    }
+    $windowRect = New-Object Win32Window+RECT
+    if (-not [Win32Window]::GetWindowRect($handle, [ref]$windowRect)) {
+        throw 'Could not read the Micrology window rectangle before capture.'
+    }
+
+    $windowWidth = $windowRect.Right - $windowRect.Left
+    $windowHeight = $windowRect.Bottom - $windowRect.Top
+    Write-Host "Micrology window: ${windowWidth}x${windowHeight} at $($windowRect.Left),$($windowRect.Top)" -ForegroundColor DarkGray
     Write-Host "Recording ${Seconds}s with ddagrab..." -ForegroundColor Cyan
     & ffmpeg -hide_banner -loglevel warning -y `
         -init_hw_device d3d11va `
@@ -159,6 +202,10 @@ try {
         -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p `
         $rawPath
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg capture failed with exit code $LASTEXITCODE" }
+    $proc.Refresh()
+    if ($proc.HasExited) {
+        throw 'Sandbox exited before recording completed; reduce -Seconds or lengthen the demo hold.'
+    }
 }
 finally {
     if ($proc -and -not $proc.HasExited) {
@@ -169,19 +216,44 @@ finally {
     }
 }
 
-# --- Trim the taskbar ------------------------------------------------------
-# Captured at full desktop size; crop the bottom strip so the taskbar is not in
-# the committed visual. Everything above it is the live Vulkan surface.
+# --- Crop to the Micrology window ----------------------------------------
+# ddagrab captures physical desktop pixels while Win32 window rectangles are in
+# logical desktop coordinates on a DPI-scaled display. Convert the stable
+# post-warm-up window rectangle into physical capture coordinates and crop to the
+# Micrology window itself, rather than committing the surrounding desktop.
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen
+$probe = (& ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 $rawPath).Trim()
+if ($probe -notmatch '^(\d+)x(\d+)$') { throw "could not read capture dimensions: $probe" }
+$rawWidth = [int]$Matches[1]
+$rawHeight = [int]$Matches[2]
+$scaleX = $rawWidth / [double]$screen.Bounds.Width
+$scaleY = $rawHeight / [double]$screen.Bounds.Height
+$cropX = [int][math]::Round(($windowRect.Left - $screen.Bounds.X) * $scaleX)
+$cropY = [int][math]::Round(($windowRect.Top - $screen.Bounds.Y) * $scaleY)
+$cropWidth = [int][math]::Round(($windowRect.Right - $windowRect.Left) * $scaleX)
+$cropHeight = [int][math]::Round(($windowRect.Bottom - $windowRect.Top) * $scaleY)
+$cropX = [math]::Max(0, [math]::Min($cropX, $rawWidth - 2))
+$cropY = [math]::Max(0, [math]::Min($cropY, $rawHeight - 2))
+$cropWidth = [math]::Min($cropWidth, $rawWidth - $cropX)
+$cropHeight = [math]::Min($cropHeight, $rawHeight - $cropY)
+# H.264 yuv420p requires even dimensions and offsets.
+$cropX -= $cropX % 2
+$cropY -= $cropY % 2
+$cropWidth -= $cropWidth % 2
+$cropHeight -= $cropHeight % 2
+if ($cropWidth -le 0 -or $cropHeight -le 0) {
+    throw "invalid Micrology window crop ${cropWidth}x${cropHeight}+${cropX}+${cropY}"
+}
 
-Write-Host 'Cropping...' -ForegroundColor Cyan
+Write-Host "Cropping Micrology window ${cropWidth}x${cropHeight}+${cropX}+${cropY} from ${rawWidth}x${rawHeight} capture..." -ForegroundColor Cyan
 & ffmpeg -hide_banner -loglevel warning -y -i $rawPath `
-    -vf "crop=iw:ih-48:0:0" `
+    -vf "crop=${cropWidth}:${cropHeight}:${cropX}:${cropY}" `
     -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p `
     $videoPath
 if ($LASTEXITCODE -ne 0) { throw "ffmpeg crop failed with exit code $LASTEXITCODE" }
 
 # A frame from late in the run, when the demo has reported its totals.
-& ffmpeg -hide_banner -loglevel warning -y -sseof -3 -i $videoPath -vframes 1 $thumbPath
+& ffmpeg -hide_banner -loglevel warning -y -sseof -3 -i $videoPath -frames:v 1 -update 1 $thumbPath
 if ($LASTEXITCODE -ne 0) { throw "ffmpeg thumbnail failed with exit code $LASTEXITCODE" }
 
 if (-not $KeepRaw) { Remove-Item $rawPath -ErrorAction SilentlyContinue }
