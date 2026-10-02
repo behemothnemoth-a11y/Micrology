@@ -58,7 +58,7 @@ fn print_summary() {
     let world = baseline_wall();
     println!("Micrology Destruction Benchmark Pack v{}", pack.version);
     println!(
-        "wall: {} cells, {} volumes, {} region, checksum {}",
+        "fixture: {} cells, {} volumes, {} region, checksum {}",
         world.occupied_count(),
         world.volume_count(),
         world.region_count(),
@@ -82,6 +82,6 @@ fn print_summary() {
     }
     println!();
     println!(
-        "Fracture-specific metrics are intentionally unavailable until the fracture implementation lands."
+        "0006.0 fracture is implemented; --template keeps result fields null until a case runner records measured output."
     );
 }

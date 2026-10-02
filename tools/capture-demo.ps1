@@ -17,6 +17,7 @@
       progressive - DROP 0004.7 accumulating local damage
       collapse    - DROP 0005 material mechanics: two identical towers, brick
                     and steel, where only the brick one falls
+      fracture    - DROP 0006 one-material fracture wall and persistent crack field
 
 .PARAMETER Section
     Diagnostics folder to write into, e.g. drop0004_9_hardware.
@@ -36,10 +37,11 @@
     .\tools\capture-demo.ps1 -CheckOnly
     .\tools\capture-demo.ps1 -Demo impact -Section drop0004_9_hardware
     .\tools\capture-demo.ps1 -Demo collapse -Section drop0005_hardware
+    .\tools\capture-demo.ps1 -Demo fracture -Section drop0006_0_fracture
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('impact', 'progressive', 'collapse')]
+    [ValidateSet('impact', 'progressive', 'collapse', 'fracture')]
     [string]$Demo = 'impact',
 
     [string]$Section = 'drop0004_9_hardware',
@@ -57,6 +59,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+
+# The fracture diagnostic is intentionally short and self-exits. Its defaults
+# start after initial Vulkan startup and finish during the final result hold.
+if ($Demo -eq 'fracture') {
+    if (-not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 1 }
+    if (-not $PSBoundParameters.ContainsKey('Seconds')) { $Seconds = 14 }
+}
 
 # --- Preflight -------------------------------------------------------------
 
@@ -102,6 +111,7 @@ $envName = switch ($Demo) {
     'impact'      { 'MICROLOGY_IMPACT_DEMO' }
     'progressive' { 'MICROLOGY_PROGRESSIVE_DAMAGE_DEMO' }
     'collapse'    { 'MICROLOGY_COLLAPSE_DEMO' }
+    'fracture'    { 'MICROLOGY_FRACTURE_DEMO' }
 }
 
 $outDir = Join-Path $repo "docs/diagnostics/$Section"
