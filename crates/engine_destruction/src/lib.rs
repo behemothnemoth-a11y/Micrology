@@ -54,9 +54,10 @@ pub use collision::{
 };
 
 pub use damage::{
-    DamageAmount, DamageEvaluation, DamageEvaluationLimits, DamageEvent, DamageEventError,
-    DamageEventId, DamageFalloff, DamageImpulse, DamagePolicy, DamageSequence, DamageSpace,
-    DamageTarget, DamageVolume, DamageWork, UniformDamagePolicy, evaluate_damage_event,
+    DamageAmount, DamageEvaluation, DamageEvaluationError, DamageEvaluationLimits, DamageEvent,
+    DamageEventError, DamageEventId, DamageFalloff, DamageImpulse, DamagePolicy, DamageSequence,
+    DamageSource, DamageSpace, DamageTarget, DamageVolume, DamageWork, UniformDamagePolicy,
+    evaluate_damage_event,
 };
 pub use derived_jobs::{
     FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,

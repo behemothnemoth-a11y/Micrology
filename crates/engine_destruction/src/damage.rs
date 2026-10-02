@@ -118,7 +118,7 @@ pub enum DamageVolume {
 /// It is not repeated per damaged cell. DROP 0004.8 may transfer some or all of
 /// this vector to fragments created by a detachment.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct DamageImpulse(pub [f64; 3]);
+pub struct DamageImpulse([f64; 3]);
 
 impl DamageImpulse {
     pub fn new(vector: [f64; 3]) -> Result<Self, DamageEventError> {
@@ -127,6 +127,10 @@ impl DamageImpulse {
         } else {
             Err(DamageEventError::NonFiniteImpulse)
         }
+    }
+
+    pub const fn vector(self) -> [f64; 3] {
+        self.0
     }
 }
 
@@ -145,7 +149,9 @@ impl fmt::Display for DamageEventError {
             Self::NonFiniteSource => write!(f, "damage source contains a non-finite coordinate"),
             Self::NonFiniteCenter => write!(f, "damage center contains a non-finite coordinate"),
             Self::NonFiniteImpulse => write!(f, "damage impulse contains a non-finite component"),
-            Self::InvalidRadius => write!(f, "damage sphere radius must be finite and non-negative"),
+            Self::InvalidRadius => {
+                write!(f, "damage sphere radius must be finite and non-negative")
+            }
         }
     }
 }
@@ -308,6 +314,58 @@ impl DamageTarget {
     }
 }
 
+/// Cell source together with the coordinate domain it actually represents.
+///
+/// Carrying this explicitly prevents a fragment-local event for fragment A from
+/// accidentally being evaluated against fragment B while still producing work
+/// labelled as A.
+#[derive(Clone, Copy)]
+pub enum DamageSource<'a> {
+    Static(&'a dyn CellSource),
+    Fragment {
+        fragment: FragmentId,
+        cells: &'a dyn CellSource,
+    },
+}
+
+impl<'a> DamageSource<'a> {
+    pub const fn space(self) -> DamageSpace {
+        match self {
+            Self::Static(_) => DamageSpace::StaticWorld,
+            Self::Fragment { fragment, .. } => DamageSpace::FragmentLocal(fragment),
+        }
+    }
+
+    pub const fn cells(self) -> &'a dyn CellSource {
+        match self {
+            Self::Static(cells) | Self::Fragment { cells, .. } => cells,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DamageEvaluationError {
+    SpaceMismatch {
+        event: DamageSpace,
+        source: DamageSpace,
+    },
+}
+
+impl fmt::Display for DamageEvaluationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SpaceMismatch { event, source } => {
+                write!(
+                    f,
+                    "damage event space {event:?} does not match source space {source:?}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DamageEvaluationError {}
+
 /// Unit of damage work emitted by a policy.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DamageWork {
@@ -366,12 +424,20 @@ impl DamageEvaluation {
 /// cells. The event's DamageSpace decides which DamageTarget variant is emitted.
 pub fn evaluate_damage_event(
     event: &DamageEvent,
-    source: &dyn CellSource,
+    source: DamageSource<'_>,
     policy: &dyn DamagePolicy,
     limits: DamageEvaluationLimits,
-) -> DamageEvaluation {
+) -> Result<DamageEvaluation, DamageEvaluationError> {
+    let source_space = source.space();
+    if event.space != source_space {
+        return Err(DamageEvaluationError::SpaceMismatch {
+            event: event.space,
+            source: source_space,
+        });
+    }
+    let cells = source.cells();
     let Some(bounds) = event.affected_cell_bounds() else {
-        return DamageEvaluation::default();
+        return Ok(DamageEvaluation::default());
     };
 
     let mut evaluation = DamageEvaluation::default();
@@ -386,7 +452,7 @@ pub fn evaluate_damage_event(
                 evaluation.cells_considered = evaluation.cells_considered.saturating_add(1);
 
                 let cell = CellPos::new(x, y, z);
-                let Some(material) = source.material_at(cell) else {
+                let Some(material) = cells.material_at(cell) else {
                     continue;
                 };
                 let target = match event.space {
@@ -404,7 +470,7 @@ pub fn evaluate_damage_event(
         }
     }
 
-    evaluation
+    Ok(evaluation)
 }
 
 /// Reference policy: material identity does not change resistance yet.
@@ -494,25 +560,29 @@ mod tests {
         let policy = UniformDamagePolicy;
         let fragment = FragmentId::new(4, 0);
 
-        assert!(policy
-            .evaluate(
-                &event,
-                DamageTarget::StaticCell {
-                    cell: CellPos::new(1, 2, 3),
-                    material: MaterialId(1),
-                },
-            )
-            .is_some());
-        assert!(policy
-            .evaluate(
-                &event,
-                DamageTarget::FragmentCell {
-                    fragment,
-                    cell: CellPos::new(1, 2, 3),
-                    material: MaterialId(1),
-                },
-            )
-            .is_none());
+        assert!(
+            policy
+                .evaluate(
+                    &event,
+                    DamageTarget::StaticCell {
+                        cell: CellPos::new(1, 2, 3),
+                        material: MaterialId(1),
+                    },
+                )
+                .is_some()
+        );
+        assert!(
+            policy
+                .evaluate(
+                    &event,
+                    DamageTarget::FragmentCell {
+                        fragment,
+                        cell: CellPos::new(1, 2, 3),
+                        material: MaterialId(1),
+                    },
+                )
+                .is_none()
+        );
     }
 
     #[test]
@@ -552,7 +622,6 @@ mod tests {
         assert_eq!(a.amount, b.amount);
     }
 
-
     #[test]
     fn same_event_evaluator_works_for_world_and_fragment_sources() {
         use crate::Fragment;
@@ -560,11 +629,7 @@ mod tests {
         use std::collections::BTreeSet;
 
         let mut world = World::new();
-        world.fill_box(
-            CellPos::ZERO,
-            CellPos::new(1, 0, 0),
-            Some(MaterialId(1)),
-        );
+        world.fill_box(CellPos::ZERO, CellPos::new(1, 0, 0), Some(MaterialId(1)));
         world.take_dirty();
 
         let static_event = DamageEvent::new(
@@ -578,10 +643,11 @@ mod tests {
         .unwrap();
         let static_eval = evaluate_damage_event(
             &static_event,
-            &world,
+            DamageSource::Static(&world),
             &UniformDamagePolicy,
             DamageEvaluationLimits::UNLIMITED,
-        );
+        )
+        .unwrap();
         assert!(static_eval.may_apply());
         assert_eq!(static_eval.work.len(), 2);
 
@@ -599,10 +665,14 @@ mod tests {
         .unwrap();
         let fragment_eval = evaluate_damage_event(
             &local_event,
-            &fragment,
+            DamageSource::Fragment {
+                fragment: fragment_id,
+                cells: &fragment,
+            },
             &UniformDamagePolicy,
             DamageEvaluationLimits::UNLIMITED,
-        );
+        )
+        .unwrap();
         assert!(fragment_eval.may_apply());
         assert_eq!(fragment_eval.work.len(), 2);
         assert!(fragment_eval
@@ -612,15 +682,49 @@ mod tests {
     }
 
     #[test]
+    fn evaluator_rejects_the_wrong_fragment_source_identity() {
+        use crate::Fragment;
+        use engine_world::World;
+        use std::collections::BTreeSet;
+
+        let mut world = World::new();
+        world.fill_box(CellPos::ZERO, CellPos::ZERO, Some(MaterialId(1)));
+        let members = BTreeSet::from([CellPos::ZERO]);
+        let actual = FragmentId::new(60, 0);
+        let fragment = Fragment::from_cells(actual, &world, &members).unwrap();
+        let event = DamageEvent::new(
+            DamageEventId::new(5, 3),
+            DamageSpace::FragmentLocal(FragmentId::new(61, 0)),
+            None,
+            DamageVolume::Cell(CellPos::ZERO),
+            DamageAmount(5),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            evaluate_damage_event(
+                &event,
+                DamageSource::Fragment {
+                    fragment: actual,
+                    cells: &fragment,
+                },
+                &UniformDamagePolicy,
+                DamageEvaluationLimits::UNLIMITED,
+            ),
+            Err(DamageEvaluationError::SpaceMismatch {
+                event: DamageSpace::FragmentLocal(FragmentId::new(61, 0)),
+                source: DamageSpace::FragmentLocal(actual),
+            })
+        );
+    }
+
+    #[test]
     fn truncated_event_evaluation_is_never_partially_actionable() {
         use engine_world::World;
 
         let mut world = World::new();
-        world.fill_box(
-            CellPos::ZERO,
-            CellPos::new(15, 0, 0),
-            Some(MaterialId(1)),
-        );
+        world.fill_box(CellPos::ZERO, CellPos::new(15, 0, 0), Some(MaterialId(1)));
         let event = DamageEvent::new(
             DamageEventId::new(5, 2),
             DamageSpace::StaticWorld,
@@ -633,10 +737,11 @@ mod tests {
 
         let evaluation = evaluate_damage_event(
             &event,
-            &world,
+            DamageSource::Static(&world),
             &UniformDamagePolicy,
             DamageEvaluationLimits::new(4),
-        );
+        )
+        .unwrap();
         assert!(evaluation.truncated);
         assert!(!evaluation.may_apply());
         assert_eq!(evaluation.cells_considered, 4);
@@ -645,6 +750,8 @@ mod tests {
 
     #[test]
     fn invalid_external_floats_are_rejected() {
+        let impulse = DamageImpulse::new([3.0, -2.0, 1.0]).expect("finite impulse");
+        assert_eq!(impulse.vector(), [3.0, -2.0, 1.0]);
         assert_eq!(
             DamageImpulse::new([f64::NAN, 0.0, 0.0]),
             Err(DamageEventError::NonFiniteImpulse)
