@@ -42,6 +42,7 @@ pub mod fragment;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
+pub mod residency;
 pub mod spatial;
 
 pub use collision::{
@@ -56,6 +57,10 @@ pub use lifecycle::{
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
+pub use residency::{
+    FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,
+    FragmentResidencyConfig, FragmentResidencyCounts, FragmentSaveOutcome, FragmentSaveTicket,
+};
 pub use spatial::{FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment};
 
 pub use jobs::{
