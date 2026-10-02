@@ -5144,8 +5144,10 @@ dependencies = [
  "engine_io",
  "engine_mechanics",
  "engine_stream",
+ "engine_stress",
  "engine_volume",
  "engine_world",
+ "serde_json",
 ]
 
 [[package]]

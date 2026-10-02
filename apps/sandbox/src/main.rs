@@ -34,8 +34,10 @@ mod physics;
 mod progressive_demo;
 mod render;
 mod scene;
+mod sim_lab;
 mod streaming;
 
+use bevy::app::{RunFixedMainLoop, RunFixedMainLoopSystems};
 use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowPlugin};
 use engine_geometry::SectionMeshCache;
@@ -144,6 +146,7 @@ fn main() {
     .init_resource::<collapse_demo::CollapseDemo>()
     .init_resource::<impact_demo::ImpactDemo>()
     .init_resource::<progressive_demo::ProgressiveDamageDemo>()
+    .init_resource::<sim_lab::SimulationLab>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -153,6 +156,7 @@ fn main() {
         (
             scene::setup_world,
             destruction::load_fragment_state,
+            sim_lab::seed,
             progressive_demo::seed,
             impact_demo::seed,
             collapse_demo::seed,
@@ -173,10 +177,11 @@ fn main() {
                 // section spawned this frame is positioned against the new anchor.
                 render::maintain_render_origin,
                 edit::select_material,
-                edit::edit_cells,
-                edit::save_and_load,
+                edit::edit_cells.run_if(sim_lab::inactive),
+                edit::save_and_load.run_if(sim_lab::inactive),
                 edit::toggle_compiler,
                 edit::quit,
+                sim_lab::controls,
                 progressive_demo::drive,
                 impact_demo::drive,
                 collapse_demo::drive,
@@ -217,6 +222,10 @@ fn main() {
             // and all of that before the HUD reports the frame.
             .chain(),
     )
+    .add_systems(
+        RunFixedMainLoop,
+        sim_lab::apply_pending_fixed_step.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+    )
     // Dynamic fragment state remains engine-owned. Read physics back after
     // Avian's fixed step instead of making the backend authoritative.
     .add_systems(
@@ -230,13 +239,14 @@ fn main() {
             .chain()
             .after(avian3d::prelude::PhysicsSystems::Last),
     )
+    .add_systems(FixedLast, sim_lab::count_fixed_tick)
     // Unsaved edits must reach disk before the process does, so this runs in
     // `Last`, after the exit message exists and before the app stops.
     .add_systems(
         Last,
         (
-            streaming::flush_on_exit,
-            destruction::flush_fragments_on_exit,
+            streaming::flush_on_exit.run_if(sim_lab::inactive),
+            destruction::flush_fragments_on_exit.run_if(sim_lab::inactive),
         ),
     );
 
