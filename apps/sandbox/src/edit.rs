@@ -225,16 +225,15 @@ pub fn save_and_load(
             }
             Err(error) => format!("region save FAILED: {error}"),
         };
-        let fragment_status =
-            match crate::destruction::save_fragment_state(
-                &stream,
-                &destruction,
-                &fragments,
-                &mut fragment_stream,
-            ) {
-                Ok(count) => format!("{count} fragment(s)"),
-                Err(error) => format!("fragment save FAILED: {error}"),
-            };
+        let fragment_status = match crate::destruction::save_fragment_state(
+            &stream,
+            &destruction,
+            &fragments,
+            &mut fragment_stream,
+        ) {
+            Ok(count) => format!("{count} fragment(s)"),
+            Err(error) => format!("fragment save FAILED: {error}"),
+        };
         status.0 = format!("saved {region_status}; {fragment_status}");
     }
 
