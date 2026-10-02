@@ -530,6 +530,11 @@ fn large_supported_structure_witness_does_less_work_than_exact() {
 
     assert!(witness.proved_all_supported());
     assert_eq!(exact.detached().count(), 0);
+    println!(
+        "witness cells: {}, exact cells: {}",
+        witness.stats().cells_visited,
+        exact.cells_visited
+    );
     assert!(
         witness.stats().cells_visited < exact.cells_visited,
         "support witness visited {} cells; exact visited {}",
