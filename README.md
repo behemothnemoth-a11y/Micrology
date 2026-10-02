@@ -8,16 +8,19 @@ import/export format and a test ecosystem — never the foundation. No core crat
 depends on Minecraft, Fabric, NBT, block entities or a block registry, and none
 ever will; that belongs behind import/export adapters.
 
-The engine is in **DROP 0005 — Material Mechanics and Structural Capacity**.
+The engine is in **DROP 0006 — Core Destruction: the Fracture Model**, with
+**DROP 0005 — Material Mechanics and Structural Capacity** still open beside it.
 The world kernel, scale foundation and destruction system are complete:
 Micrology owns, streams, edits, saves and renders its own bounded-memory
 volumetric world, and destroys it exactly — structural connectivity, native
 volumetric fragments, collision compiled from cell data, fragment persistence
 and residency, applied damage, progressive local damage, force coupling and
 bounded secondary destruction. DROP 0005 adds mechanical difference between
-materials and the first model of structural capacity, and is through **0005.0**:
-the mechanics crate, its fixed-point numeric type and the participation contract
-that keeps every physical system optional.
+materials and the first model of structural capacity. DROP 0006 then asks the
+question none of that answered — what happens *inside* one solid material when
+one impact hits it — and is through **0006.0**: sparse persistent fracture state,
+per-cell absorbed energy and per-bond integrity, so that material can be present
+and weakened rather than only intact or absent.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -86,6 +89,19 @@ build; nothing reads them in normal use:
 | `MICROLOGY_FRAGMENT_HARD_MB` | fragment tracked-byte ceiling (default 64) |
 | `MICROLOGY_FRAGMENT_MAX_BODIES` | active fragment body cap (default 512) |
 | `MICROLOGY_FRAGMENT_MAX_BOXES` | active fragment collider-box cap (default 65,536) |
+
+### Diagnostic fixtures
+
+Each is opt-in, replaces the scene with a controlled experiment, runs itself and
+exits. They are diagnostics, not demos: the overlay is drawn from engine state.
+
+| variable | fixture |
+|---|---|
+| `MICROLOGY_DESTRUCTION_SMOKE` | live destruction smoke test |
+| `MICROLOGY_PROGRESSIVE_DAMAGE_DEMO` | DROP 0004.7: repeated weak hits accumulating to failure |
+| `MICROLOGY_IMPACT_DEMO` | DROP 0004.8: force coupling and fragment re-fracture |
+| `MICROLOGY_COLLAPSE_DEMO` | DROP 0005: identical towers, brick vs steel |
+| `MICROLOGY_FRACTURE_DEMO` | DROP 0006.0: the destruction wall under one repeated impact, with the live crack field drawn |
 
 ### Linux system dependencies
 
@@ -172,7 +188,13 @@ DROP 0002 (scale: regions, streaming, async meshing, memory budget) is
 destruction: connectivity, volumetric fragments, collision, physics) and DROP
 0004 (destruction at scale, applied damage, force coupling, re-fracture, chaos)
 are **complete**. DROP 0005 (material mechanics and structural capacity) is in
-progress — [`docs/drop-0005.md`](docs/drop-0005.md) tracks it pass by pass.
+progress — [`docs/drop-0005.md`](docs/drop-0005.md) tracks it pass by pass — and
+DROP 0006 (the core destruction/fracture model) is in progress alongside it,
+tracked in [`docs/drop-0006.md`](docs/drop-0006.md).
+
+Occupancy connectivity remains the only topological oracle. Fracture records
+cracks as broken bonds; a broken bond is a crack, not a cut, and nothing in the
+fracture model detaches anything on its own.
 
 No physical system is mandatory for a valid world. A floating island or an
 impossible castle is valid authored data and does not need a fake
@@ -197,6 +219,7 @@ individually optional.
 | [`docs/drop-0004.md`](docs/drop-0004.md) | DROP 0004 pass by pass |
 | [`docs/drop-0005-scope.md`](docs/drop-0005-scope.md) | DROP 0005 scope: material mechanics and structural capacity |
 | [`docs/drop-0005.md`](docs/drop-0005.md) | DROP 0005 pass by pass |
+| [`docs/drop-0006.md`](docs/drop-0006.md) | DROP 0006 pass by pass: the core destruction/fracture model |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 

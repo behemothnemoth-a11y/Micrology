@@ -19,6 +19,7 @@ A fast test loop is the point; keep it that way.
 | `crates/engine_geometry/tests/surface.rs` | the scope's fixture cases, winding, mesh conversion |
 | `crates/engine_geometry/tests/oracle.rs` | greedy-vs-exact equivalence, determinism |
 | `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild; volume/section separation |
+| `crates/engine_destruction/tests/fracture.rs` | the destruction wall under one repeated impact: sparse fracture state, bond canonicalisation, determinism, and every conservative path |
 | `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
 | `crates/engine_stress/tests/baseline.rs` | stress-scenario counters against the committed baseline |
 

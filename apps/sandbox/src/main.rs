@@ -25,6 +25,7 @@ mod camera;
 mod collapse_demo;
 mod destruction;
 mod edit;
+mod fracture_demo;
 mod fragment_render;
 mod fragment_streaming;
 mod hud;
@@ -142,6 +143,7 @@ fn main() {
     .init_resource::<destruction::DestructionSmoke>()
     .init_resource::<impact::ImpactHost>()
     .init_resource::<collapse_demo::CollapseDemo>()
+    .init_resource::<fracture_demo::FractureDemo>()
     .init_resource::<impact_demo::ImpactDemo>()
     .init_resource::<progressive_demo::ProgressiveDamageDemo>()
     .init_resource::<streaming::StreamTasks>()
@@ -156,6 +158,7 @@ fn main() {
             progressive_demo::seed,
             impact_demo::seed,
             collapse_demo::seed,
+            fracture_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -180,6 +183,7 @@ fn main() {
                 progressive_demo::drive,
                 impact_demo::drive,
                 collapse_demo::drive,
+                fracture_demo::drive,
                 impact::process_secondary_damage,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
@@ -210,6 +214,9 @@ fn main() {
                 hud::toggle,
                 hud::apply_visibility,
                 hud::update,
+                // Drawn last, from engine state rather than from anything the
+                // renderer owns.
+                fracture_demo::draw,
             )
                 .chain(),
         )

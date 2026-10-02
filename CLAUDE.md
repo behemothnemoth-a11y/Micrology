@@ -15,6 +15,11 @@ DROP 0005 — material mechanics and structural capacity — is in progress; see
 `docs/drop-0005.md` for exact status and `docs/drop-0005-scope.md` for the
 ordered passes.
 
+DROP 0006 — the core destruction/fracture model — is in progress alongside it and
+is where current work is happening; see `docs/drop-0006.md`. It is developed
+against **one** homogeneous baseline material on purpose: with several materials
+in the fixture, a fracture-model problem and a tuning problem look identical.
+
 ## Hard rules
 
 **No Minecraft in core crates.** No NBT as world state, no Fabric, no Minecraft
@@ -26,12 +31,19 @@ adapters that do not exist yet.
 be an entity. An individual cell is a `u16` in an array. Never model a cell as an
 ECS entity or a rigid body — not for picking, not for physics, not for lighting.
 
-**Keep the oracle.** `ExactCompiler` is not dead code and is not a slow path to be
+**Keep the oracle.** Twice over. `ExactCompiler` is not dead code and is not a slow path to be
 deleted. It is the independent reference that makes `GreedyCompiler` trustworthy,
 and it is written deliberately without sharing the greedy mesher's slice
 machinery. If you optimise geometry further, add the implementation *and* extend
 `crates/engine_geometry/tests/oracle.rs`. An oracle that shares code with the
 thing it validates is not an oracle.
+
+The same holds for structure: occupancy connectivity is the **permanent
+topological oracle**. `engine_destruction::fracture` records cracks as broken
+bonds, and a broken bond is a crack, not a cut — it does not detach anything.
+Fracture-aware connectivity, when it lands, goes *beside* the exact occupancy
+classifier and is tested against it. Do not weaken that invariant to make
+cracking easier.
 
 **Rebuild locally.** Changing one cell must never re-mesh the world. If you touch
 `World::set` or the dirty-tracking logic, remember that an edit on a volume

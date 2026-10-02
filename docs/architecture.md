@@ -146,6 +146,29 @@ share a section. It does not depend on `engine_world` — it takes a `CellSource
 and a list of dirty volumes — which is what lets the incremental rebuild path be
 tested without a window.
 
+### `engine_destruction`
+
+Answers one narrow question exactly — after some cells were removed, which of the
+remaining cells are no longer connected to anything that holds them up — and
+builds fragments, collision and bounded async analysis on top of it. Face
+connectivity only; edge and corner contact are not support. Three outcomes other
+than *detached* exist on purpose: unknown space is never treated as empty, and a
+spent budget is never treated as detachment.
+
+`fracture` adds the state that sits between *intact* and *absent*: sparse
+per-cell absorbed energy and sparse per-bond remaining integrity, so material can
+be present and weakened. It consumes `DamageEvent` directly, beside the scalar
+`DamageWork` path, because the event is the only representation that still carries
+the impact geometry the model needs — position, direction and distance. A bond is
+keyed by its lower cell plus an axis so that one face has exactly one name.
+
+**Occupancy connectivity stays the permanent topological oracle.** A broken bond
+is a crack, not a cut; nothing in `fracture` detaches anything, and fracture-aware
+connectivity will go *beside* the exact classifier and be tested against it, the
+way `GreedyCompiler` is tested against `ExactCompiler`. Failed cells leave through
+the ordinary `WorldEditBatch` path, so nothing downstream learns a new concept.
+See [`drop-0006.md`](drop-0006.md).
+
 ### `engine_io`
 
 Transparent, versioned JSON with run-length encoded cells. Readable, diffable,

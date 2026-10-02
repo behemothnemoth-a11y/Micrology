@@ -34,12 +34,22 @@
 //!    corner contact are not support. Any later optimisation must keep an exact
 //!    oracle beside it — the same discipline that made the greedy mesher
 //!    trustworthy.
+//!
+//! # Fracture does not change any of that
+//!
+//! [`fracture`] adds sparse persistent state — per-cell absorbed energy and
+//! per-bond remaining integrity — so that material can be present and weakened
+//! rather than only intact or absent. It reaches geometry through ordinary
+//! [`DamageTarget`]s and the existing edit pipeline, and it leaves occupancy
+//! connectivity as the sole topological oracle: a broken bond is a crack, not a
+//! cut, and nothing in that module detaches anything.
 
 pub mod collision;
 pub mod connectivity;
 pub mod damage;
 pub mod derived_jobs;
 pub mod detach;
+pub mod fracture;
 pub mod fragment;
 pub mod impact;
 pub mod jobs;
@@ -66,6 +76,13 @@ pub use derived_jobs::{
     FragmentMeshJobInput, FragmentMeshJobResult,
 };
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
+pub use fracture::{
+    BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondKey, BondLoad, BondMode, BondSite,
+    CellDeposit, CellFracture, FractureDefer, FractureEvaluation, FractureImpact,
+    FractureImpactError, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
+    FracturePolicy, FractureProfile, FractureRefusal, FractureScene, FractureSpaceMismatch,
+    FractureState, FractureStats, evaluate_fracture,
+};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use impact::{
     FragmentDamageResult, FragmentImpact, FragmentImpulse, RefractureOutcome, RefractureRefusal,
