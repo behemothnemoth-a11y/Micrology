@@ -287,7 +287,7 @@ pub fn poll_fragment_tasks(
 
         match state
             .residency
-            .on_save_finished(store_ref(&fragments), ticket, payload_ok && committed_index)
+            .on_save_finished(fragments.store_ref(), ticket, payload_ok && committed_index)
         {
             FragmentSaveOutcome::MarkedClean => {}
             FragmentSaveOutcome::StillDirty => {}
@@ -296,11 +296,6 @@ pub fn poll_fragment_tasks(
     }
 }
 
-fn store_ref(fragments: &DynamicFragments) -> &engine_destruction::FragmentStore {
-    fragments
-        .persistent_store_ref()
-        .expect("fragment streaming excludes the runtime-only smoke fragment")
-}
 
 /// Synchronously persist all resident fragment changes plus the authoritative
 /// discovery index. Used by F5 and shutdown, where durability outranks frame
