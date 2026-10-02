@@ -491,6 +491,72 @@ pub fn save_fragment_index_state(
     )
 }
 
+fn remove_fragment_payload_if_present(
+    dir: &Path,
+    id: FragmentId,
+) -> Result<bool, IoError> {
+    let path = fragment_path(dir, id);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(true),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(IoError::File { path, source }),
+    }
+}
+
+/// Authoritatively delete one persisted fragment.
+///
+/// The ordering is the durability rule: first atomically commit an index that
+/// no longer references the fragment, then remove its payload. A crash between
+/// those steps can leave an unreferenced payload, which is harmless and can be
+/// pruned later. Reversing the order could leave the durable index pointing at
+/// a missing payload and make an otherwise valid world unloadable.
+///
+/// Ordinary storage eviction must never call this function.
+pub fn delete_persisted_fragment(
+    dir: impl AsRef<Path>,
+    index: &mut FragmentIndex,
+    id: FragmentId,
+) -> Result<bool, IoError> {
+    if !index.contains(id) {
+        return Ok(false);
+    }
+
+    let dir = dir.as_ref();
+    let mut candidate = index.clone();
+    candidate.remove_fragment(id);
+    save_fragment_index_state(dir, &candidate)?;
+
+    // Once the index commit succeeds, the deletion is authoritative even if
+    // payload cleanup itself fails. Keep the in-memory index aligned with disk;
+    // a later prune can retry the now-harmless orphan.
+    *index = candidate;
+    let _ = remove_fragment_payload_if_present(dir, id)?;
+    Ok(true)
+}
+
+/// Remove payload files that are not referenced by an authoritative index.
+///
+/// Call this only after all fragment payload writes are quiesced and the index
+/// has been durably committed. Running it while a new payload is between its
+/// payload-write and index-write steps could erase recoverable crash-window
+/// state.
+pub fn prune_fragment_orphans(
+    dir: impl AsRef<Path>,
+    index: &FragmentIndex,
+) -> Result<usize, IoError> {
+    let dir = dir.as_ref();
+    let mut removed = 0usize;
+    for id in scan_fragments(dir)? {
+        if index.contains(id) {
+            continue;
+        }
+        if remove_fragment_payload_if_present(dir, id)? {
+            removed = removed.saturating_add(1);
+        }
+    }
+    Ok(removed)
+}
+
 /// Save the complete fragment collection and remove stale payload files.
 ///
 /// This is intentionally independent of static region saves. A moving fragment
