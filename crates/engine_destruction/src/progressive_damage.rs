@@ -91,10 +91,7 @@ impl DamageFailurePolicy for UniformFailurePolicy {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProgressiveDamageRefusal {
-    EntryLimit {
-        required: usize,
-        limit: usize,
-    },
+    EntryLimit { required: usize, limit: usize },
 }
 
 impl std::fmt::Display for ProgressiveDamageRefusal {
@@ -155,7 +152,8 @@ impl ProgressiveDamageStore {
         policy: &dyn DamageFailurePolicy,
         limits: ProgressiveDamageLimits,
     ) -> Result<ProgressiveDamageOutcome, ProgressiveDamageRefusal> {
-        let mut grouped: BTreeMap<DamageSite, (DamageTarget, DamageAmount)> = BTreeMap::new();
+        let mut grouped: BTreeMap<DamageSite, (crate::DamageEventId, DamageTarget, DamageAmount)> =
+            BTreeMap::new();
         let mut work_items = 0u64;
 
         for item in work {
@@ -165,16 +163,20 @@ impl ProgressiveDamageStore {
             }
             let site = DamageSite::from_target(item.target);
             match grouped.get_mut(&site) {
-                Some((target, amount)) => {
-                    // Same site with a different material means the newest
-                    // event identity wins the material snapshot deterministically.
-                    if item.event >= event_floor_for_target(*target) {
+                Some((event, target, amount)) => {
+                    // Highest event id wins the material snapshot. If duplicate
+                    // event ids disagree, higher material id breaks the tie so
+                    // input iteration order never becomes observable.
+                    if item.event > *event
+                        || (item.event == *event && item.target.material() > target.material())
+                    {
+                        *event = item.event;
                         *target = item.target;
                     }
                     *amount = amount.saturating_add(item.amount);
                 }
                 None => {
-                    grouped.insert(site, (item.target, item.amount));
+                    grouped.insert(site, (item.event, item.target, item.amount));
                 }
             }
         }
@@ -182,7 +184,7 @@ impl ProgressiveDamageStore {
         let mut staged = self.records.clone();
         let mut failed = Vec::new();
 
-        for (site, (target, incoming)) in grouped {
+        for (site, (_, target, incoming)) in grouped {
             let existing = staged.get(&site).copied();
             let previous = existing
                 .filter(|record| record.material == target.material())
@@ -236,9 +238,7 @@ impl ProgressiveDamageStore {
             .records
             .keys()
             .copied()
-            .filter(|site| {
-                site.space == DamageSpace::StaticWorld && site.cell.region() == region
-            })
+            .filter(|site| site.space == DamageSpace::StaticWorld && site.cell.region() == region)
             .collect();
         sites
             .into_iter()
@@ -287,13 +287,6 @@ impl ProgressiveDamageStore {
     }
 }
 
-// DamageWork does not carry ordering between grouped material snapshots beyond
-// its event id. This helper provides a deterministic baseline for the rare case
-// where stale differently-materialed work for one site is mixed in one call.
-fn event_floor_for_target(_target: DamageTarget) -> crate::DamageEventId {
-    crate::DamageEventId::new(0, 0)
-}
-
 /// Convert failed static targets into the ordinary transactional world edit path.
 ///
 /// Non-static failures are ignored here on purpose; fragment failures have their
@@ -313,17 +306,12 @@ pub fn static_failure_batch(failed: &[DamageTarget]) -> WorldEditBatch {
 /// Returns None when every occupied cell was destroyed. The original fragment is
 /// never left temporarily empty, which keeps Fragment's non-empty invariant
 /// intact for callers deciding whether to replace or remove it.
-pub fn fragment_after_failures(
-    fragment: &Fragment,
-    failed: &[DamageTarget],
-) -> Option<Fragment> {
+pub fn fragment_after_failures(fragment: &Fragment, failed: &[DamageTarget]) -> Option<Fragment> {
     let cells: BTreeSet<CellPos> = failed
         .iter()
         .filter_map(|target| match target {
             DamageTarget::FragmentCell {
-                fragment: id,
-                cell,
-                ..
+                fragment: id, cell, ..
             } if *id == fragment.id => Some(*cell),
             _ => None,
         })
@@ -360,19 +348,31 @@ mod tests {
         };
 
         let first = store
-            .apply([static_work(CellPos::ZERO, 4)], &policy, ProgressiveDamageLimits::UNLIMITED)
+            .apply(
+                [static_work(CellPos::ZERO, 4)],
+                &policy,
+                ProgressiveDamageLimits::UNLIMITED,
+            )
             .unwrap();
         assert!(first.failed.is_empty());
         assert_eq!(store.get(site).unwrap().amount, DamageAmount(4));
 
         let second = store
-            .apply([static_work(CellPos::ZERO, 5)], &policy, ProgressiveDamageLimits::UNLIMITED)
+            .apply(
+                [static_work(CellPos::ZERO, 5)],
+                &policy,
+                ProgressiveDamageLimits::UNLIMITED,
+            )
             .unwrap();
         assert!(second.failed.is_empty());
         assert_eq!(store.get(site).unwrap().amount, DamageAmount(9));
 
         let third = store
-            .apply([static_work(CellPos::ZERO, 1)], &policy, ProgressiveDamageLimits::UNLIMITED)
+            .apply(
+                [static_work(CellPos::ZERO, 1)],
+                &policy,
+                ProgressiveDamageLimits::UNLIMITED,
+            )
             .unwrap();
         assert_eq!(third.failed.len(), 1);
         assert!(store.get(site).is_none());
@@ -459,11 +459,7 @@ mod tests {
     fn fragment_failures_change_geometry_without_mutating_original() {
         let mut world = World::new();
         world.fill_box(CellPos::ZERO, CellPos::new(2, 0, 0), Some(MaterialId(1)));
-        let members = BTreeSet::from([
-            CellPos::ZERO,
-            CellPos::new(1, 0, 0),
-            CellPos::new(2, 0, 0),
-        ]);
+        let members = BTreeSet::from([CellPos::ZERO, CellPos::new(1, 0, 0), CellPos::new(2, 0, 0)]);
         let id = FragmentId::new(7, 0);
         let fragment = Fragment::from_cells(id, &world, &members).unwrap();
         let before_geometry = fragment.geometry_revision();
@@ -491,15 +487,17 @@ mod tests {
         let id = FragmentId::new(8, 0);
         let fragment = Fragment::from_cells(id, &world, &BTreeSet::from([CellPos::ZERO])).unwrap();
 
-        assert!(fragment_after_failures(
-            &fragment,
-            &[DamageTarget::FragmentCell {
-                fragment: id,
-                cell: CellPos::ZERO,
-                material: MaterialId(1),
-            }],
-        )
-        .is_none());
+        assert!(
+            fragment_after_failures(
+                &fragment,
+                &[DamageTarget::FragmentCell {
+                    fragment: id,
+                    cell: CellPos::ZERO,
+                    material: MaterialId(1),
+                }],
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -508,7 +506,11 @@ mod tests {
         let policy = UniformFailurePolicy::new(DamageAmount(10));
         let cell = CellPos::new(130, 2, 3);
         store
-            .apply([static_work(cell, 4)], &policy, ProgressiveDamageLimits::UNLIMITED)
+            .apply(
+                [static_work(cell, 4)],
+                &policy,
+                ProgressiveDamageLimits::UNLIMITED,
+            )
             .unwrap();
 
         let region = cell.region();

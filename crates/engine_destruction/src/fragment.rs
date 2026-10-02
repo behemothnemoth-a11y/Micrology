@@ -362,6 +362,53 @@ impl Fragment {
         self.revision.bump();
     }
 
+    /// Return this fragment with the supplied local cells removed.
+    ///
+    /// The original stays unchanged. A successful geometry change bumps both
+    /// the geometry-only revision (for mesh/collider invalidation) and the
+    /// persistent fragment revision. If every occupied cell is removed, None is
+    /// returned so callers never have to keep an empty Fragment alive.
+    pub fn without_local_cells(&self, cells: &BTreeSet<CellPos>) -> Option<Self> {
+        if cells.is_empty() {
+            return Some(self.clone());
+        }
+
+        let mut next = self.clone();
+        let mut changed = false;
+        for cell in cells {
+            let (volume_pos, local) = cell.split();
+            let Some(volume) = next.volumes.get_mut(&volume_pos) else {
+                continue;
+            };
+            changed |= volume.set(local, None);
+        }
+        if !changed {
+            return Some(next);
+        }
+
+        next.volumes.retain(|_, volume| !volume.is_empty());
+        if next.volumes.is_empty() {
+            return None;
+        }
+        for volume in next.volumes.values_mut() {
+            volume.compact();
+        }
+
+        let mut min = CellPos::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max = CellPos::new(i32::MIN, i32::MIN, i32::MIN);
+        for (volume_pos, volume) in &next.volumes {
+            for (local, _) in volume.iter_occupied() {
+                let cell = CellPos::from_parts(*volume_pos, local);
+                min = CellPos::new(min.x.min(cell.x), min.y.min(cell.y), min.z.min(cell.z));
+                max = CellPos::new(max.x.max(cell.x), max.y.max(cell.y), max.z.max(cell.z));
+            }
+        }
+        next.bounds = CellBounds::new(min, max);
+        next.geometry_revision.bump();
+        next.revision.bump();
+        Some(next)
+    }
+
     /// Split a fragment that is not actually one connected object.
     ///
     /// Not used on creation — a component is connected by construction — but a

@@ -28,6 +28,7 @@ mod fragment_render;
 mod fragment_streaming;
 mod hud;
 mod physics;
+mod progressive_demo;
 mod render;
 mod scene;
 mod streaming;
@@ -136,6 +137,7 @@ fn main() {
     .init_resource::<fragment_streaming::FragmentStreamTasks>()
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
+    .init_resource::<progressive_demo::ProgressiveDamageDemo>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -145,6 +147,7 @@ fn main() {
         (
             scene::setup_world,
             destruction::load_fragment_state,
+            progressive_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -166,6 +169,7 @@ fn main() {
                 edit::save_and_load,
                 edit::toggle_compiler,
                 edit::quit,
+                progressive_demo::drive,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
                 destruction::dispatch_structural_jobs,

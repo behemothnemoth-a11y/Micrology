@@ -44,6 +44,7 @@ pub mod fragment;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
+pub mod progressive_damage;
 pub mod residency;
 pub mod spatial;
 pub mod support_witness;
@@ -70,6 +71,11 @@ pub use lifecycle::{
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
+pub use progressive_damage::{
+    AccumulatedDamageRecord, DamageFailurePolicy, DamageSite, ProgressiveDamageLimits,
+    ProgressiveDamageOutcome, ProgressiveDamageRefusal, ProgressiveDamageStore,
+    UniformFailurePolicy, fragment_after_failures, static_failure_batch,
+};
 pub use residency::{
     FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,
     FragmentResidencyConfig, FragmentResidencyCounts, FragmentSaveOutcome, FragmentSaveTicket,
