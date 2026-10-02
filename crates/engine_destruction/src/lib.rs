@@ -41,6 +41,7 @@ pub mod damage;
 pub mod derived_jobs;
 pub mod detach;
 pub mod fragment;
+pub mod impact;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
@@ -66,6 +67,12 @@ pub use derived_jobs::{
 };
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
+pub use impact::{
+    FragmentDamageResult, FragmentImpact, FragmentImpulse, RefractureOutcome, RefractureRefusal,
+    SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
+    UniformImpactDamagePolicy, apply_fragment_impulse, couple_damage_to_detachment,
+    damage_fragment_store_if, reference_detachment_impulse, refracture_store_if,
+};
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,

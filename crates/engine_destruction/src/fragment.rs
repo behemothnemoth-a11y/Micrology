@@ -409,6 +409,53 @@ impl Fragment {
         Some(next)
     }
 
+    /// Build a child object from a connected subset while preserving this
+    /// fragment's local coordinate frame and world pose.
+    ///
+    /// Keeping the same local frame is important for rotated fragments: the
+    /// engine deliberately does not interpret quaternions, so renumbering a
+    /// child's origin would require backend-specific vector rotation. New child
+    /// identity gets fresh runtime/persistence revisions.
+    pub fn subfragment_with_id(&self, id: FragmentId, cells: &BTreeSet<CellPos>) -> Option<Self> {
+        let mut volumes: BTreeMap<VolumePos, Volume> = BTreeMap::new();
+        let mut min = CellPos::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max = CellPos::new(i32::MIN, i32::MIN, i32::MIN);
+        let mut any = false;
+
+        for cell in cells {
+            let Some(material) = self.material_at(*cell) else {
+                continue;
+            };
+            let (volume_pos, local) = cell.split();
+            volumes
+                .entry(volume_pos)
+                .or_default()
+                .set(local, Some(material));
+            min = CellPos::new(min.x.min(cell.x), min.y.min(cell.y), min.z.min(cell.z));
+            max = CellPos::new(max.x.max(cell.x), max.y.max(cell.y), max.z.max(cell.z));
+            any = true;
+        }
+        if !any {
+            return None;
+        }
+        for volume in volumes.values_mut() {
+            volume.compact();
+        }
+
+        Some(Self {
+            id,
+            volumes,
+            source_origin: self.source_origin,
+            pose: self.pose,
+            linear_velocity: self.linear_velocity,
+            angular_velocity: self.angular_velocity,
+            bounds: CellBounds::new(min, max),
+            state: self.state,
+            geometry_revision: Revision::ZERO,
+            revision: Revision::ZERO,
+        })
+    }
+
     /// Split a fragment that is not actually one connected object.
     ///
     /// Not used on creation — a component is connected by construction — but a

@@ -18,8 +18,9 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use engine_core::{CellPos, RegionPos};
 use engine_destruction::{
-    DestructionSequence, DetachRefusal, ResultDisposition, SnapshotLimits, StructuralLimits,
-    StructureJobInput, StructureJobResult, detach_if,
+    DestructionSequence, DetachRefusal, ResultDisposition, SecondaryDamage, SnapshotLimits,
+    StructuralLimits, StructureJobInput, StructureJobResult, couple_damage_to_detachment,
+    detach_if,
 };
 use engine_world::{EditOutcome, WorldEditBatch};
 use std::collections::{BTreeSet, VecDeque};
@@ -48,6 +49,7 @@ struct DestructionRequest {
     snapshot_volumes: usize,
     retries: u8,
     waiting_for: BTreeSet<RegionPos>,
+    cause: Option<SecondaryDamage>,
 }
 
 struct StructuralTask {
@@ -105,33 +107,50 @@ impl DestructionHost {
 
     /// Queue structural work produced by one already-applied world edit.
     pub fn enqueue_edit(&mut self, outcome: &EditOutcome) {
+        self.enqueue_edit_with_cause(outcome, None);
+    }
+
+    /// Queue a structural question caused by one damage event. If several
+    /// distinct causes are coalesced, the structural question is preserved but
+    /// its impulse is dropped rather than guessing which event owns it.
+    pub fn enqueue_damage_edit(&mut self, outcome: &EditOutcome, cause: SecondaryDamage) {
+        self.enqueue_edit_with_cause(outcome, Some(cause));
+    }
+
+    fn enqueue_edit_with_cause(&mut self, outcome: &EditOutcome, cause: Option<SecondaryDamage>) {
         if !outcome.may_detach() || outcome.structural_candidates.is_empty() {
             return;
         }
 
         let roots = outcome.structural_candidates.clone();
-        // Repeated carve events can expose the same surface before the first
-        // worker returns. Exact duplicate roots do not need duplicate jobs.
-        if self.requests.iter().any(|request| request.roots == roots)
-            || self.tasks.iter().any(|task| task.request.roots == roots)
+        if let Some(existing) = self
+            .requests
+            .iter_mut()
+            .find(|request| request.roots == roots)
         {
+            if existing.cause != cause {
+                existing.cause = None;
+            }
+            return;
+        }
+        if self.tasks.iter().any(|task| task.request.roots == roots) {
             return;
         }
 
-        if self.requests.len() >= MAX_PENDING_DESTRUCTION_REQUESTS {
-            // Preserve the question rather than dropping it: merge overflow
-            // roots into the newest queued request. The next classification can
-            // resolve several disconnected components in one pass.
-            if let Some(last) = self.requests.back_mut() {
-                last.roots.extend(roots);
-                last.waiting_for
-                    .extend(outcome.unresolved_regions.iter().copied());
-                last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
-                last.retries = 0;
-                self.stats.coalesced_requests += 1;
-                self.stats.requested += 1;
-                return;
+        if self.requests.len() >= MAX_PENDING_DESTRUCTION_REQUESTS
+            && let Some(last) = self.requests.back_mut()
+        {
+            last.roots.extend(roots);
+            last.waiting_for
+                .extend(outcome.unresolved_regions.iter().copied());
+            last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
+            last.retries = 0;
+            if last.cause != cause {
+                last.cause = None;
             }
+            self.stats.coalesced_requests += 1;
+            self.stats.requested += 1;
+            return;
         }
 
         self.requests.push_back(DestructionRequest {
@@ -139,6 +158,7 @@ impl DestructionHost {
             snapshot_volumes: INITIAL_SNAPSHOT_VOLUMES,
             retries: 0,
             waiting_for: outcome.unresolved_regions.clone(),
+            cause,
         });
         self.stats.requested += 1;
     }
@@ -416,6 +436,7 @@ pub struct DestructionPollResources<'w> {
     world: ResMut<'w, WorldRes>,
     stream: ResMut<'w, StreamRes>,
     host: ResMut<'w, DestructionHost>,
+    impact: ResMut<'w, crate::impact::ImpactHost>,
     fragments: ResMut<'w, DynamicFragments>,
     bodies: Res<'w, FragmentBodies>,
     renders: Res<'w, FragmentEntities>,
@@ -429,6 +450,7 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
         mut world,
         mut stream,
         mut host,
+        mut impact,
         mut fragments,
         bodies,
         renders,
@@ -454,6 +476,12 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
             }
             ResultDisposition::Inconclusive => {
                 host.stats.inconclusive += 1;
+                info!(
+                    "destruction inconclusive: required={:?} bigger_job={} byte_limit={}",
+                    result.required_regions(),
+                    result.needs_a_bigger_job(),
+                    result.hit_byte_limit
+                );
 
                 // Only regions the world genuinely does not have belong on the
                 // streaming wait list. Snapshot truncation is a different
@@ -499,9 +527,20 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                         .sum();
                     current_bytes.saturating_add(new_storage) <= hard_bytes
                 }) {
-                    Ok(outcome) => {
+                    Ok(mut outcome) => {
+                        let cause = request.cause;
+                        let coupled = cause
+                            .map(|cause| couple_damage_to_detachment(&mut outcome, &cause.event))
+                            .unwrap_or(0);
+                        let generation = cause.map(|cause| cause.generation).unwrap_or(0);
                         let fragment_count = outcome.fragments.len();
                         let cell_count = outcome.cells_detached();
+                        let ids: Vec<_> = outcome
+                            .fragments
+                            .iter()
+                            .map(|fragment| fragment.id)
+                            .collect();
+                        impact.note_fragments(ids, generation);
                         for region in &outcome.edit.dirtied_regions {
                             stream.streamer.note_region_edited(*region);
                         }
@@ -511,9 +550,13 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                         host.stats.detached_transactions += 1;
                         host.stats.fragments_created += fragment_count as u64;
                         host.stats.cells_detached += cell_count;
-                        status.0 = format!(
-                            "detached {cell_count} cells into {fragment_count} fragment(s)"
-                        );
+                        status.0 = if coupled > 0 {
+                            format!(
+                                "detached {cell_count} cells into {fragment_count} fragment(s); coupled {coupled} impulse(s)"
+                            )
+                        } else {
+                            format!("detached {cell_count} cells into {fragment_count} fragment(s)")
+                        };
                     }
                     Err(DetachRefusal::NothingToDo) => {}
                     Err(DetachRefusal::Stale) => {

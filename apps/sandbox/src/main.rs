@@ -27,6 +27,8 @@ mod edit;
 mod fragment_render;
 mod fragment_streaming;
 mod hud;
+mod impact;
+mod impact_demo;
 mod physics;
 mod progressive_demo;
 mod render;
@@ -137,6 +139,8 @@ fn main() {
     .init_resource::<fragment_streaming::FragmentStreamTasks>()
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
+    .init_resource::<impact::ImpactHost>()
+    .init_resource::<impact_demo::ImpactDemo>()
     .init_resource::<progressive_demo::ProgressiveDamageDemo>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
@@ -148,6 +152,7 @@ fn main() {
             scene::setup_world,
             destruction::load_fragment_state,
             progressive_demo::seed,
+            impact_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -170,6 +175,8 @@ fn main() {
                 edit::toggle_compiler,
                 edit::quit,
                 progressive_demo::drive,
+                impact_demo::drive,
+                impact::process_secondary_damage,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
                 destruction::dispatch_structural_jobs,
@@ -212,6 +219,7 @@ fn main() {
         FixedPostUpdate,
         (
             physics::readback_fragment_bodies,
+            impact::collect_fragment_impacts,
             physics::verify_fragment_smoke,
             destruction::verify_destruction_smoke,
         )

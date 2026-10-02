@@ -12,7 +12,7 @@
 //! its entry ceiling is refused atomically: no half-applied damage state.
 
 use crate::{DamageAmount, DamageSpace, DamageTarget, DamageWork, Fragment, FragmentId};
-use engine_core::{CellPos, MaterialId, RegionPos};
+use engine_core::{CellPos, CellSource, MaterialId, RegionPos};
 use engine_world::WorldEditBatch;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -260,6 +260,22 @@ impl ProgressiveDamageStore {
             .into_iter()
             .filter_map(|site| self.records.remove(&site))
             .collect()
+    }
+
+    /// Reassign surviving partial-damage records when one parent fragment is
+    /// replaced by child fragments that share its local coordinate frame.
+    pub fn remap_fragment(&mut self, parent: FragmentId, children: &[Fragment]) {
+        let records = self.take_fragment(parent);
+        for mut record in records {
+            let Some(child) = children
+                .iter()
+                .find(|child| child.material_at(record.site.cell).is_some())
+            else {
+                continue;
+            };
+            record.site.space = DamageSpace::FragmentLocal(child.id);
+            self.records.insert(record.site, record);
+        }
     }
 
     /// Restore previously extracted records atomically under the same entry cap.

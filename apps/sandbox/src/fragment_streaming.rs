@@ -101,6 +101,21 @@ impl FragmentStreamRes {
         Ok(())
     }
 
+    pub fn delete_authoritative(
+        &mut self,
+        dir: &std::path::Path,
+        id: FragmentId,
+    ) -> Result<(), String> {
+        if self.persisted_index.contains(id) {
+            engine_io::delete_persisted_fragment(dir, &mut self.persisted_index, id)
+                .map_err(|error| error.to_string())?;
+        }
+        self.live_index.remove_fragment(id);
+        self.indexed_revisions.remove(&id);
+        self.residency.note_dropped(id);
+        Ok(())
+    }
+
     fn wanted_regions(
         &self,
         stream_enabled: bool,

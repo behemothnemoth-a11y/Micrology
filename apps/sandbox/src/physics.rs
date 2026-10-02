@@ -581,6 +581,12 @@ fn env_u64(name: &str) -> Option<u64> {
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct DynamicFragmentBody(FragmentId);
 
+impl DynamicFragmentBody {
+    pub(crate) const fn id(self) -> FragmentId {
+        self.0
+    }
+}
+
 type FragmentBodyQuery<'w, 's> = Query<
     'w,
     's,
