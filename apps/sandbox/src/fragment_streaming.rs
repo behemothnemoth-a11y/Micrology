@@ -239,11 +239,43 @@ pub fn poll_fragment_tasks(
         match state.residency.on_load_finished(ticket, succeeded) {
             FragmentLoadOutcome::Accepted => {
                 if let Ok(fragment) = result {
-                    state.residency.note_loaded(&fragment);
-                    state
-                        .indexed_revisions
-                        .insert(fragment.id, fragment.revision);
-                    fragments.insert(fragment);
+                    match state.live_index.upsert_fragment(&fragment) {
+                        Ok(()) => {
+                            let mut healed = state.persisted_index.clone();
+                            let index_changed = healed
+                                .upsert_fragment(&fragment)
+                                .map(|()| healed != state.persisted_index);
+                            match index_changed {
+                                Ok(true) => {
+                                    if let Err(error) =
+                                        engine_io::save_fragment_index_state(&stream.dir, &healed)
+                                    {
+                                        status.0 =
+                                            format!("fragment index recovery save failed: {error}");
+                                        // Keep it dirty so eviction or an explicit
+                                        // flush retries the payload+index pair.
+                                        state.residency.note_created(&fragment);
+                                    } else {
+                                        state.persisted_index = healed;
+                                        state.residency.note_loaded(&fragment);
+                                    }
+                                }
+                                Ok(false) => state.residency.note_loaded(&fragment),
+                                Err(error) => {
+                                    status.0 = format!("fragment index recovery failed: {error}");
+                                    state.residency.note_created(&fragment);
+                                }
+                            }
+                            state
+                                .indexed_revisions
+                                .insert(fragment.id, fragment.revision);
+                            fragments.insert(fragment);
+                        }
+                        Err(error) => {
+                            status.0 = format!("loaded fragment rejected spatially: {error}");
+                            state.residency.note_created(&fragment);
+                        }
+                    }
                 }
             }
             FragmentLoadOutcome::DiscardedStale => {}
