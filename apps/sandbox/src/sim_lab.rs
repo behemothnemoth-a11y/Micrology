@@ -13,13 +13,16 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::time::{Fixed, Virtual};
 use engine_destruction::{
-    AllResident, BaselineFracturePolicy, DamageSequence, DestructionSequence, FractureEvaluation,
-    FractureImpact, FractureLimits, FractureScene, FractureState, evaluate_fracture,
-    reference_fracture_hit, static_failure_batch,
+    AllResident, BaselineFracturePolicy, CrackedBonds, DamageAmount, DamageSequence,
+    DestructionSequence, FractureEvaluation, FractureImpact, FractureLimits, FractureScene,
+    FractureSeparation, FractureState, StructuralLimits, cracked_structure_result, detach_if,
+    evaluate_fracture, fracture_hit_toward, fracture_state_leaving_with, separation_from_cracks,
+    separation_roots, static_failure_batch,
 };
 use engine_stress::{
-    DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall, structural_state_digest,
-    validate_replay, weak_repeat_replay,
+    DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall,
+    destruction_benchmark_pack, is_implemented, structural_state_digest, validate_replay,
+    weak_repeat_replay,
 };
 use std::path::{Path, PathBuf};
 
@@ -27,6 +30,18 @@ const SPEEDS_MILLI: [u32; 4] = [100, 250, 500, 1000];
 
 fn fracture_limits() -> FractureLimits {
     FractureLimits::new(200_000, 400_000, 1 << 18, 1 << 19)
+}
+
+/// What the last applied case separated, for the dump and the status line.
+#[derive(Clone, Copy, Debug)]
+struct LabSeparation {
+    case: DestructionBenchmarkCase,
+    cells_freed_by_cracks: u64,
+    components_freed_by_cracks: u64,
+    cells_detached_by_occupancy: u64,
+    inconclusive_cross_checks: u64,
+    settled: bool,
+    fragments_created: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +61,7 @@ pub struct SimulationLab {
     fracture_sequence: DamageSequence,
     fracture_state: FractureState,
     fracture_policy: BaselineFracturePolicy,
+    last_separation: Option<LabSeparation>,
     last_dump: Option<PathBuf>,
 }
 
@@ -60,6 +76,7 @@ impl Default for SimulationLab {
             fracture_sequence: DamageSequence::default(),
             fracture_state: FractureState::new(),
             fracture_policy: BaselineFracturePolicy::REFERENCE,
+            last_separation: None,
             last_dump: None,
         }
     }
@@ -164,6 +181,7 @@ pub fn seed(resources: LabSeedResources) {
     lab.fracture_sequence = DamageSequence::default();
     lab.fracture_state = FractureState::new();
     lab.fracture_policy = BaselineFracturePolicy::REFERENCE;
+    lab.last_separation = None;
 
     virtual_time.set_relative_speed(1.0);
     virtual_time.pause();
@@ -252,6 +270,18 @@ fn dump_state(
         })
     });
     let fracture = lab.fracture_state.stats();
+    let fracture_digest = lab.fracture_state.digest();
+    let separation = lab.last_separation.map(|last| {
+        serde_json::json!({
+            "case": last.case.name(),
+            "cells_freed_by_cracks": last.cells_freed_by_cracks,
+            "components_freed_by_cracks": last.components_freed_by_cracks,
+            "cells_detached_by_occupancy": last.cells_detached_by_occupancy,
+            "inconclusive_cross_checks": last.inconclusive_cross_checks,
+            "settled": last.settled,
+            "fragments_created": last.fragments_created,
+        })
+    });
 
     let document = serde_json::json!({
         "label": label,
@@ -264,7 +294,9 @@ fn dump_state(
             "bond_entries": fracture.bond_entries,
             "broken_bonds": fracture.broken_bonds,
             "revision": fracture.revision.0,
+            "checksum_fnv1a64": format!("{:016x}", fracture_digest.checksum),
         },
+        "last_separation": separation,
         "fragment_dynamics": dynamics,
         "replay": replay,
     });
@@ -298,12 +330,40 @@ fn advance_replay_cursor(lab: &mut SimulationLab) {
     }
 }
 
-fn apply_weak_center_hit(
+/// Apply one benchmark case's stimulus, exactly as the headless runner does.
+///
+/// The stimulus comes from the committed pack rather than from this file, so the
+/// lab cannot drift away from what the benchmark measures — stepping through a
+/// case here and running it headless are the same hit.
+fn apply_benchmark_case(
+    case: DestructionBenchmarkCase,
     lab: &mut SimulationLab,
     world: &mut WorldRes,
     destruction: &mut DestructionHost,
 ) -> Result<String, String> {
-    let event = reference_fracture_hit(lab.fracture_sequence.next_root());
+    if !is_implemented(case) {
+        return Err(format!(
+            "{} is owned by a later section and has no stimulus runner yet",
+            case.name()
+        ));
+    }
+    let pack = destruction_benchmark_pack();
+    let spec = pack
+        .cases
+        .iter()
+        .find(|spec| spec.case == case)
+        .ok_or_else(|| format!("{} is not in the benchmark pack", case.name()))?;
+    let target = engine_core::CellPos::new(
+        spec.stimulus.target[0],
+        spec.stimulus.target[1],
+        spec.stimulus.target[2],
+    );
+    let event = fracture_hit_toward(
+        lab.fracture_sequence.next_root(),
+        target,
+        spec.stimulus.direction_milli,
+        DamageAmount(spec.stimulus.relative_energy_milli),
+    );
     let impact = FractureImpact::from_static_event(&event)
         .map_err(|error| format!("fracture impact: {error:?}"))?;
     let policy = lab.fracture_policy;
@@ -346,15 +406,75 @@ fn apply_weak_center_hit(
         destruction.enqueue_edit(&edit);
         removed
     };
+
+    // Ask what the cracks separated, and act on it through the existing atomic
+    // transaction. Nothing here is a second detachment path.
+    let separation = separation_from_cracks(
+        &world.0,
+        &world.0,
+        &AllResident,
+        &CrackedBonds::static_world(&lab.fracture_state),
+        separation_roots(&outcome),
+        StructuralLimits::default(),
+    );
+    let detached = detach_separated(lab, world, destruction, &separation);
+
+    lab.last_separation = Some(LabSeparation {
+        case,
+        cells_freed_by_cracks: separation.cells_freed_by_cracks(),
+        components_freed_by_cracks: separation.freed_by_cracks().count() as u64,
+        cells_detached_by_occupancy: separation.cells_detached_by_occupancy(),
+        inconclusive_cross_checks: separation.inconclusive_cross_checks,
+        settled: separation.is_settled(),
+        fragments_created: detached,
+    });
     let stats = lab.fracture_state.stats();
 
     Ok(format!(
-        "weak hit: {} cracks opened, {removed} cells removed | state {} cells / {} bonds / {} broken | walked {walked}, loaded {bonds}",
+        "{}: {} cracks opened, {removed} cells removed, {} cells freed by cracks in {} piece(s) \
+         -> {detached} fragment(s) | state {} cells / {} bonds / {} broken | walked {walked}, loaded {bonds}",
+        case.name(),
         outcome.broken.len(),
+        separation.cells_freed_by_cracks(),
+        separation.freed_by_cracks().count(),
         stats.cell_entries,
         stats.bond_entries,
         stats.broken_bonds,
     ))
+}
+
+/// Admit what the cracks freed, then forget the state that left with it.
+///
+/// Admission goes through `detach_if` so the fragment budget still has the final
+/// say; an unsettled separation detaches nothing at all.
+fn detach_separated(
+    lab: &mut SimulationLab,
+    world: &mut WorldRes,
+    destruction: &mut DestructionHost,
+    separation: &FractureSeparation,
+) -> u64 {
+    if !separation.is_settled() || separation.separated.is_empty() {
+        return 0;
+    }
+    let result = cracked_structure_result(
+        &world.0,
+        separation
+            .separated
+            .iter()
+            .filter_map(|component| component.anchor_cell()),
+        separation.components.clone(),
+    );
+    let Ok(outcome) = detach_if(&mut world.0, &mut destruction.sequence, &result, |_| true) else {
+        return 0;
+    };
+    for component in &separation.separated {
+        for leaving in fracture_state_leaving_with(&world.0, &component.cells) {
+            lab.fracture_state
+                .forget_cell(engine_destruction::DamageSpace::StaticWorld, leaving.cell());
+        }
+    }
+    destruction.enqueue_edit(&outcome.edit);
+    outcome.fragments.len() as u64
 }
 
 fn execute_next_replay_command(
@@ -412,11 +532,14 @@ fn execute_next_replay_command(
             Ok(format!("replay {index}: dumped {}", path.display()))
         }
         ReplayCommand::BenchmarkCase { case } => {
-            if case == DestructionBenchmarkCase::WeakCenterHit {
-                let result = apply_weak_center_hit(lab, world, destruction)?;
+            if is_implemented(case) {
+                let result = apply_benchmark_case(case, lab, world, destruction)?;
                 advance_replay_cursor(lab);
                 Ok(format!("replay {index}: {result}"))
             } else {
+                // A case a later section owns blocks the script rather than
+                // being quietly skipped, so a replay cannot look complete while
+                // its most interesting step never ran.
                 if let Some(replay) = lab.replay.as_mut() {
                     replay.blocked_case = Some(case);
                 }

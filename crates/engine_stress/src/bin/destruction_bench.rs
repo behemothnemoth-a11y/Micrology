@@ -1,11 +1,25 @@
 use engine_stress::{
-    DESTRUCTION_BENCHMARK_PATH, all_destruction_benchmark_cases, baseline_wall,
-    destruction_benchmark_pack, destruction_benchmark_to_json, result_template_to_json,
+    DESTRUCTION_BENCHMARK_PATH, DESTRUCTION_RESULTS_PATH, all_destruction_benchmark_cases,
+    baseline_wall, destruction_benchmark_pack, destruction_benchmark_to_json,
+    destruction_results_document, destruction_results_to_json, result_template_to_json,
+    verify_destruction_cases,
 };
 use std::path::Path;
 
 fn usage() {
-    eprintln!("usage: destruction_bench [--json | --template | --check | --write]");
+    eprintln!(
+        "usage: destruction_bench [--json | --template | --check | --write \
+         | --run | --results | --write-results | --check-results]"
+    );
+}
+
+fn write_file(path: &str, json: &str) {
+    let path = Path::new(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create destruction fixture directory");
+    }
+    std::fs::write(path, json).expect("write destruction fixture");
+    println!("wrote {}", path.display());
 }
 
 fn main() {
@@ -26,12 +40,38 @@ fn main() {
         }
         Some("--write") => {
             let json = destruction_benchmark_to_json().expect("serialize benchmark");
-            let path = Path::new(DESTRUCTION_BENCHMARK_PATH);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("create destruction fixture directory");
+            write_file(DESTRUCTION_BENCHMARK_PATH, &json);
+        }
+        Some("--run") => print_run(),
+        Some("--results") => {
+            print!(
+                "{}",
+                destruction_results_to_json().expect("serialize destruction results")
+            );
+        }
+        Some("--write-results") => {
+            let json = destruction_results_to_json().expect("serialize destruction results");
+            write_file(DESTRUCTION_RESULTS_PATH, &json);
+        }
+        Some("--check-results") => {
+            let expected = destruction_results_to_json().expect("serialize destruction results");
+            let actual = std::fs::read_to_string(DESTRUCTION_RESULTS_PATH)
+                .expect("read committed destruction results");
+            if actual != expected {
+                eprintln!(
+                    "{DESTRUCTION_RESULTS_PATH} does not match current measured output; \
+                     run --write-results and review the diff"
+                );
+                std::process::exit(1);
             }
-            std::fs::write(path, json).expect("write destruction benchmark pack");
-            println!("wrote {}", path.display());
+            let failures = verify_destruction_cases(&destruction_results_document().results);
+            if !failures.is_empty() {
+                for failure in &failures {
+                    eprintln!("acceptance failure: {failure}");
+                }
+                std::process::exit(1);
+            }
+            println!("{DESTRUCTION_RESULTS_PATH} is current and every executed case accepts");
         }
         Some("--check") => {
             let expected = destruction_benchmark_to_json().expect("serialize benchmark");
@@ -82,6 +122,54 @@ fn print_summary() {
     }
     println!();
     println!(
-        "0006.0 fracture is implemented; --template keeps result fields null until a case runner records measured output."
+        "--run executes the implemented cases; a case a later section owns reports null, never zero."
     );
+}
+
+fn print_run() {
+    let document = destruction_results_document();
+    println!(
+        "Micrology Destruction Benchmark results v{} (pack v{}, fixture {})",
+        document.version, document.benchmark_version, document.fixture_checksum_fnv1a64
+    );
+    println!();
+    println!(
+        "{:<24} {:>7} {:>7} {:>8} {:>7} {:>9} {:>6} {:>10}",
+        "case", "touched", "broken", "failed", "frags", "crack-fr", "occ-fr", "checksum"
+    );
+    for result in &document.results {
+        let show = |value: Option<u64>| match value {
+            Some(value) => value.to_string(),
+            None => "-".to_string(),
+        };
+        println!(
+            "{:<24} {:>7} {:>7} {:>8} {:>7} {:>9} {:>6} {:>10}",
+            result.case.name(),
+            show(result.cells_touched),
+            show(result.broken_bonds),
+            show(result.failed_cells),
+            show(result.fragments_created),
+            show(result.cells_freed_by_cracks),
+            show(result.cells_detached_by_occupancy),
+            result
+                .deterministic_result_checksum
+                .clone()
+                .unwrap_or_else(|| "-".into()),
+        );
+    }
+    println!();
+    for result in &document.results {
+        if let Some(note) = &result.control_note {
+            println!("{}: {note}", result.case.name());
+        }
+    }
+    let failures = verify_destruction_cases(&document.results);
+    println!();
+    if failures.is_empty() {
+        println!("every executed case satisfies its committed acceptance spec");
+    } else {
+        for failure in &failures {
+            println!("ACCEPTANCE FAILURE: {failure}");
+        }
+    }
 }

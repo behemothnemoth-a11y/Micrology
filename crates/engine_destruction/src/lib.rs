@@ -50,6 +50,7 @@ pub mod damage;
 pub mod derived_jobs;
 pub mod detach;
 pub mod fracture;
+pub mod fracture_connectivity;
 pub mod fragment;
 pub mod impact;
 pub mod jobs;
@@ -79,10 +80,15 @@ pub use derived_jobs::{
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fracture::{
     BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondKey, BondLoad, BondMode, BondSite,
-    CellDeposit, CellFracture, FractureDefer, FractureEvaluation, FractureImpact,
+    CellDeposit, CellFracture, FractureDefer, FractureDigest, FractureEvaluation, FractureImpact,
     FractureImpactError, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
     FracturePolicy, FractureProfile, FractureRefusal, FractureScene, FractureSpaceMismatch,
     FractureState, FractureStats, evaluate_fracture,
+};
+pub use fracture_connectivity::{
+    BondGate, CrackedBonds, FractureSeparation, IntactBonds, SeparatedComponent, SeparationCause,
+    classify_cracked_component, classify_cracked_from_roots, cracked_structure_result,
+    fracture_state_leaving_with, separation_from_cracks, separation_roots,
 };
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use impact::{
@@ -104,12 +110,13 @@ pub use progressive_damage::{
 pub use reference_fixture::{
     REFERENCE_FIXTURE_OFFSET, REFERENCE_FOOTING_MAX, REFERENCE_FOOTING_MIN,
     REFERENCE_FRACTURE_MATERIAL, REFERENCE_IMPACT_CENTRE, REFERENCE_IMPACT_ENERGY,
-    REFERENCE_IMPACT_IMPULSE, REFERENCE_IMPACT_RADIUS, REFERENCE_IMPACT_SOURCE,
-    REFERENCE_LOCAL_FOOTING_MAX, REFERENCE_LOCAL_FOOTING_MIN, REFERENCE_LOCAL_IMPACT_CENTRE,
-    REFERENCE_LOCAL_IMPACT_SOURCE, REFERENCE_LOCAL_WALL_MAX, REFERENCE_LOCAL_WALL_MIN,
-    REFERENCE_WALL_MAX, REFERENCE_WALL_MIN, reference_fracture_hit, reference_fracture_hit_at,
-    reference_fracture_materials, reference_fracture_world, reference_fracture_world_at,
-    translate_cell, translate_global,
+    REFERENCE_IMPACT_IMPULSE, REFERENCE_IMPACT_IMPULSE_MAGNITUDE, REFERENCE_IMPACT_RADIUS,
+    REFERENCE_IMPACT_SOURCE, REFERENCE_IMPACT_SOURCE_DISTANCE_CELLS,
+    REFERENCE_IMPACT_STANDOFF_CELLS, REFERENCE_LOCAL_FOOTING_MAX, REFERENCE_LOCAL_FOOTING_MIN,
+    REFERENCE_LOCAL_IMPACT_CENTRE, REFERENCE_LOCAL_IMPACT_SOURCE, REFERENCE_LOCAL_WALL_MAX,
+    REFERENCE_LOCAL_WALL_MIN, REFERENCE_WALL_MAX, REFERENCE_WALL_MIN, fracture_hit_toward,
+    reference_fracture_hit, reference_fracture_hit_at, reference_fracture_materials,
+    reference_fracture_world, reference_fracture_world_at, translate_cell, translate_global,
 };
 pub use residency::{
     FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,

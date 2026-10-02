@@ -146,6 +146,66 @@ pub struct DestructionCaseResult {
     pub work_budget_used: Option<u64>,
     pub deterministic_result_checksum: Option<String>,
     pub visual_evidence: Option<String>,
+    /// DROP 0006.1. Cells loose because the crack field cut them free, with no
+    /// cell deleted to free them. The number this section exists to move.
+    #[serde(default)]
+    pub cells_freed_by_cracks: Option<u64>,
+    #[serde(default)]
+    pub components_freed_by_cracks: Option<u64>,
+    /// Cells a deletion-driven classifier would have detached on its own.
+    #[serde(default)]
+    pub cells_detached_by_occupancy: Option<u64>,
+    #[serde(default)]
+    pub broken_bonds: Option<u64>,
+    /// Energy-weighted centroid of the absorbed deposit, in milli-cells. Where
+    /// the damage actually went, which is what a directional claim needs.
+    #[serde(default)]
+    pub damage_centroid_milli: Option<[i64; 3]>,
+    /// Whether the run observably built on prior state rather than resetting.
+    #[serde(default)]
+    pub cumulative_response_observed: Option<bool>,
+    /// Whether the run observably differs from its direction-neutral control.
+    #[serde(default)]
+    pub directional_response_observed: Option<bool>,
+    /// What the run was compared against to decide the two flags above.
+    #[serde(default)]
+    pub control_note: Option<String>,
+}
+
+impl DestructionCaseResult {
+    /// A result nothing has measured yet.
+    ///
+    /// Every field stays `None`. Missing fracture code must never look like a
+    /// passing empty result, which is why none of these default to zero.
+    pub fn unmeasured(case: DestructionBenchmarkCase, fixture_checksum_fnv1a64: String) -> Self {
+        Self {
+            case,
+            fixture_checksum_fnv1a64,
+            cells_touched: None,
+            bonds_touched: None,
+            persistent_fracture_sites: None,
+            persistent_fracture_bytes: None,
+            failed_cells: None,
+            fragments_created: None,
+            fragment_size_cells: None,
+            work_budget_used: None,
+            deterministic_result_checksum: None,
+            visual_evidence: None,
+            cells_freed_by_cracks: None,
+            components_freed_by_cracks: None,
+            cells_detached_by_occupancy: None,
+            broken_bonds: None,
+            damage_centroid_milli: None,
+            cumulative_response_observed: None,
+            directional_response_observed: None,
+            control_note: None,
+        }
+    }
+
+    /// Whether anything at all was measured.
+    pub fn is_measured(&self) -> bool {
+        self.deterministic_result_checksum.is_some()
+    }
 }
 
 pub fn baseline_materials() -> MaterialRegistry {
@@ -427,20 +487,7 @@ pub fn result_template() -> Vec<DestructionCaseResult> {
     let checksum = destruction_benchmark_pack().fixture.checksum_fnv1a64;
     all_destruction_benchmark_cases()
         .into_iter()
-        .map(|case| DestructionCaseResult {
-            case,
-            fixture_checksum_fnv1a64: checksum.clone(),
-            cells_touched: None,
-            bonds_touched: None,
-            persistent_fracture_sites: None,
-            persistent_fracture_bytes: None,
-            failed_cells: None,
-            fragments_created: None,
-            fragment_size_cells: None,
-            work_budget_used: None,
-            deterministic_result_checksum: None,
-            visual_evidence: None,
-        })
+        .map(|case| DestructionCaseResult::unmeasured(case, checksum.clone()))
         .collect()
 }
 

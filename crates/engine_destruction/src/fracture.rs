@@ -874,6 +874,21 @@ pub struct FractureStats {
     pub revision: Revision,
 }
 
+/// A content checksum of fracture state, for benchmarks and persistence.
+///
+/// Covers every record and nothing else: the revision is excluded for the same
+/// reason [`FractureState`]'s equality excludes it — two states holding the same
+/// cracks are the same state however many transactions got there. That is what
+/// lets a saved-and-reloaded crack field be checked against the one that was
+/// written.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct FractureDigest {
+    pub cell_entries: usize,
+    pub bond_entries: usize,
+    pub broken_bonds: usize,
+    pub checksum: u64,
+}
+
 /// Sparse, deterministic, persistent fracture state.
 ///
 /// An untouched world allocates nothing: a cell with no absorbed energy has no
@@ -930,6 +945,44 @@ impl FractureState {
             bond_entries: self.bond_entries(),
             broken_bonds: self.broken_bonds(),
             revision: self.revision,
+        }
+    }
+
+    /// A content checksum over every record, in canonical order.
+    ///
+    /// `BTreeMap` iteration is what makes it reproducible; nothing about the
+    /// order a hit happened to visit cells in can reach it.
+    pub fn digest(&self) -> FractureDigest {
+        let mut hash = 0xcbf29ce484222325u64;
+        let mut feed = |value: u64| {
+            for byte in value.to_le_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+        };
+        for record in self.cells.values() {
+            feed(space_tag(record.site.space));
+            feed(record.site.cell.x as i64 as u64);
+            feed(record.site.cell.y as i64 as u64);
+            feed(record.site.cell.z as i64 as u64);
+            feed(u64::from(record.material.0));
+            feed(u64::from(record.energy.0));
+        }
+        for record in self.bonds.values() {
+            feed(space_tag(record.site.space));
+            let lower = record.site.bond.lower();
+            feed(lower.x as i64 as u64);
+            feed(lower.y as i64 as u64);
+            feed(lower.z as i64 as u64);
+            feed(record.site.bond.axis().index() as u64);
+            feed(u64::from(record.material.0));
+            feed(u64::from(record.integrity.0));
+        }
+        FractureDigest {
+            cell_entries: self.cell_entries(),
+            bond_entries: self.bond_entries(),
+            broken_bonds: self.broken_bonds(),
+            checksum: hash,
         }
     }
 
@@ -1649,6 +1702,20 @@ fn quantise_point(point: GlobalPos) -> Option<[i64; 3]> {
         quantise_scalar(point.y)?,
         quantise_scalar(point.z)?,
     ])
+}
+
+/// Which coordinate space a record belongs to, as a checksum input.
+///
+/// Fragment identity is part of the state's content: the same crack on two
+/// different fragments is not the same crack.
+fn space_tag(space: DamageSpace) -> u64 {
+    match space {
+        DamageSpace::StaticWorld => 0,
+        DamageSpace::FragmentLocal(fragment) => {
+            fragment.sequence.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                ^ (u64::from(fragment.index) | 1 << 63)
+        }
+    }
 }
 
 /// Clamped to the milli image of the cell-address space, so that differences of
