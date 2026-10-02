@@ -13,9 +13,7 @@
 use crate::camera::{FlyCamera, cursor_grabbed};
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
-use crate::fragment_streaming::{
-    FragmentStreamRes, FragmentStreamTasks, finish_fragment_saves,
-};
+use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks, finish_fragment_saves};
 use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
