@@ -496,7 +496,6 @@ impl FragmentBodies {
         self.pending_spawn_current
     }
 
-
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
@@ -678,15 +677,13 @@ pub fn sync_fragment_bodies(
     bodies.blocked.retain(|id| wanted.contains(id));
 
     let mut completed = Vec::new();
-    bodies
-        .jobs
-        .retain(|id, (_, task)| match check_ready(task) {
-            Some(result) => {
-                completed.push((*id, result));
-                false
-            }
-            None => true,
-        });
+    bodies.jobs.retain(|id, (_, task)| match check_ready(task) {
+        Some(result) => {
+            completed.push((*id, result));
+            false
+        }
+        None => true,
+    });
     for (id, result) in completed {
         if fragments
             .get(id)
