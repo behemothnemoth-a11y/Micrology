@@ -19,7 +19,7 @@ use crate::camera::FlyCamera;
 use crate::physics::DynamicFragments;
 use crate::streaming::StreamRes;
 use bevy::prelude::*;
-use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures::check_ready};
 use engine_core::{RegionPos, Revision};
 use engine_destruction::{
     DestructionSequence, Fragment, FragmentId, FragmentLoadOutcome, FragmentLoadTicket,
@@ -266,41 +266,85 @@ pub fn poll_fragment_tasks(
         });
 
     for (ticket, snapshot, payload_ok) in finished_saves {
-        let mut committed_index = false;
-        if payload_ok {
-            let mut candidate = state.persisted_index.clone();
-            match candidate.upsert_fragment(&snapshot) {
-                Ok(()) => {
-                    candidate.note_sequence(DestructionSequence::new(
-                        state.live_index.next_destruction_sequence,
-                    ));
-                    match engine_io::save_fragment_index_state(&stream.dir, &candidate) {
-                        Ok(()) => {
-                            state.persisted_index = candidate;
-                            committed_index = true;
-                        }
-                        Err(error) => {
-                            status.0 = format!("fragment index save failed: {error}");
-                        }
+        finish_one_save(
+            &stream,
+            &mut state,
+            &fragments,
+            &mut status,
+            ticket,
+            snapshot,
+            payload_ok,
+        );
+    }
+}
+
+fn finish_one_save(
+    stream: &StreamRes,
+    state: &mut FragmentStreamRes,
+    fragments: &DynamicFragments,
+    status: &mut StatusLine,
+    ticket: FragmentSaveTicket,
+    snapshot: Fragment,
+    payload_ok: bool,
+) {
+    let mut committed_index = false;
+    if payload_ok {
+        let mut candidate = state.persisted_index.clone();
+        match candidate.upsert_fragment(&snapshot) {
+            Ok(()) => {
+                candidate.note_sequence(DestructionSequence::new(
+                    state.live_index.next_destruction_sequence,
+                ));
+                match engine_io::save_fragment_index_state(&stream.dir, &candidate) {
+                    Ok(()) => {
+                        state.persisted_index = candidate;
+                        committed_index = true;
+                    }
+                    Err(error) => {
+                        status.0 = format!("fragment index save failed: {error}");
                     }
                 }
-                Err(error) => {
-                    status.0 = format!("fragment index update failed: {error}");
-                }
             }
-        } else {
-            status.0 = format!("fragment {} failed to save", ticket.id);
+            Err(error) => {
+                status.0 = format!("fragment index update failed: {error}");
+            }
         }
+    } else {
+        status.0 = format!("fragment {} failed to save", ticket.id);
+    }
 
-        match state.residency.on_save_finished(
-            fragments.store_ref(),
+    match state.residency.on_save_finished(
+        fragments.store_ref(),
+        ticket,
+        payload_ok && committed_index,
+    ) {
+        FragmentSaveOutcome::MarkedClean => {}
+        FragmentSaveOutcome::StillDirty => {}
+        FragmentSaveOutcome::Failed => {}
+    }
+}
+
+/// Finish fragment payload writes already in flight before a synchronous flush,
+/// reload, or process exit. Reads need no such barrier because they never mutate
+/// persistence.
+pub fn finish_fragment_saves(
+    stream: &StreamRes,
+    state: &mut FragmentStreamRes,
+    tasks: &mut FragmentStreamTasks,
+    fragments: &DynamicFragments,
+    status: &mut StatusLine,
+) {
+    for (ticket, snapshot, task) in std::mem::take(&mut tasks.saves) {
+        let payload_ok = block_on(task);
+        finish_one_save(
+            stream,
+            state,
+            fragments,
+            status,
             ticket,
-            payload_ok && committed_index,
-        ) {
-            FragmentSaveOutcome::MarkedClean => {}
-            FragmentSaveOutcome::StillDirty => {}
-            FragmentSaveOutcome::Failed => {}
-        }
+            snapshot,
+            payload_ok,
+        );
     }
 }
 
