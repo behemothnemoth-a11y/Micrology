@@ -150,7 +150,7 @@ fn an_absent_profile_is_not_a_defaulted_one() {
     assert!(registry.is_empty());
     assert_eq!(registry.get(MaterialId(1)), None);
 
-    registry.insert(MechanicalProfile::new(MaterialId(1)));
+    registry.insert(MechanicalProfile::inert(MaterialId(1)));
     assert_eq!(registry.len(), 1);
     assert!(registry.contains(MaterialId(1)));
     // Still nothing for a material nobody described.
@@ -161,7 +161,7 @@ fn an_absent_profile_is_not_a_defaulted_one() {
 fn registry_iterates_in_material_id_order() {
     let mut registry = MechanicalRegistry::new();
     for id in [7u32, 2, 9, 1] {
-        registry.insert(MechanicalProfile::new(MaterialId(id)));
+        registry.insert(MechanicalProfile::inert(MaterialId(id)));
     }
     let ids: Vec<_> = registry.materials().map(|id| id.0).collect();
     assert_eq!(ids, vec![1, 2, 7, 9]);
@@ -170,8 +170,8 @@ fn registry_iterates_in_material_id_order() {
 #[test]
 fn settings_round_trip_through_json() {
     let mut registry = MechanicalRegistry::new();
-    registry.insert(MechanicalProfile::new(MaterialId(3)));
-    registry.insert(MechanicalProfile::new(MaterialId(1)));
+    registry.insert(MechanicalProfile::inert(MaterialId(3)));
+    registry.insert(MechanicalProfile::inert(MaterialId(1)));
 
     let settings = MechanicalSettings {
         registry,

@@ -30,14 +30,21 @@
 //! participation contract. There is no capacity model, no load path and no
 //! failure here yet.
 
+pub mod damage;
+pub mod mass;
 pub mod policy;
 pub mod profile;
 pub mod units;
 
+pub use damage::{MaterialDamagePolicy, MaterialFailurePolicy};
+pub use mass::{UNPROFILED_CELL_MASS, density_detachment_impulse, fragment_mass};
 pub use policy::{
     Participation, ParticipationPolicy, ParticipationSet, PhysicalSystem, PolicyScope, Resolution,
 };
-pub use profile::{MechanicalProfile, MechanicalRegistry};
+pub use profile::{
+    FailureCharacter, LoadMode, MechanicalProfile, MechanicalRegistry, ReferenceMaterial,
+    reference_registry,
+};
 pub use units::{Milli, SCALE};
 
 use serde::{Deserialize, Serialize};

@@ -2660,6 +2660,7 @@ version = "0.1.0"
 dependencies = [
  "engine_core",
  "engine_destruction",
+ "engine_world",
  "serde",
  "serde_json",
 ]

@@ -13,3 +13,6 @@ engine_core = { workspace = true }
 engine_destruction = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+engine_world = { workspace = true }
