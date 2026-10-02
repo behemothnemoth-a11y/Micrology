@@ -13,7 +13,9 @@
 use crate::camera::{FlyCamera, cursor_grabbed};
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
-use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
+use crate::fragment_streaming::{
+    FragmentStreamRes, FragmentStreamTasks, finish_fragment_saves,
+};
 use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
@@ -208,6 +210,13 @@ pub fn save_and_load(
         mut status,
     } = resources;
     if keys.just_pressed(KeyCode::F5) {
+        finish_fragment_saves(
+            &stream,
+            &mut fragment_stream,
+            &mut fragment_tasks,
+            &fragments,
+            &mut status,
+        );
         // Only the regions with unsaved edits are written, which is what makes
         // a flush affordable on a large world.
         let dir = stream.dir.clone();
@@ -238,6 +247,13 @@ pub fn save_and_load(
     }
 
     if keys.just_pressed(KeyCode::F9) {
+        finish_fragment_saves(
+            &stream,
+            &mut fragment_stream,
+            &mut fragment_tasks,
+            &fragments,
+            &mut status,
+        );
         // Drop residency and let streaming bring the world back from disk.
         let materials = world.0.materials().clone();
         world.0 = engine_world::World::with_materials(materials);
