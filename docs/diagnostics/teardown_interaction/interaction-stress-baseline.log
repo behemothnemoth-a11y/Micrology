@@ -1,0 +1,20 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+     Running `target\debug\stress.exe --check`
+scenario           volumes      cells       faces       quads   merge       cpu  build ms   edit ms
+dense_solid             64     262144       24576          96  256.0x 528.4 KiB     75.98     0.000
+sparse_terrain         111     259044       49448        9504    5.2x   2.4 MiB    142.42     0.000
+checker                  8      16384       98304       98304    1.0x  16.2 MiB     18.49     0.000
+material_stress          8      32768        6144        6144    1.0x   1.1 MiB      8.44     0.000
+edit_storm               8      32646        6844         674   10.2x 177.2 KiB      6.96     0.751
+boundary_storm           8      32644        6708         696    9.6x 180.9 KiB      7.49     1.481
+travel_strip           110     249780       55666        8856    6.3x   2.3 MiB     94.51     0.000
+
+dense_solid        mesh  16.1 KiB  cells 512.2 KiB  mesh/cell    0.1 B  max edit 0.000 ms
+sparse_terrain     mesh   1.6 MiB  cells 888.8 KiB  mesh/cell    6.3 B  max edit 0.000 ms
+checker            mesh  16.1 MiB  cells  64.0 KiB  mesh/cell 1032.0 B  max edit 0.000 ms
+material_stress    mesh   1.0 MiB  cells  66.0 KiB  mesh/cell   32.2 B  max edit 0.000 ms
+edit_storm         mesh 113.2 KiB  cells  64.0 KiB  mesh/cell    3.6 B  max edit 1.190 ms
+boundary_storm     mesh 116.9 KiB  cells  64.0 KiB  mesh/cell    3.7 B  max edit 4.605 ms
+travel_strip       mesh   1.5 MiB  cells 880.8 KiB  mesh/cell    6.1 B  max edit 0.000 ms
+
+baseline matches

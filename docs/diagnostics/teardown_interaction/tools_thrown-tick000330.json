@@ -1,0 +1,244 @@
+{
+  "contact_fracture_enabled": true,
+  "contacts": {
+    "capped": 0,
+    "enqueued": 4,
+    "fragment_failed": 45,
+    "fragment_fragment_pairs": 0,
+    "fragments_created": 6,
+    "pending": 0,
+    "processed": 4,
+    "refused": 0,
+    "samples": 2,
+    "stale": 0,
+    "static_failed": 0,
+    "work": 3680
+  },
+  "fixed_ticks": 330,
+  "fracture": {
+    "bond_entries": 2126,
+    "broken_bonds": 134,
+    "cell_entries": 669,
+    "checksum_fnv1a64": "ef0dd4c84a44f3be",
+    "revision": 6
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        -1.5700781345367432,
+        -0.14497743546962738,
+        0.6794995069503784
+      ],
+      "cells": 4,
+      "id": "f1.0",
+      "linear_velocity": [
+        -5.094175338745117,
+        -10.993019104003906,
+        0.4865154027938843
+      ],
+      "rotation_xyzw": [
+        -0.7928738388161486,
+        -0.2978744284253435,
+        0.27381352426387384,
+        -0.4556841609507792
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        44.939484498335794,
+        22.69770147364813,
+        84.70820110471692
+      ],
+      "world_center": [
+        58.22462197778246,
+        8.29525358240449,
+        72.27539704078134
+      ]
+    },
+    {
+      "angular_velocity": [
+        -0.7587308287620544,
+        -0.6844507455825806,
+        0.4948803186416626
+      ],
+      "cells": 3,
+      "id": "f1.1",
+      "linear_velocity": [
+        -3.3476455211639404,
+        -12.453937530517578,
+        1.2241772413253784
+      ],
+      "rotation_xyzw": [
+        -0.6443959561867524,
+        -0.7614457480705829,
+        -0.07002847407447878,
+        -0.007087821540615342
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        52.56796096487448,
+        -12.944273397576563,
+        83.38342098041255
+      ],
+      "world_center": [
+        61.870425245036735,
+        4.390382241589961,
+        71.39493182673613
+      ]
+    },
+    {
+      "angular_velocity": [
+        -1.3329288959503174,
+        -1.1189205646514893,
+        -0.09623177349567413
+      ],
+      "cells": 5,
+      "id": "f1.2",
+      "linear_velocity": [
+        -1.6200016736984253,
+        -13.753941535949707,
+        0.3173721432685852
+      ],
+      "rotation_xyzw": [
+        -0.7058731514297661,
+        -0.5421537667565387,
+        0.1580681171486944,
+        -0.42758257404082023
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        44.169258975499744,
+        7.19385311939114,
+        83.28664584547981
+      ],
+      "world_center": [
+        62.93400913834294,
+        4.195064861736545,
+        69.31734306002092
+      ]
+    },
+    {
+      "angular_velocity": [
+        2.0574533939361572,
+        -1.9001479148864746,
+        -0.6058592200279236
+      ],
+      "cells": 1,
+      "id": "f1.4",
+      "linear_velocity": [
+        -3.142641544342041,
+        -12.507840156555176,
+        0.9079383015632629
+      ],
+      "rotation_xyzw": [
+        0.3168211899328526,
+        -0.32607665382732504,
+        -0.8688240767604003,
+        0.19606905181528314
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        81.31743415222945,
+        15.219823907274392,
+        56.775862106589074
+      ],
+      "world_center": [
+        61.19168374438445,
+        6.4125303129726205,
+        68.27089364481888
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.4211829900741577,
+        -1.2329788208007812,
+        0.005234961863607168
+      ],
+      "cells": 2,
+      "id": "f1.5",
+      "linear_velocity": [
+        -0.18444322049617767,
+        -12.02861213684082,
+        0.42234280705451965
+      ],
+      "rotation_xyzw": [
+        -0.11128993355349331,
+        -0.6449789958843317,
+        -0.6081375269938606,
+        0.4492052913974742
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        76.71144348458276,
+        -3.8643614268862017,
+        48.63296633353439
+      ],
+      "world_center": [
+        66.16538476420808,
+        6.930338557785131,
+        67.96571310442408
+      ]
+    }
+  ],
+  "interaction": {
+    "applied": 0,
+    "batch_ms": [],
+    "blasts": 0,
+    "broken_bonds": 0,
+    "capped": 0,
+    "failed_cells": 0,
+    "floor_added": true,
+    "fragments_created": 0,
+    "held": null,
+    "held_target": null,
+    "hold_steps": 210,
+    "holds": 1,
+    "kicks": 1,
+    "pending": 0,
+    "refused": 0,
+    "releases": 1,
+    "stale": 0,
+    "throws": 1
+  },
+  "label": "tools_thrown",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 22,
+    "cursor": 14,
+    "name": "blast_grab_throw"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "6f030cee59de846f",
+    "fragment_cells": 15,
+    "fragments": 5,
+    "static_anchors": 4348,
+    "static_cells": 7228
+  }
+}

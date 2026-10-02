@@ -21,6 +21,161 @@ fn hit() -> FractureImpact {
 fn limits() -> FractureTransactionLimits {
     FractureTransactionLimits::default()
 }
+
+fn blast() -> FractureImpact {
+    FractureImpact::radial_blast(
+        DamageSpace::StaticWorld,
+        GlobalPos::new(64.5, 10.5, 65.5),
+        6,
+        DamageAmount(10000),
+    )
+    .unwrap()
+}
+
+#[test]
+fn radial_blast_preserves_cells_on_admission_and_work_budget_refusal() {
+    for admission in [true, false] {
+        let mut world = reference_fracture_world();
+        let before = cells(&world);
+        let mut state = FractureState::new();
+        let mut store = FragmentStore::default();
+        let mut sequence = DestructionSequence::default();
+        let mut cap = limits();
+        if admission {
+            cap.structure = StructuralLimits::tight(0);
+        }
+        let result = fracture_static_if(
+            &mut world,
+            &mut store,
+            &mut state,
+            &mut sequence,
+            &blast(),
+            &BaselineFracturePolicy::REFERENCE,
+            &AllResident,
+            cap,
+            |_| admission,
+        );
+        assert!(result.is_err());
+        assert_eq!(cells(&world), before);
+        assert_eq!(state, FractureState::new());
+        assert_eq!(sequence, DestructionSequence::default());
+        assert!(store.is_empty());
+    }
+}
+
+#[test]
+fn radial_blast_replays_with_conserved_survivors_and_independent_oracle() {
+    let run = || {
+        let mut world = reference_fracture_world();
+        let before = cells(&world).len() as u64;
+        let mut state = FractureState::new();
+        let mut store = FragmentStore::default();
+        let mut sequence = DestructionSequence::default();
+        let commit = fracture_static_if(
+            &mut world,
+            &mut store,
+            &mut state,
+            &mut sequence,
+            &blast(),
+            &BaselineFracturePolicy::REFERENCE,
+            &AllResident,
+            limits(),
+            |_| true,
+        )
+        .unwrap();
+        assert!(!commit.fracture.broken.is_empty());
+        assert!(!commit.fragments.is_empty());
+        assert_eq!(
+            before,
+            cells(&world).len() as u64
+                + store.iter().map(|(_, f)| f.cell_count()).sum::<u64>()
+                + commit.fracture.failed.len() as u64
+        );
+        for (_, f) in store.iter() {
+            assert_eq!(f.connected_parts().len(), 1);
+        }
+        (cells(&world), state, store, sequence, commit.measurement)
+    };
+    assert_eq!(run(), run());
+    assert!(
+        FractureImpact::radial_blast(
+            DamageSpace::StaticWorld,
+            GlobalPos::new(0., 0., 0.),
+            9,
+            DamageAmount(1)
+        )
+        .is_none()
+    );
+    assert!(
+        FractureImpact::radial_blast(
+            DamageSpace::StaticWorld,
+            GlobalPos::new(f64::NAN, 0., 0.),
+            6,
+            DamageAmount(1)
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn radial_pressure_crosses_air_and_unknown_outer_space_preserves_everything() {
+    struct OuterUnknown;
+    impl Residency for OuterUnknown {
+        fn is_resident(&self, cell: CellPos) -> bool {
+            cell.x < 4
+        }
+    }
+    let mut world = World::default();
+    for y in 0..3 {
+        let cell = CellPos::new(4, y, 0);
+        world.set(cell, Some(REFERENCE_FRACTURE_MATERIAL));
+        world.set_anchor(cell, true);
+    }
+    let before = cells(&world);
+    let impact = FractureImpact::radial_blast(
+        DamageSpace::StaticWorld,
+        GlobalPos::new(0.5, 1.5, 0.5),
+        6,
+        DamageAmount(1000),
+    )
+    .unwrap();
+    let mut state = FractureState::new();
+    let mut store = FragmentStore::default();
+    let mut sequence = DestructionSequence::default();
+    assert!(matches!(
+        fracture_static_if(
+            &mut world,
+            &mut store,
+            &mut state,
+            &mut sequence,
+            &impact,
+            &BaselineFracturePolicy::REFERENCE,
+            &OuterUnknown,
+            limits(),
+            |_| true
+        ),
+        Err(FractureTransactionRefusal::Unknown(_))
+    ));
+    assert_eq!(cells(&world), before);
+    assert_eq!(state, FractureState::new());
+    assert!(store.is_empty());
+    let result = fracture_static_if(
+        &mut world,
+        &mut store,
+        &mut state,
+        &mut sequence,
+        &impact,
+        &BaselineFracturePolicy::REFERENCE,
+        &AllResident,
+        limits(),
+        |_| true,
+    )
+    .unwrap();
+    assert!(
+        result.fracture.cell_entries > 0,
+        "radial pressure must reach the disconnected surface across air"
+    );
+}
 fn setup_chunk() -> (FragmentStore, FractureState, DestructionSequence) {
     let mut world = reference_fracture_world();
     let mut store = FragmentStore::default();

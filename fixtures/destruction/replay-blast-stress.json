@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "name": "blast_debris_stress",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    {
+      "op": "pause"
+    },
+    {
+      "op": "arena_floor"
+    },
+    {
+      "op": "launch_chunks",
+      "count": 9,
+      "speed_milli": 18000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        64500,
+        10500,
+        65500
+      ],
+      "radius": 8,
+      "energy": 16000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        56500,
+        6500,
+        65500
+      ],
+      "radius": 6,
+      "energy": 10000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        73500,
+        6500,
+        65500
+      ],
+      "radius": 6,
+      "energy": 10000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "dump",
+      "label": "blast_stress_on"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "blast_stress_off"
+    }
+  ]
+}

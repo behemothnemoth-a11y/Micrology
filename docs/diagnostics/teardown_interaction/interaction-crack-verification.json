@@ -1,0 +1,46 @@
+[
+  {
+    "checkpoint": "crack_after_120_steps-tick000121.json",
+    "structural": {
+      "checksum_fnv1a64": "5af45c7391f34cae",
+      "fragment_cells": 190,
+      "fragments": 15,
+      "static_anchors": 252,
+      "static_cells": 2867
+    },
+    "matched": true
+  },
+  {
+    "checkpoint": "crack_intact-tick000000.json",
+    "structural": {
+      "checksum_fnv1a64": "872796ff1aac9411",
+      "fragment_cells": 0,
+      "fragments": 0,
+      "static_anchors": 252,
+      "static_cells": 3132
+    },
+    "matched": true
+  },
+  {
+    "checkpoint": "crack_separated_paused-tick000001.json",
+    "structural": {
+      "checksum_fnv1a64": "5af45c7391f34cae",
+      "fragment_cells": 190,
+      "fragments": 15,
+      "static_anchors": 252,
+      "static_cells": 2867
+    },
+    "matched": true
+  },
+  {
+    "checkpoint": "crack_strong_1-tick000001.json",
+    "structural": {
+      "checksum_fnv1a64": "39e6f85a131e6070",
+      "fragment_cells": 0,
+      "fragments": 0,
+      "static_anchors": 252,
+      "static_cells": 3127
+    },
+    "matched": true
+  }
+]

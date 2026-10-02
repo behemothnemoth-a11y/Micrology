@@ -138,7 +138,7 @@ pub fn setup(mut commands: Commands, lab: Res<crate::sim_lab::SimulationLab>) {
             ..default()
         },
         Text::new(if lab.enabled {
-            "click grab | esc release | wasd+space/ctrl fly | h hide overlay\nLMB strike | shift+LMB strong strike | R launch chunk | F9 contact damage\nF6 run/pause | F7 single step | F8 speed | F10 snapshot | F11 replay | Q quit"
+            "click grab | esc release | wasd+space/ctrl fly | h hide overlay\nLMB strike / throw | shift+LMB strong | hold RMB grab | wheel distance | B blast\nG floor | R chunk | F9 impact damage\nF6 run/pause | F7 single step | F8 speed | F10 snapshot | F11 replay | Q quit"
         } else { CONTROLS }),
         TextFont {
             font_size: FontSize::Px(12.0),
@@ -216,7 +216,7 @@ pub fn update(
         let debris = fragments.stats();
         let c = contacts.stats;
         **text.into_inner() = format!(
-            "Micrology | one-material destruction lab\n{fps:.0} FPS | {} static cells | {} fragments / {} cells\ncontact damage {} | {} processed | {} pending | {} refused / {} capped\nwall cells failed {} | debris cells failed {} | new fragments {}\n{}",
+            "Micrology | one-material destruction lab\n{fps:.0} FPS | {} static cells | {} fragments / {} cells\ncontact damage {} | {} processed | {} pending | {} refused / {} capped\ncontacts: wall cells failed {} | debris cells failed {} | new fragments {}\n{}\n{}",
             world_stats.occupied_cells,
             debris.fragments,
             debris.cells,
@@ -228,6 +228,7 @@ pub fn update(
             c.static_failed,
             c.fragment_failed,
             c.fragments_created,
+            lab.interaction.hud(),
             status.0
         );
         return;

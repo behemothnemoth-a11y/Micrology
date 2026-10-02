@@ -112,6 +112,19 @@ fn print_plan(script: &ReplayScript) {
     println!();
     for (index, command) in script.commands.iter().enumerate() {
         let description = match command {
+            ReplayCommand::ArenaFloor => "add one-material arena floor".into(),
+            ReplayCommand::Blast {
+                center_milli,
+                radius,
+                energy,
+            } => format!("blast at {center_milli:?}, radius {radius}, energy {energy}"),
+            ReplayCommand::GrabLargest { target_milli } => {
+                format!("grab largest to {target_milli:?}")
+            }
+            ReplayCommand::MoveGrab { target_milli } => format!("move grab to {target_milli:?}"),
+            ReplayCommand::Release { velocity_milli } => {
+                format!("release with velocity change {velocity_milli:?}")
+            }
             ReplayCommand::Pause => "pause".to_string(),
             ReplayCommand::Resume => "resume".to_string(),
             ReplayCommand::SetSpeed { milli } => {

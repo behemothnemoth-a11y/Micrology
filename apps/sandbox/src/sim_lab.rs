@@ -66,7 +66,8 @@ pub struct SimulationLab {
     replay: Option<ReplaySession>,
     fracture_sequence: DamageSequence,
     pub(crate) fracture_state: FractureState,
-    fracture_policy: BaselineFracturePolicy,
+    pub(crate) fracture_policy: BaselineFracturePolicy,
+    pub(crate) interaction: crate::interaction::InteractionState,
     last_separation: Option<LabSeparation>,
     pub(crate) last_dump: Option<PathBuf>,
     capture_timer: Option<Timer>,
@@ -85,6 +86,7 @@ impl Default for SimulationLab {
             fracture_sequence: DamageSequence::default(),
             fracture_state: FractureState::new(),
             fracture_policy: BaselineFracturePolicy::REFERENCE,
+            interaction: Default::default(),
             last_separation: None,
             last_dump: None,
             capture_timer: None,
@@ -148,7 +150,6 @@ pub fn strike(
     camera: Option<Single<(&Transform, &crate::camera::FlyCamera)>>,
     resources: StrikeResources,
 ) {
-    use avian3d::math::{Quaternion, Vector};
     let StrikeResources {
         mouse,
         keys,
@@ -185,7 +186,8 @@ pub fn strike(
         )
         .unwrap_or_else(|e| e);
     }
-    if !mouse.just_pressed(MouseButton::Left)
+    if lab.interaction.holding()
+        || !mouse.just_pressed(MouseButton::Left)
         || !cursor.is_some_and(|c| crate::camera::cursor_grabbed(&c))
     {
         return;
@@ -195,30 +197,8 @@ pub fn strike(
     };
     let (transform, fly) = camera.into_inner();
     let direction = transform.forward().to_array();
-    let mut selected = engine_world::raycast(&world.0, fly.global, direction, 96.)
-        .map(|hit| (hit, DamageSpace::StaticWorld, direction.map(f64::from)));
-    for (id, fragment) in fragments.iter() {
-        let q = Quaternion::from_array(fragment.pose.rotation.0);
-        if !q.is_finite() || q.length_squared() < 1e-12 {
-            continue;
-        }
-        let inverse = q.normalize().conjugate();
-        let t = fragment.pose.translation;
-        let from =
-            inverse * Vector::new(fly.global.x - t.x, fly.global.y - t.y, fly.global.z - t.z);
-        let dir = inverse * Vector::from_array(direction.map(f64::from));
-        if let Some(hit) = engine_world::raycast(
-            fragment,
-            engine_core::GlobalPos::new(from.x, from.y, from.z),
-            dir.to_array().map(|v| v as f32),
-            96.,
-        ) && selected
-            .as_ref()
-            .is_none_or(|(old, _, _)| hit.distance < old.distance)
-        {
-            selected = Some((hit, DamageSpace::FragmentLocal(id), dir.to_array()));
-        }
-    }
+    let world_direction = direction.map(f64::from);
+    let selected = crate::interaction::pick(&world, &fragments, fly.global, direction);
     let Some((hit, space, direction)) = selected else {
         status.0 = "no material in reach".into();
         return;
@@ -253,6 +233,13 @@ pub fn strike(
             |parts| fits_fragment_storage(parts, available),
         )
         .map(|commit| {
+            crate::interaction::directional_kick(
+                &mut lab,
+                &mut fragments,
+                &commit.fragments,
+                world_direction,
+                f64::from(energy) * 2.,
+            );
             format!(
                 "strike: {} cracks, {} crushed/failed cells, {} fragments",
                 commit.fracture.broken.len(),
@@ -273,6 +260,14 @@ pub fn strike(
                 |parts| fits_fragment_storage(parts, available),
             )
             .map(|commit| {
+                let ids = crate::interaction::survivors(&commit.result, id);
+                crate::interaction::directional_kick(
+                    &mut lab,
+                    &mut fragments,
+                    &ids,
+                    world_direction,
+                    f64::from(energy) * 2.,
+                );
                 format!(
                     "fragment strike: {} cracks, {} failed cells",
                     commit.fracture.broken.len(),
@@ -438,6 +433,8 @@ fn dump_state(
                     fragment.pose.translation.y,
                     fragment.pose.translation.z
                 ],
+                "rotation_xyzw": fragment.pose.rotation.0,
+                "world_center": crate::interaction::world_center(fragment).map(|c| c.to_array()),
                 "linear_velocity": fragment.linear_velocity,
                 "angular_velocity": fragment.angular_velocity,
                 "state": format!("{:?}", fragment.state),
@@ -471,6 +468,7 @@ fn dump_state(
         "label": label,
         "contact_fracture_enabled": lab.contact_fracture,
         "contacts": lab.contact_stats,
+        "interaction": lab.interaction.snapshot(),
         "fixed_ticks": lab.fixed_ticks,
         "paused": virtual_time.is_paused(),
         "speed_milli": lab.speed_milli(),
@@ -761,7 +759,7 @@ fn detach_separated(
     outcome.fragments.len() as u64
 }
 
-fn fits_fragment_storage(candidate: &[Fragment], available_bytes: u64) -> bool {
+pub(crate) fn fits_fragment_storage(candidate: &[Fragment], available_bytes: u64) -> bool {
     candidate
         .iter()
         .try_fold(0u64, |total, fragment| {
@@ -792,7 +790,40 @@ fn execute_next_replay_command(
     };
     let index = replay.cursor;
 
+    if lab.interaction.busy() {
+        return Err("waiting for blast transaction queue".into());
+    }
     match command {
+        ReplayCommand::ArenaFloor => {
+            let result = crate::interaction::add_floor(lab, world)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
+        ReplayCommand::Blast {
+            center_milli,
+            radius,
+            energy,
+        } => {
+            let result =
+                crate::interaction::queue_blast(lab, fragments, center_milli, radius, energy)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
+        ReplayCommand::GrabLargest { target_milli } => {
+            let result = crate::interaction::grab_largest(lab, fragments, target_milli)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
+        ReplayCommand::MoveGrab { target_milli } => {
+            let result = crate::interaction::move_grab(lab, target_milli)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
+        ReplayCommand::Release { velocity_milli } => {
+            let result = crate::interaction::release(lab, fragments, velocity_milli)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
         ReplayCommand::ContactFracture { enabled } => {
             lab.contact_fracture = enabled;
             advance_replay_cursor(lab);

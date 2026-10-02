@@ -1,5 +1,9 @@
 # Integrated one-material destruction drop
 
+Follow-up: [teardown interaction drop](teardown-interaction-drop.md) adds the
+playable blast and grab/throw loop, arena floor, and new measured acceptance.
+
+
 2026-10-02. The user explicitly superseded the earlier numbered-section review
 gates and requested one substantial integrated drop toward Astra-style teardown.
 This delivery stays on `fracture-integration`, retaining Claude's `f8f19a5`,

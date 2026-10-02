@@ -1,0 +1,599 @@
+{
+  "contact_fracture_enabled": false,
+  "contacts": null,
+  "fixed_ticks": 1,
+  "fracture": {
+    "bond_entries": 1372,
+    "broken_bonds": 432,
+    "cell_entries": 526,
+    "checksum_fnv1a64": "7e325a7a43b09bfa",
+    "revision": 184
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f0.0",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        60.5,
+        10.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f0.1",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        61.5,
+        7.5,
+        64.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 20,
+      "id": "f0.2",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        61.5,
+        10.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f0.3",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        61.5,
+        13.5,
+        64.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 20,
+      "id": "f0.4",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        7.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 60,
+      "id": "f0.5",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        10.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 20,
+      "id": "f0.6",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        13.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f0.7",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        64.5,
+        6.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 9,
+      "id": "f0.8",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        10.5,
+        62.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 9,
+      "id": "f0.9",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        10.5,
+        63.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f0.10",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        64.5,
+        14.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f0.11",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        67.5,
+        7.5,
+        64.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 20,
+      "id": "f0.12",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        67.5,
+        10.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f0.13",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        67.5,
+        13.5,
+        64.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f0.14",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        68.5,
+        10.5,
+        66.5
+      ]
+    }
+  ],
+  "interaction": {
+    "applied": 0,
+    "batch_ms": [],
+    "blasts": 0,
+    "broken_bonds": 0,
+    "capped": 0,
+    "failed_cells": 0,
+    "floor_added": false,
+    "fragments_created": 0,
+    "held": null,
+    "held_target": null,
+    "hold_steps": 0,
+    "holds": 0,
+    "kicks": 0,
+    "pending": 0,
+    "refused": 0,
+    "releases": 0,
+    "stale": 0,
+    "throws": 0
+  },
+  "label": "crack_separated_paused",
+  "last_separation": {
+    "case": "strong_center_hit",
+    "cells_detached_by_occupancy": 0,
+    "cells_freed_by_cracks": 190,
+    "components_freed_by_cracks": 15,
+    "fragments_created": 15,
+    "inconclusive_cross_checks": 0,
+    "settled": true
+  },
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 9,
+    "cursor": 6,
+    "name": "crack_separation"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "5af45c7391f34cae",
+    "fragment_cells": 190,
+    "fragments": 15,
+    "static_anchors": 252,
+    "static_cells": 2867
+  }
+}

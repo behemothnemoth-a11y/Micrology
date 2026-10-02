@@ -1,0 +1,6 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+     Running `target\debug\destruction_replay.exe --validate fixtures/destruction/replay-blast-grab-throw.json`
+fixtures/destruction/replay-blast-grab-throw.json is valid
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+     Running `target\debug\destruction_replay.exe --validate fixtures/destruction/replay-blast-stress.json`
+fixtures/destruction/replay-blast-stress.json is valid

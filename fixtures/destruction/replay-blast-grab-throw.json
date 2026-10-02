@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "name": "blast_grab_throw",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    {
+      "op": "pause"
+    },
+    {
+      "op": "arena_floor"
+    },
+    {
+      "op": "dump",
+      "label": "tools_intact"
+    },
+    {
+      "op": "launch_chunks",
+      "count": 1,
+      "speed_milli": 1
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "grab_largest",
+      "target_milli": [
+        64500,
+        16000,
+        78000
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "tools_lifted"
+    },
+    {
+      "op": "move_grab",
+      "target_milli": [
+        68500,
+        14000,
+        75000
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 90
+    },
+    {
+      "op": "dump",
+      "label": "tools_pulled"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": true
+    },
+    {
+      "op": "release",
+      "velocity_milli": [
+        0,
+        0,
+        -24000
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "tools_thrown"
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        64500,
+        10500,
+        65500
+      ],
+      "radius": 6,
+      "energy": 10000
+    },
+    {
+      "op": "dump",
+      "label": "tools_blast_separated"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "dump",
+      "label": "tools_blast_settled"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "tools_simulation_damage_off"
+    }
+  ]
+}

@@ -55,6 +55,7 @@ pub mod fracture_connectivity;
 pub mod fracture_transaction;
 pub mod fragment;
 pub mod impact;
+pub mod interaction;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;

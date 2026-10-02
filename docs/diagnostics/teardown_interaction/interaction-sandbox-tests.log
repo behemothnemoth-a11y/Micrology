@@ -1,0 +1,19 @@
+   Compiling engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-fracture-integration\crates\engine_stress)
+   Compiling sandbox v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-fracture-integration\apps\sandbox)
+    Finished `test` profile [optimized + debuginfo] target(s) in 15.69s
+     Running unittests src\main.rs (target\debug\deps\sandbox-7398d5b961493f5e.exe)
+
+running 11 tests
+test contact_fracture::tests::rotated_contact_is_transformed_into_the_native_fragment_frame ... ok
+test physics::tests::distance_math_does_not_overflow_at_world_extremes ... ok
+test physics::tests::distance_is_zero_inside_and_exact_outside ... ok
+test physics::tests::dynamic_physics_residency_uses_fragment_bounds_not_only_its_origin ... ok
+test interaction::tests::arena_floor_is_ordinary_anchored_one_material_geometry ... ok
+test sim_lab::tests::replay_crack_admission_holds_every_cell_and_identity_until_storage_fits ... ok
+test interaction::tests::directional_impulse_is_shared_across_survivors ... ok
+test interaction::tests::rotated_fragment_pick_is_occluded_by_static_material ... ok
+test interaction::tests::manipulating_a_fragment_preserves_geometry_and_damage ... ok
+test interaction::tests::blast_queue_is_bounded_and_cannot_repeat_while_pending ... ok
+test sim_lab::tests::capture_replay_requires_real_separation_before_advancing_physics ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s

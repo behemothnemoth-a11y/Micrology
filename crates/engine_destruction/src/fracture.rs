@@ -623,9 +623,41 @@ pub struct FractureImpact {
     energy: DamageAmount,
     /// Straight-line reach in cells. At least one.
     reach_cells: u32,
+    seed_radius_cells: i32,
 }
 
 impl FractureImpact {
+    /// An opt-in radial pressure deposit. Seeds all occupied cells within a
+    /// bounded sphere, including disconnected surfaces across air. This is a
+    /// gameplay blast field, without occlusion or fluid/shock-wave simulation.
+    /// Unknown cells in the sphere make the normal transaction inconclusive.
+    pub fn radial_blast(
+        space: DamageSpace,
+        center: GlobalPos,
+        radius: u32,
+        energy: DamageAmount,
+    ) -> Option<Self> {
+        if !(1..=8).contains(&radius) {
+            return None;
+        }
+        let event = DamageEvent::new(
+            crate::DamageEventId::new(0, 0),
+            space,
+            None,
+            DamageVolume::Sphere {
+                center,
+                radius: f64::from(radius),
+                falloff: crate::DamageFalloff::Linear,
+            },
+            energy,
+            None,
+        )
+        .ok()?;
+        let mut impact = Self::from_event(&event, Some([0.0; 3])).ok()?;
+        impact.seed_radius_cells = radius as i32;
+        Some(impact)
+    }
+
     /// Build an impact from an event whose impulse is already in the event's own
     /// coordinate space.
     ///
@@ -662,6 +694,7 @@ impl FractureImpact {
             direction_milli: direction,
             energy: event.strength,
             reach_cells: volume_reach_cells(event.volume),
+            seed_radius_cells: SEED_RADIUS_CELLS,
         })
     }
 
@@ -2095,14 +2128,20 @@ fn seed_cells(
     let origin = impact.origin_cell();
     let reach_milli = i64::from(impact.reach_cells).saturating_mul(MILLI);
     let mut seeds = Vec::new();
-    for dy in -SEED_RADIUS_CELLS..=SEED_RADIUS_CELLS {
-        for dz in -SEED_RADIUS_CELLS..=SEED_RADIUS_CELLS {
-            for dx in -SEED_RADIUS_CELLS..=SEED_RADIUS_CELLS {
+    for dy in -impact.seed_radius_cells..=impact.seed_radius_cells {
+        for dz in -impact.seed_radius_cells..=impact.seed_radius_cells {
+            for dx in -impact.seed_radius_cells..=impact.seed_radius_cells {
                 let cell = CellPos::new(
                     origin.x.saturating_add(dx),
                     origin.y.saturating_add(dy),
                     origin.z.saturating_add(dz),
                 );
+                if impact.seed_radius_cells != SEED_RADIUS_CELLS
+                    && length_milli(sub3(cell_centre_milli(cell), impact.origin_milli))
+                        >= reach_milli
+                {
+                    continue;
+                }
                 if !scene.residency.is_resident(cell) {
                     // Only unknown space that could carry a deposit matters.
                     let distance = length_milli(sub3(cell_centre_milli(cell), impact.origin_milli));

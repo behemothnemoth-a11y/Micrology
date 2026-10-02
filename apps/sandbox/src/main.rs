@@ -32,6 +32,7 @@ mod fragment_streaming;
 mod hud;
 mod impact;
 mod impact_demo;
+mod interaction;
 mod performance;
 mod physics;
 mod progressive_demo;
@@ -202,6 +203,7 @@ fn main() {
                 edit::quit,
                 sim_lab::controls,
                 sim_lab::strike,
+                interaction::drive,
                 progressive_demo::drive,
                 impact_demo::drive,
                 collapse_demo::drive,
@@ -233,12 +235,14 @@ fn main() {
                 // same updated budget before creating a body.
                 fragment_render::sync_fragment_render,
                 physics::sync_fragment_bodies,
+                interaction::sync_motion,
                 hud::toggle,
                 hud::apply_visibility,
                 hud::update,
                 // Drawn last, from engine state rather than from anything the
                 // renderer owns.
                 fracture_demo::draw,
+                interaction::draw,
             )
                 .chain(),
         )
@@ -265,6 +269,7 @@ fn main() {
             .chain()
             .after(avian3d::prelude::PhysicsSystems::Last),
     )
+    .add_systems(FixedPreUpdate, interaction::hold)
     .add_systems(FixedLast, sim_lab::count_fixed_tick)
     // Unsaved edits must reach disk before the process does, so this runs in
     // `Last`, after the exit message exists and before the app stops.

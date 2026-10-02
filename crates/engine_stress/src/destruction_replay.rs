@@ -17,14 +17,42 @@ pub const DAMAGED_AREA_REPLAY_PATH: &str = "fixtures/destruction/replay-damaged-
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum ReplayCommand {
+    ArenaFloor,
+    Blast {
+        center_milli: [i32; 3],
+        radius: u32,
+        energy: u32,
+    },
+    GrabLargest {
+        target_milli: [i32; 3],
+    },
+    MoveGrab {
+        target_milli: [i32; 3],
+    },
+    Release {
+        velocity_milli: [i32; 3],
+    },
     Pause,
     Resume,
-    SetSpeed { milli: u32 },
-    AdvanceFixed { steps: u32 },
-    BenchmarkCase { case: DestructionBenchmarkCase },
-    Dump { label: String },
-    ContactFracture { enabled: bool },
-    LaunchChunks { count: u32, speed_milli: u32 },
+    SetSpeed {
+        milli: u32,
+    },
+    AdvanceFixed {
+        steps: u32,
+    },
+    BenchmarkCase {
+        case: DestructionBenchmarkCase,
+    },
+    Dump {
+        label: String,
+    },
+    ContactFracture {
+        enabled: bool,
+    },
+    LaunchChunks {
+        count: u32,
+        speed_milli: u32,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -217,6 +245,7 @@ pub enum ReplayValidationError {
     TooManyFixedSteps { index: usize, max: u32, actual: u32 },
     EmptyDumpLabel { index: usize },
     InvalidLaunch { index: usize },
+    InvalidInteraction { index: usize },
 }
 
 impl std::fmt::Display for ReplayValidationError {
@@ -255,6 +284,10 @@ impl std::fmt::Display for ReplayValidationError {
             Self::EmptyDumpLabel { index } => {
                 write!(f, "command {index} has an empty dump label")
             }
+            Self::InvalidInteraction { index } => write!(
+                f,
+                "command {index}: blast radius 1..8, energy 1..24000; throw components at most 24000"
+            ),
             Self::InvalidLaunch { index } => write!(
                 f,
                 "command {index}: launch requires 1..32 chunks and speed 1..40000 milli-cells/s"
@@ -290,6 +323,16 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
 
     for (index, command) in script.commands.iter().enumerate() {
         match command {
+            ReplayCommand::Blast { radius, energy, .. }
+                if !(1..=8).contains(radius) || !(1..=24000).contains(energy) =>
+            {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::Release { velocity_milli }
+                if velocity_milli.iter().any(|v| v.unsigned_abs() > 24000) =>
+            {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
             ReplayCommand::LaunchChunks { count, speed_milli }
                 if *count == 0 || *count > 32 || *speed_milli == 0 || *speed_milli > 40_000 =>
             {
@@ -332,6 +375,41 @@ pub fn weak_repeat_replay_json() -> serde_json::Result<String> {
 mod tests {
     use super::*;
     use crate::destruction_benchmark::baseline_wall;
+
+    #[test]
+    fn interaction_replay_validates_limits_and_round_trips() {
+        let replay: ReplayScript = serde_json::from_str(include_str!(
+            "../../../fixtures/destruction/replay-blast-grab-throw.json"
+        ))
+        .unwrap();
+        validate_replay(&replay).unwrap();
+        assert_eq!(
+            serde_json::from_str::<ReplayScript>(&replay_to_json(&replay).unwrap()).unwrap(),
+            replay
+        );
+        for command in [
+            ReplayCommand::Blast {
+                center_milli: [0; 3],
+                radius: 9,
+                energy: 10000,
+            },
+            ReplayCommand::Blast {
+                center_milli: [0; 3],
+                radius: 6,
+                energy: 24001,
+            },
+            ReplayCommand::Release {
+                velocity_milli: [i32::MIN, 0, 0],
+            },
+        ] {
+            let mut invalid = replay.clone();
+            invalid.commands.push(command);
+            assert!(matches!(
+                validate_replay(&invalid),
+                Err(ReplayValidationError::InvalidInteraction { .. })
+            ));
+        }
+    }
 
     #[test]
     fn volley_replay_and_launch_limits_are_validated() {
