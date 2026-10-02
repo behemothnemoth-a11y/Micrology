@@ -36,6 +36,7 @@ pub mod mass;
 pub mod policy;
 pub mod profile;
 pub mod units;
+pub mod verdict;
 
 pub use capacity::{
     CapacityDefer, CapacityLimits, CapacityMeasurement, CapacityOutcome, OverloadedConnection,
@@ -51,6 +52,7 @@ pub use profile::{
     reference_registry,
 };
 pub use units::{Milli, SCALE};
+pub use verdict::{CapacityVerdict, Inconclusive, evaluate_structure};
 
 use serde::{Deserialize, Serialize};
 
