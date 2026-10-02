@@ -755,7 +755,7 @@ fn external_demand_is_withheld_past_the_hard_memory_ceiling() {
 
 #[test]
 fn releasing_demand_makes_an_in_flight_far_load_stale() {
-    let mut disk = disk(8);
+    let disk = disk(8);
     let mut world = World::with_materials(materials());
     let mut streamer = RegionStreamer::new(config());
     let far = RegionPos::new(5, 0, 0);
@@ -782,7 +782,6 @@ fn releasing_demand_makes_an_in_flight_far_load_stale() {
 
 #[test]
 fn duplicate_external_demands_are_deduplicated() {
-    let mut world = World::with_materials(materials());
     let mut streamer = RegionStreamer::new(config());
     let far = RegionPos::new(5, 0, 0);
 
