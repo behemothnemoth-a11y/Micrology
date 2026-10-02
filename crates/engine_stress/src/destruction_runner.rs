@@ -29,10 +29,12 @@ use crate::destruction_benchmark::{
 use engine_core::CellPos;
 use engine_destruction::{
     AllResident, BaselineFracturePolicy, CrackedBonds, DamageAmount, DamageEventId, DamageSequence,
-    DestructionSequence, FractureEvaluation, FractureImpact, FractureLimits, FractureScene,
-    FractureState, StructuralLimits, cracked_structure_result, detach, evaluate_fracture,
-    fracture_hit_toward, fracture_state_leaving_with, separation_from_cracks, separation_roots,
-    static_failure_batch,
+    DamageSpace, DestructionSequence, FractureEvaluation, FractureImpact, FractureLimits,
+    FractureScene, FractureState, Fragment, FragmentDamageResult, FragmentId, FragmentStore,
+    StructuralLimits, cracked_structure_result, damage_fragment_store_with_parts, detach,
+    evaluate_fracture, fracture_hit_toward, fracture_hit_toward_in, fracture_state_leaving_with,
+    fragment_parts_through_cracks, reference_impact_direction, separation_from_cracks,
+    separation_roots, static_failure_batch,
 };
 use engine_world::World;
 
@@ -58,6 +60,7 @@ pub fn implemented_destruction_cases() -> Vec<DestructionBenchmarkCase> {
         DestructionBenchmarkCase::EdgeHit,
         DestructionBenchmarkCase::AngledHit,
         DestructionBenchmarkCase::PreviouslyDamagedArea,
+        DestructionBenchmarkCase::DetachedChunkHit,
     ]
 }
 
@@ -66,7 +69,7 @@ pub fn is_implemented(case: DestructionBenchmarkCase) -> bool {
 }
 
 /// Everything one executed case produced.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Default, Debug)]
 struct Measured {
     cells_touched: u64,
     bonds_touched: u64,
@@ -83,6 +86,22 @@ struct Measured {
     fragment_size_cells: Vec<u64>,
     damage_centroid_milli: [i64; 3],
     world_cells_remaining: u64,
+}
+
+impl Measured {
+    /// Borrow every counter one hit contributes to.
+    fn accumulator(&mut self) -> Accumulator<'_> {
+        Accumulator {
+            cells_touched: &mut self.cells_touched,
+            bonds_touched: &mut self.bonds_touched,
+            work_budget_used: &mut self.work_budget_used,
+            failed_cells: &mut self.failed_cells,
+            cells_freed_by_cracks: &mut self.cells_freed_by_cracks,
+            components_freed_by_cracks: &mut self.components_freed_by_cracks,
+            cells_detached_by_occupancy: &mut self.cells_detached_by_occupancy,
+            fragment_size_cells: &mut self.fragment_size_cells,
+        }
+    }
 }
 
 /// Energy-weighted centroid of the absorbed deposit, in milli-cells.
@@ -241,6 +260,7 @@ fn execute_stages(stages: &[Stage], measure_from: usize) -> Measured {
                     cells_detached_by_occupancy: &mut cells_detached_by_occupancy,
                     fragment_size_cells: &mut fragment_size_cells,
                 },
+                None,
             );
         }
     }
@@ -289,6 +309,10 @@ fn run_one_hit(
     destruction: &mut DestructionSequence,
     policy: &BaselineFracturePolicy,
     counters: &mut Accumulator<'_>,
+    // `keep`: when given, detached chunks stay as live fragments and their cracks
+    // go with them. The static cases discard them; the detached-chunk case needs
+    // the object.
+    mut keep: Option<&mut FragmentStore>,
 ) {
     {
         let event = fracture_hit_toward(
@@ -359,13 +383,29 @@ fn run_one_hit(
                     counters.fragment_size_cells.push(fragment.cell_count());
                 }
             }
-            // The plug's own cracks go with the plug. Carrying them into the
-            // fragment needs fragment-local fracture space, which is 0006.3;
-            // until then the records are forgotten rather than left to describe
-            // geometry the static world no longer has.
+            // A plug's cracks are its cracks: they move into the fragment's own
+            // coordinate space. Whatever is left described the faces the plug
+            // broke away from, so it describes nothing now.
+            for fragment in &detached.fragments {
+                state.adopt_into_fragment(fragment);
+            }
             for component in &separation.separated {
                 for leaving in fracture_state_leaving_with(world, &component.cells) {
-                    state.forget_cell(engine_destruction::DamageSpace::StaticWorld, leaving.cell());
+                    state.forget_cell(DamageSpace::StaticWorld, leaving.cell());
+                }
+            }
+            match &mut keep {
+                Some(store) => {
+                    for fragment in detached.fragments {
+                        store.insert(fragment);
+                    }
+                }
+                // Nobody is holding these objects, so their cracks describe
+                // nothing either.
+                None => {
+                    for fragment in &detached.fragments {
+                        state.forget_space(DamageSpace::FragmentLocal(fragment.id));
+                    }
                 }
             }
         }
@@ -386,6 +426,214 @@ fn fracture_bytes(cell_entries: u64, bond_entries: u64) -> u64 {
     cell_entries * CELL_ENTRY_BYTES + bond_entries * BOND_ENTRY_BYTES
 }
 
+/// How many canonical strong-centre hits may be spent trying to liberate a chunk.
+///
+/// Two is enough today — crack-tip concentration closes the cut on the second —
+/// and the ceiling exists so a tuning change that stops liberating fails the
+/// benchmark instead of looping.
+const MAX_LIBERATING_HITS: u8 = 4;
+
+/// Where a fragment-space stimulus lands, given the pack's centre-relative offset.
+///
+/// The occupied cell nearest the chunk's own bounds centre, plus the offset. Ties
+/// are broken by canonical cell order, so the choice is the same on every machine
+/// — and it is an *occupied* cell, because aiming at a hole in a 60-cell chunk
+/// would measure the seed scan rather than the model.
+fn chunk_target(chunk: &Fragment, offset: [i32; 3]) -> CellPos {
+    let centre = CellPos::new(
+        (chunk.bounds.min.x + chunk.bounds.max.x) / 2 + offset[0],
+        (chunk.bounds.min.y + chunk.bounds.max.y) / 2 + offset[1],
+        (chunk.bounds.min.z + chunk.bounds.max.z) / 2 + offset[2],
+    );
+    let distance = |cell: CellPos| {
+        let dx = i64::from(cell.x - centre.x);
+        let dy = i64::from(cell.y - centre.y);
+        let dz = i64::from(cell.z - centre.z);
+        dx * dx + dy * dy + dz * dz
+    };
+    chunk
+        .occupied_cells()
+        .min_by_key(|cell| (distance(*cell), *cell))
+        .unwrap_or(centre)
+}
+
+/// What a run against one detached chunk produced.
+struct ChunkRun {
+    measured: Measured,
+    chunk_cells_before: u64,
+    chunk_cells_after: u64,
+    children: u64,
+    destroyed: bool,
+}
+
+/// Build the canonical detached chunk, then hit it with the same model.
+///
+/// "The canonical chunk produced by the strong-center benchmark" means exactly
+/// that: the committed strong-centre stimulus, repeated until it liberates
+/// something, and the largest piece it liberated. Nothing about the chunk is
+/// hand-authored, so a change to the fracture model changes the chunk too — which
+/// is the point of measuring against it.
+fn execute_on_canonical_chunk(stage: Stage) -> Option<ChunkRun> {
+    let strong = case_stimulus(DestructionBenchmarkCase::StrongCenterHit)?;
+    let mut world = baseline_wall();
+    let mut state = FractureState::new();
+    let mut damage = DamageSequence::default();
+    let mut destruction = DestructionSequence::new(0);
+    let policy = BaselineFracturePolicy::REFERENCE;
+    let mut store = FragmentStore::default();
+
+    let mut sink = Measured::default();
+    let mut accumulator = sink.accumulator();
+    for _ in 0..MAX_LIBERATING_HITS {
+        run_one_hit(
+            &strong,
+            false,
+            &mut world,
+            &mut state,
+            &mut damage,
+            &mut destruction,
+            &policy,
+            &mut accumulator,
+            Some(&mut store),
+        );
+        if !store.is_empty() {
+            break;
+        }
+    }
+
+    // The largest piece, with ties broken by identity so the choice is the same
+    // on every machine.
+    let chunk: Fragment = store
+        .iter()
+        .max_by_key(|(id, fragment)| (fragment.cell_count(), std::cmp::Reverse(*id)))
+        .map(|(_, fragment)| fragment.clone())?;
+    let chunk_id = chunk.id;
+    let chunk_cells_before = chunk.cell_count();
+
+    // Everything but the chunk goes away: the case is about this object, and
+    // leaving the rest in would make the measurement depend on debris. The wall
+    // goes too — it was scaffolding for producing the chunk, and counting its
+    // cracks here would make the checksum about the wrong thing.
+    let others: Vec<FragmentId> = store
+        .iter()
+        .map(|(id, _)| id)
+        .filter(|id| *id != chunk_id)
+        .collect();
+    for id in others {
+        store.remove(id);
+        state.forget_space(DamageSpace::FragmentLocal(id));
+    }
+    state.forget_space(DamageSpace::StaticWorld);
+
+    // The pack's target for a fragment case is an **offset from the chunk's
+    // centre**, not an absolute local cell. A fragment's local coordinates depend
+    // on where it broke off, so they are not knowable when the pack is written —
+    // which is exactly why the committed target is `[0, 0, 0]`. Reading it as
+    // "dead centre" is the only reading under which the case measures anything;
+    // reading it as an absolute address makes the hit miss the object entirely.
+    let target = chunk_target(&chunk, [stage.target.x, stage.target.y, stage.target.z]);
+
+    let mut measured = Measured::default();
+    let mut children = 0u64;
+    let mut destroyed = false;
+    for _ in 0..stage.repetitions.max(1) {
+        let event = fracture_hit_toward_in(
+            next_event_id(&mut damage),
+            DamageSpace::FragmentLocal(chunk_id),
+            target,
+            stage.direction_milli,
+            DamageAmount(stage.energy),
+        );
+        let Some(current) = store.get(chunk_id).cloned() else {
+            break;
+        };
+        // The direction in the fragment's own space, handed over explicitly
+        // rather than read out of a world-space field that cannot hold it.
+        let Ok(impact) = FractureImpact::from_event(
+            &event,
+            Some(reference_impact_direction(stage.direction_milli)),
+        ) else {
+            break;
+        };
+        let scene = FractureScene::of_fragment(&current);
+        let load = match evaluate_fracture(&impact, scene, &policy, &state, fracture_limits())
+            .expect("the stimulus and the chunk share one fragment space")
+        {
+            FractureEvaluation::Loaded(load) => load,
+            _ => break,
+        };
+        measured.cells_touched += load.measurement.cells_visited;
+        measured.bonds_touched += load.measurement.bonds_considered;
+        measured.work_budget_used +=
+            load.measurement.cells_visited + load.measurement.bonds_considered;
+
+        let scene = FractureScene::of_fragment(&current);
+        let Ok(outcome) = state.apply(&load, scene, &policy, fracture_limits()) else {
+            break;
+        };
+        measured.failed_cells += outcome.failed.len() as u64;
+
+        // The same reconcile transaction a scalar hit uses, with cracks rather
+        // than occupancy deciding what "one object" means.
+        let split = |fragment: &Fragment| {
+            fragment_parts_through_cracks(fragment, &state, structural_limits())
+        };
+        match damage_fragment_store_with_parts(
+            &mut store,
+            &mut destruction,
+            chunk_id,
+            &outcome.failed,
+            split,
+            |_| true,
+        ) {
+            Ok(FragmentDamageResult::Destroyed { parent }) => {
+                state.forget_space(DamageSpace::FragmentLocal(parent));
+                destroyed = true;
+                break;
+            }
+            Ok(FragmentDamageResult::Refractured(refracture)) => {
+                children += refracture.fragments.len() as u64;
+                state.remap_fragment(refracture.parent, &refracture.fragments);
+                break;
+            }
+            Ok(FragmentDamageResult::Updated(_)) => {
+                state.forget_removed(
+                    DamageSpace::FragmentLocal(chunk_id),
+                    outcome.failed.iter().map(|target| target.cell()),
+                );
+            }
+            Ok(FragmentDamageResult::Unchanged) | Err(_) => {}
+        }
+    }
+
+    let digest = state.digest();
+    measured.broken_bonds = digest.broken_bonds as u64;
+    measured.fracture_cell_entries = digest.cell_entries as u64;
+    measured.fracture_bond_entries = digest.bond_entries as u64;
+    measured.fracture_checksum = digest.checksum;
+    measured.fragments_created = children;
+    measured.fragment_size_cells = {
+        let mut sizes: Vec<u64> = store.iter().map(|(_, f)| f.cell_count()).collect();
+        sizes.sort_unstable();
+        sizes
+    };
+    measured.damage_centroid_milli = damage_centroid_milli(&state);
+    measured.world_cells_remaining = world.occupied_count();
+
+    let chunk_cells_after = store
+        .iter()
+        .map(|(_, fragment)| fragment.cell_count())
+        .sum();
+
+    Some(ChunkRun {
+        measured,
+        chunk_cells_before,
+        chunk_cells_after,
+        children,
+        destroyed,
+    })
+}
+
 /// Execute one benchmark case and record what it measured.
 ///
 /// Returns `None` for a case a later section owns, so the committed results keep
@@ -403,13 +651,57 @@ pub fn run_destruction_case(case: DestructionBenchmarkCase) -> Option<Destructio
     let mut stages = precondition_stages(case);
     let measure_from = stages.len();
     stages.push(own);
+    // The detached-chunk case runs against an object rather than against the
+    // wall, so it has its own executor and its own note.
+    if case == DestructionBenchmarkCase::DetachedChunkHit {
+        let run = execute_on_canonical_chunk(own)?;
+        let mut result = fill(
+            case,
+            &pack.fixture.checksum_fnv1a64,
+            &run.measured,
+            None,
+            None,
+        );
+        result.control_note = Some(format!(
+            "canonical chunk from the strong-centre stimulus: {} cells before, {} after, \
+             {} child fragment(s){}",
+            run.chunk_cells_before,
+            run.chunk_cells_after,
+            run.children,
+            if run.destroyed {
+                ", chunk destroyed outright"
+            } else {
+                ""
+            }
+        ));
+        return Some(result);
+    }
+
     let measured = execute_stages(&stages, measure_from);
 
     // Controls. Each case's acceptance names a comparison, and the comparison is
     // run rather than asserted from intuition.
     let (cumulative, directional, note) = controls(&spec, own, &measured);
+    let mut result = fill(
+        case,
+        &pack.fixture.checksum_fnv1a64,
+        &measured,
+        cumulative,
+        directional,
+    );
+    result.control_note = note;
+    Some(result)
+}
 
-    let mut result = DestructionCaseResult::unmeasured(case, pack.fixture.checksum_fnv1a64.clone());
+/// Turn measured counters into a committed result row.
+fn fill(
+    case: DestructionBenchmarkCase,
+    fixture_checksum: &str,
+    measured: &Measured,
+    cumulative: Option<bool>,
+    directional: Option<bool>,
+) -> DestructionCaseResult {
+    let mut result = DestructionCaseResult::unmeasured(case, fixture_checksum.to_string());
     result.cells_touched = Some(measured.cells_touched);
     result.bonds_touched = Some(measured.bonds_touched);
     result.persistent_fracture_sites =
@@ -430,8 +722,7 @@ pub fn run_destruction_case(case: DestructionBenchmarkCase) -> Option<Destructio
     result.damage_centroid_milli = Some(measured.damage_centroid_milli);
     result.cumulative_response_observed = cumulative;
     result.directional_response_observed = directional;
-    result.control_note = note;
-    Some(result)
+    result
 }
 
 /// How far apart, in milli-cells, two damage centroids are.
@@ -814,15 +1105,25 @@ mod tests {
 
     #[test]
     fn cases_a_later_section_owns_report_nothing_rather_than_zero() {
-        for case in [
-            DestructionBenchmarkCase::DetachedChunkHit,
-            DestructionBenchmarkCase::ChunkIntoWall,
-        ] {
-            assert!(run_destruction_case(case).is_none());
-        }
+        assert!(run_destruction_case(DestructionBenchmarkCase::ChunkIntoWall).is_none());
         let results = run_destruction_cases();
         let unmeasured = results.iter().filter(|r| !r.is_measured()).count();
-        assert_eq!(unmeasured, 2);
+        assert_eq!(unmeasured, 1, "only chunk_into_wall is still 0006.4's");
+    }
+
+    #[test]
+    fn a_detached_chunk_is_destructible_rather_than_indestructible_debris() {
+        let result = run_destruction_case(DestructionBenchmarkCase::DetachedChunkHit).unwrap();
+        assert!(
+            result.cells_touched.unwrap() > 0,
+            "the hit must land on the chunk: {:?}",
+            result.control_note
+        );
+        assert!(
+            result.failed_cells.unwrap() > 0,
+            "a chunk that cannot be broken is indestructible debris"
+        );
+        assert!(result.persistent_fracture_sites.unwrap() > 0);
     }
 
     /// The precondition is keyed on the case, so the pack's prose and this code

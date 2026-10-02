@@ -59,9 +59,9 @@ use crate::connectivity::{
     Classification, Component, ComponentSet, DeferReason, Residency, StructuralLimits,
     classify_from_roots,
 };
-use crate::fracture::{BondKey, BondSite, FractureOutcome, FractureState};
+use crate::fracture::{BondKey, BondSite, FractureOutcome, FractureScene, FractureState};
 use crate::jobs::{StructureFingerprint, StructureJobResult};
-use crate::{DamageSpace, DamageTarget};
+use crate::{DamageSpace, DamageTarget, Fragment};
 use engine_core::{CellPos, CellSource, FaceDir, MaterialId, RegionPos, SupportSource, VolumePos};
 use engine_world::World;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -586,6 +586,45 @@ pub fn cracked_structure_result(
         hit_byte_limit: false,
         components,
     }
+}
+
+/// A fragment's connected parts, with broken bonds counted as cuts: DROP 0006.3.
+///
+/// What [`Fragment::connected_parts`] answers for occupancy, answered for
+/// cracks. A chunk that cracked in half comes apart without a cell having to be
+/// deleted along the seam — exactly what 0006.1 did for the static world, in the
+/// space a fragment lives in.
+///
+/// Nothing in a fragment is anchored, so every component comes back detached and
+/// the classification carries no information; only the grouping does. Pass this
+/// to
+/// [`damage_fragment_store_with_parts`](crate::damage_fragment_store_with_parts)
+/// to use it, so the atomic reconcile transaction stays the single one.
+pub fn fragment_parts_through_cracks(
+    fragment: &Fragment,
+    state: &FractureState,
+    limits: StructuralLimits,
+) -> Vec<BTreeSet<CellPos>> {
+    let gate = CrackedBonds::new(state, DamageSpace::FragmentLocal(fragment.id));
+    let scene = FractureScene::of_fragment(fragment);
+    let set = classify_cracked_from_roots(
+        fragment,
+        scene.support(),
+        scene.residency(),
+        &gate,
+        fragment.occupied_cells(),
+        limits,
+    );
+    // A deferred component holds only part of itself, and acting on a partial
+    // group would split an object along a budget rather than along a crack.
+    if !set.is_settled() {
+        return vec![fragment.occupied_cells().collect()];
+    }
+    set.components
+        .into_iter()
+        .map(|component| component.cells)
+        .filter(|cells| !cells.is_empty())
+        .collect()
 }
 
 /// Fracture state that a detachment makes meaningless, as damage targets.

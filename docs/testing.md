@@ -22,6 +22,7 @@ A fast test loop is the point; keep it that way.
 | `crates/engine_destruction/tests/fracture.rs` | the destruction wall under one repeated impact: sparse fracture state, bond canonicalisation, determinism, and every conservative path |
 | `crates/engine_destruction/tests/fracture_connectivity.rs` | fracture-aware connectivity against the occupancy oracle on seven shapes, and crack-driven separation through the existing detach transaction |
 | `crates/engine_destruction/tests/fracture_ownership.rs` | region ownership of fracture state, evict/restore checksum equality, and the two hygiene paths |
+| `crates/engine_destruction/tests/fracture_fragment.rs` | fragment-local fracture: adoption on detach, re-destruction, crack-driven re-fracture and record remapping |
 | `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
 | `crates/engine_stress/tests/baseline.rs` | stress-scenario counters against the committed baseline |
 

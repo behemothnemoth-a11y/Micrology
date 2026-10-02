@@ -189,6 +189,36 @@ pub fn damage_fragment_store_if(
     failed: &[DamageTarget],
     admit: impl FnOnce(&[Fragment]) -> bool,
 ) -> Result<FragmentDamageResult, RefractureRefusal> {
+    damage_fragment_store_with_parts(
+        store,
+        sequence,
+        parent_id,
+        failed,
+        Fragment::connected_parts,
+        admit,
+    )
+}
+
+/// The same transaction, with the rule that decides what "one object" means
+/// supplied by the caller: DROP 0006.3.
+///
+/// Occupancy connectivity is the default and stays the oracle. A caller holding
+/// fracture state can pass
+/// [`fragment_parts_through_cracks`](crate::fragment_parts_through_cracks)
+/// instead, so a chunk that cracked in half comes apart without needing a cell
+/// deleted along the seam — exactly what 0006.1 did for the static world.
+///
+/// There is still only one reconcile transaction. Only the splitting rule is a
+/// parameter, because a second way to replace a fragment would be a second thing
+/// to keep atomic.
+pub fn damage_fragment_store_with_parts(
+    store: &mut FragmentStore,
+    sequence: &mut DestructionSequence,
+    parent_id: FragmentId,
+    failed: &[DamageTarget],
+    parts_of: impl FnOnce(&Fragment) -> Vec<std::collections::BTreeSet<engine_core::CellPos>>,
+    admit: impl FnOnce(&[Fragment]) -> bool,
+) -> Result<FragmentDamageResult, RefractureRefusal> {
     let Some(parent) = store.get(parent_id).cloned() else {
         return Err(RefractureRefusal::ParentMissing);
     };
@@ -196,11 +226,14 @@ pub fn damage_fragment_store_if(
         store.remove(parent_id);
         return Ok(FragmentDamageResult::Destroyed { parent: parent_id });
     };
-    if updated.geometry_revision() == parent.geometry_revision() {
+    let parts = parts_of(&updated);
+    // Geometry can be unchanged and the object still be in pieces, when the
+    // splitting rule is cracks rather than cells. Only "nothing failed and it is
+    // still one object" is Unchanged.
+    if updated.geometry_revision() == parent.geometry_revision() && parts.len() <= 1 {
         return Ok(FragmentDamageResult::Unchanged);
     }
 
-    let parts = updated.connected_parts();
     if parts.len() <= 1 {
         store.insert(updated.clone());
         return Ok(FragmentDamageResult::Updated(updated));

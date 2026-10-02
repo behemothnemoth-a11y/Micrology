@@ -162,24 +162,33 @@
     {
       "case": "detached_chunk_hit",
       "fixture_checksum_fnv1a64": "704df76eee29b211",
-      "cells_touched": null,
-      "bonds_touched": null,
-      "persistent_fracture_sites": null,
-      "persistent_fracture_bytes": null,
-      "failed_cells": null,
-      "fragments_created": null,
-      "fragment_size_cells": null,
-      "work_budget_used": null,
-      "deterministic_result_checksum": null,
+      "cells_touched": 60,
+      "bonds_touched": 102,
+      "persistent_fracture_sites": 8,
+      "persistent_fracture_bytes": 384,
+      "failed_cells": 54,
+      "fragments_created": 4,
+      "fragment_size_cells": [
+        1,
+        1,
+        2,
+        2
+      ],
+      "work_budget_used": 162,
+      "deterministic_result_checksum": "9680971654b3779f",
       "visual_evidence": null,
-      "cells_freed_by_cracks": null,
-      "components_freed_by_cracks": null,
-      "cells_detached_by_occupancy": null,
-      "broken_bonds": null,
-      "damage_centroid_milli": null,
+      "cells_freed_by_cracks": 0,
+      "components_freed_by_cracks": 0,
+      "cells_detached_by_occupancy": 0,
+      "broken_bonds": 0,
+      "damage_centroid_milli": [
+        18500,
+        10500,
+        15176
+      ],
       "cumulative_response_observed": null,
       "directional_response_observed": null,
-      "control_note": null
+      "control_note": "canonical chunk from the strong-centre stimulus: 60 cells before, 6 after, 4 child fragment(s)"
     },
     {
       "case": "chunk_into_wall",

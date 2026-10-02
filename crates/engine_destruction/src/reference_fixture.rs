@@ -143,7 +143,36 @@ pub fn fracture_hit_toward(
     direction_milli: [i32; 3],
     energy: DamageAmount,
 ) -> DamageEvent {
+    fracture_hit_toward_in(
+        id,
+        DamageSpace::StaticWorld,
+        target,
+        direction_milli,
+        energy,
+    )
+}
+
+/// The same stimulus in any coordinate space: DROP 0006.3.
+///
+/// For a fragment the event carries **no** source and **no** impulse, and that is
+/// deliberate rather than lazy. `source_world` and `impulse_world` are world-space
+/// by definition, a fragment's volume is not, and the engine stores fragment
+/// rotation opaquely on purpose — so writing a local coordinate into a world-space
+/// field would be a lie that happened to work until something rotated.
+///
+/// A caller supplies the direction in the fragment's own space through
+/// [`FractureImpact::from_event`](crate::FractureImpact::from_event), which is
+/// exactly the seam that API exists for. Use
+/// [`reference_impact_direction`] to get it.
+pub fn fracture_hit_toward_in(
+    id: DamageEventId,
+    space: DamageSpace,
+    target: CellPos,
+    direction_milli: [i32; 3],
+    energy: DamageAmount,
+) -> DamageEvent {
     let unit = unit_direction(direction_milli);
+    let fragment_local = !matches!(space, DamageSpace::StaticWorld);
     let centre = GlobalPos::new(
         f64::from(target.x) + 0.5 - unit[0] * REFERENCE_IMPACT_STANDOFF_CELLS,
         f64::from(target.y) + 0.5 - unit[1] * REFERENCE_IMPACT_STANDOFF_CELLS,
@@ -161,17 +190,31 @@ pub fn fracture_hit_toward(
     ];
     DamageEvent::new(
         id,
-        DamageSpace::StaticWorld,
-        Some(source),
+        space,
+        (!fragment_local).then_some(source),
         DamageVolume::Sphere {
             center: centre,
             radius: REFERENCE_IMPACT_RADIUS,
             falloff: DamageFalloff::Linear,
         },
         energy,
-        DamageImpulse::new(impulse).ok(),
+        (!fragment_local)
+            .then(|| DamageImpulse::new(impulse).ok())
+            .flatten(),
     )
     .expect("reference fracture stimulus is finite")
+}
+
+/// The impulse a stimulus in this direction carries, at canonical magnitude.
+///
+/// What a host passes as the target-space impulse for a fragment-local impact.
+pub fn reference_impact_direction(direction_milli: [i32; 3]) -> [f64; 3] {
+    let unit = unit_direction(direction_milli);
+    [
+        unit[0] * REFERENCE_IMPACT_IMPULSE_MAGNITUDE,
+        unit[1] * REFERENCE_IMPACT_IMPULSE_MAGNITUDE,
+        unit[2] * REFERENCE_IMPACT_IMPULSE_MAGNITUDE,
+    ]
 }
 
 /// Normalise an integer direction. Zero means "the canonical direction", so a
@@ -254,6 +297,29 @@ mod tests {
             (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
         };
         assert!((magnitude(&straight) - magnitude(&angled)).abs() < 1e-9);
+    }
+
+    /// A fragment-local stimulus must not claim a world-space source or impulse
+    /// it cannot honestly have.
+    #[test]
+    fn a_fragment_local_stimulus_carries_no_world_space_geometry() {
+        let id = DamageEventId::new(4, 0);
+        let fragment = crate::FragmentId::new(11, 0);
+        let event = fracture_hit_toward_in(
+            id,
+            DamageSpace::FragmentLocal(fragment),
+            CellPos::new(2, 2, 2),
+            [0, 0, -1000],
+            DamageAmount(2_500),
+        );
+        assert_eq!(event.space, DamageSpace::FragmentLocal(fragment));
+        assert!(event.source_world.is_none());
+        assert!(event.impulse_world.is_none());
+        // The direction a host hands to `FractureImpact::from_event` instead.
+        let direction = reference_impact_direction([0, 0, -1000]);
+        assert_eq!(direction, [0.0, 0.0, -REFERENCE_IMPACT_IMPULSE_MAGNITUDE]);
+        let impact = crate::FractureImpact::from_event(&event, Some(direction)).unwrap();
+        assert_eq!(impact.direction_milli(), [0, 0, -1000]);
     }
 
     /// A zero direction is a caller mistake, not a licence to build an impact

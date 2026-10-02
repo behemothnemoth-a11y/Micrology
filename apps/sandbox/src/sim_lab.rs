@@ -13,10 +13,12 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::time::{Fixed, Virtual};
 use engine_destruction::{
-    AllResident, BaselineFracturePolicy, CrackedBonds, DamageAmount, DamageSequence,
+    AllResident, BaselineFracturePolicy, CrackedBonds, DamageAmount, DamageSequence, DamageSpace,
     DestructionSequence, FractureEvaluation, FractureImpact, FractureLimits, FractureScene,
-    FractureSeparation, FractureState, StructuralLimits, cracked_structure_result, detach_if,
-    evaluate_fracture, fracture_hit_toward, fracture_state_leaving_with, separation_from_cracks,
+    FractureSeparation, FractureState, Fragment, FragmentDamageResult, StructuralLimits,
+    cracked_structure_result, damage_fragment_store_with_parts, detach_if, evaluate_fracture,
+    fracture_hit_toward, fracture_hit_toward_in, fracture_state_leaving_with,
+    fragment_parts_through_cracks, reference_impact_direction, separation_from_cracks,
     separation_roots, static_failure_batch,
 };
 use engine_stress::{
@@ -338,6 +340,7 @@ fn apply_benchmark_case(
     case: DestructionBenchmarkCase,
     lab: &mut SimulationLab,
     world: &mut WorldRes,
+    fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
 ) -> Result<String, String> {
     if !is_implemented(case) {
@@ -352,6 +355,9 @@ fn apply_benchmark_case(
     // wall.
     let stage = case_stimulus(case)
         .ok_or_else(|| format!("{} is not in the benchmark pack", case.name()))?;
+    if case == DestructionBenchmarkCase::DetachedChunkHit {
+        return hit_largest_chunk(case, stage, lab, fragments, destruction);
+    }
     let event = fracture_hit_toward(
         lab.fracture_sequence.next_root(),
         stage.target,
@@ -411,7 +417,7 @@ fn apply_benchmark_case(
         separation_roots(&outcome),
         StructuralLimits::default(),
     );
-    let detached = detach_separated(lab, world, destruction, &separation);
+    let detached = detach_separated(lab, world, fragments, destruction, &separation);
 
     lab.last_separation = Some(LabSeparation {
         case,
@@ -437,6 +443,152 @@ fn apply_benchmark_case(
     ))
 }
 
+/// Hit the largest live chunk with the same model the wall gets: DROP 0006.3.
+///
+/// The pack's target for a fragment case is an offset from the chunk's centre,
+/// because a fragment's local coordinates depend on where it broke off and are not
+/// knowable when the pack is written. Same reading as the headless runner, so
+/// stepping through the case and measuring it are the same hit.
+fn hit_largest_chunk(
+    case: DestructionBenchmarkCase,
+    stage: engine_stress::Stage,
+    lab: &mut SimulationLab,
+    fragments: &mut DynamicFragments,
+    destruction: &mut DestructionHost,
+) -> Result<String, String> {
+    let Some(chunk) = fragments
+        .iter()
+        .max_by_key(|(id, fragment)| (fragment.cell_count(), std::cmp::Reverse(*id)))
+        .map(|(_, fragment)| fragment.clone())
+    else {
+        return Err(format!(
+            "{} needs a detached chunk; break one loose first",
+            case.name()
+        ));
+    };
+    let parent = chunk.id;
+    let before = chunk.cell_count();
+    let target = chunk_centre_target(&chunk, stage.target);
+
+    let event = fracture_hit_toward_in(
+        lab.fracture_sequence.next_root(),
+        DamageSpace::FragmentLocal(parent),
+        target,
+        stage.direction_milli,
+        DamageAmount(stage.energy),
+    );
+    // A fragment-local event carries no world-space impulse, so the direction is
+    // handed over explicitly rather than read out of a field that cannot hold it.
+    let impact = FractureImpact::from_event(
+        &event,
+        Some(reference_impact_direction(stage.direction_milli)),
+    )
+    .map_err(|error| format!("fracture impact: {error:?}"))?;
+    let policy = lab.fracture_policy;
+    let scene = FractureScene::of_fragment(&chunk);
+    let load = match evaluate_fracture(
+        &impact,
+        scene,
+        &policy,
+        &lab.fracture_state,
+        fracture_limits(),
+    )
+    .map_err(|error| format!("fracture evaluation: {error:?}"))?
+    {
+        FractureEvaluation::Loaded(load) => load,
+        FractureEvaluation::Deferred { reason } => {
+            return Err(format!("fracture deferred: {reason:?}"));
+        }
+        FractureEvaluation::Indeterminate { .. } => {
+            return Err("fracture indeterminate inside a fragment".into());
+        }
+    };
+    let walked = load.measurement.cells_visited;
+
+    let scene = FractureScene::of_fragment(&chunk);
+    let outcome = lab
+        .fracture_state
+        .apply(&load, scene, &policy, fracture_limits())
+        .map_err(|error| format!("fracture commit refused: {error}"))?;
+    let failed = outcome.failed.len();
+
+    // The same reconcile transaction the scalar path uses, with cracks rather
+    // than occupancy deciding what one object means.
+    let state = &lab.fracture_state;
+    let split = |fragment: &Fragment| {
+        fragment_parts_through_cracks(fragment, state, StructuralLimits::default())
+    };
+    let result = damage_fragment_store_with_parts(
+        fragments.store_mut(),
+        &mut destruction.sequence,
+        parent,
+        &outcome.failed,
+        split,
+        |_| true,
+    );
+
+    let summary = match result {
+        Ok(FragmentDamageResult::Destroyed { parent }) => {
+            lab.fracture_state
+                .forget_space(DamageSpace::FragmentLocal(parent));
+            "destroyed outright".to_string()
+        }
+        Ok(FragmentDamageResult::Refractured(refracture)) => {
+            lab.fracture_state
+                .remap_fragment(refracture.parent, &refracture.fragments);
+            format!("broke into {} piece(s)", refracture.fragments.len())
+        }
+        Ok(FragmentDamageResult::Updated(updated)) => {
+            lab.fracture_state.forget_removed(
+                DamageSpace::FragmentLocal(parent),
+                outcome.failed.iter().map(|target| target.cell()),
+            );
+            format!("dented: {} cells left", updated.cell_count())
+        }
+        Ok(FragmentDamageResult::Unchanged) => "unchanged".to_string(),
+        Err(refusal) => format!("re-fracture refused: {refusal:?}"),
+    };
+
+    lab.last_separation = Some(LabSeparation {
+        case,
+        cells_freed_by_cracks: 0,
+        components_freed_by_cracks: 0,
+        cells_detached_by_occupancy: 0,
+        inconclusive_cross_checks: 0,
+        settled: true,
+        fragments_created: fragments.len() as u64,
+    });
+    let stats = lab.fracture_state.stats();
+    Ok(format!(
+        "{}: chunk {parent} of {before} cells — {} cracks opened, {failed} cells failed, \
+         {summary} | state {} cells / {} bonds / {} broken | walked {walked}",
+        case.name(),
+        outcome.broken.len(),
+        stats.cell_entries,
+        stats.bond_entries,
+        stats.broken_bonds,
+    ))
+}
+
+/// Where a fragment-space stimulus lands, given the pack's centre-relative offset.
+fn chunk_centre_target(chunk: &Fragment, offset: engine_core::CellPos) -> engine_core::CellPos {
+    let centre = engine_core::CellPos::new(
+        (chunk.bounds.min.x + chunk.bounds.max.x) / 2 + offset.x,
+        (chunk.bounds.min.y + chunk.bounds.max.y) / 2 + offset.y,
+        (chunk.bounds.min.z + chunk.bounds.max.z) / 2 + offset.z,
+    );
+    let distance = |cell: engine_core::CellPos| {
+        let dx = i64::from(cell.x - centre.x);
+        let dy = i64::from(cell.y - centre.y);
+        let dz = i64::from(cell.z - centre.z);
+        dx * dx + dy * dy + dz * dz
+    };
+    chunk
+        .occupied_cells()
+        .min_by_key(|cell| (distance(*cell), *cell))
+        .unwrap_or(centre)
+}
+
 /// Admit what the cracks freed, then forget the state that left with it.
 ///
 /// Admission goes through `detach_if` so the fragment budget still has the final
@@ -444,6 +596,7 @@ fn apply_benchmark_case(
 fn detach_separated(
     lab: &mut SimulationLab,
     world: &mut WorldRes,
+    fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
     separation: &FractureSeparation,
 ) -> u64 {
@@ -461,11 +614,19 @@ fn detach_separated(
     let Ok(outcome) = detach_if(&mut world.0, &mut destruction.sequence, &result, |_| true) else {
         return 0;
     };
+    // A plug's cracks are its cracks: they move into the fragment's own space, and
+    // the object itself becomes live so it can be hit again.
+    for fragment in &outcome.fragments {
+        lab.fracture_state.adopt_into_fragment(fragment);
+    }
     for component in &separation.separated {
         for leaving in fracture_state_leaving_with(&world.0, &component.cells) {
             lab.fracture_state
-                .forget_cell(engine_destruction::DamageSpace::StaticWorld, leaving.cell());
+                .forget_cell(DamageSpace::StaticWorld, leaving.cell());
         }
+    }
+    for fragment in outcome.fragments.iter().cloned() {
+        fragments.insert(fragment);
     }
     destruction.enqueue_edit(&outcome.edit);
     outcome.fragments.len() as u64
@@ -475,7 +636,7 @@ fn execute_next_replay_command(
     lab: &mut SimulationLab,
     virtual_time: &mut Time<Virtual>,
     world: &mut WorldRes,
-    fragments: &DynamicFragments,
+    fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
 ) -> Result<String, String> {
     let Some(replay) = lab.replay.as_ref() else {
@@ -527,7 +688,7 @@ fn execute_next_replay_command(
         }
         ReplayCommand::BenchmarkCase { case } => {
             if is_implemented(case) {
-                let result = apply_benchmark_case(case, lab, world, destruction)?;
+                let result = apply_benchmark_case(case, lab, world, fragments, destruction)?;
                 advance_replay_cursor(lab);
                 Ok(format!("replay {index}: {result}"))
             } else {
@@ -548,7 +709,7 @@ pub fn controls(
     mut lab: ResMut<SimulationLab>,
     mut virtual_time: ResMut<Time<Virtual>>,
     mut world: ResMut<WorldRes>,
-    fragments: Res<DynamicFragments>,
+    mut fragments: ResMut<DynamicFragments>,
     mut destruction: ResMut<DestructionHost>,
     mut status: ResMut<StatusLine>,
 ) {
@@ -610,7 +771,7 @@ pub fn controls(
             &mut lab,
             &mut virtual_time,
             &mut world,
-            &fragments,
+            &mut fragments,
             &mut destruction,
         ) {
             Ok(message) => message,

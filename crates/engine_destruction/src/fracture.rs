@@ -117,8 +117,8 @@
 //! in `engine_mechanics`, with nothing in this module changing.
 
 use crate::{
-    DamageAmount, DamageEvent, DamageSite, DamageSpace, DamageTarget, DamageVolume, FragmentId,
-    Residency,
+    DamageAmount, DamageEvent, DamageSite, DamageSpace, DamageTarget, DamageVolume, Fragment,
+    FragmentId, Residency,
 };
 use engine_core::{
     Axis, CellPos, CellSource, FaceDir, GlobalPos, MaterialId, RegionPos, Revision, SupportSource,
@@ -644,8 +644,31 @@ impl<'a> FractureScene<'a> {
         }
     }
 
+    /// A whole fragment, in its own local coordinates.
+    ///
+    /// Nothing in a fragment is anchored — a fragment has no foundation, which is
+    /// what it means to have come loose — and a fragment held in memory is
+    /// entirely resident, so there is no unknown space inside one.
+    pub fn of_fragment(fragment: &'a Fragment) -> Self {
+        static NO_SUPPORT: engine_core::NoSupport = engine_core::NoSupport;
+        static ALL_RESIDENT: crate::AllResident = crate::AllResident;
+        Self::fragment(fragment.id, fragment, &NO_SUPPORT, &ALL_RESIDENT)
+    }
+
     pub const fn space(&self) -> DamageSpace {
         self.space
+    }
+
+    pub const fn cells(&self) -> &'a dyn CellSource {
+        self.cells
+    }
+
+    pub const fn support(&self) -> &'a dyn SupportSource {
+        self.support
+    }
+
+    pub const fn residency(&self) -> &'a dyn Residency {
+        self.residency
     }
 
     fn target(&self, cell: CellPos, material: MaterialId) -> DamageTarget {
@@ -939,6 +962,16 @@ impl FracturePrune {
     pub const fn dropped_anything(&self) -> bool {
         self.cells_dropped > 0 || self.bonds_dropped > 0
     }
+}
+
+/// A fragment-local cell back in world space, or `None` if that would leave the
+/// representable address space.
+fn add_cell(local: CellPos, origin: CellPos) -> Option<CellPos> {
+    Some(CellPos::new(
+        local.x.checked_add(origin.x)?,
+        local.y.checked_add(origin.y)?,
+        local.z.checked_add(origin.z)?,
+    ))
 }
 
 /// Whether `region` owns this cell record.
@@ -1272,6 +1305,156 @@ impl FractureState {
             self.revision.bump();
         }
         prune
+    }
+
+    /// Move a detached component's records out of the static world and into the
+    /// fragment it became: DROP 0006.3.
+    ///
+    /// A plug's cracks are its cracks. Before this they were forgotten on
+    /// detachment, which threw away real damage and made every fresh fragment
+    /// pristine however hard it had been hit.
+    ///
+    /// Local coordinates are `world - source_origin`, so the records move without
+    /// their geometry changing shape. A bond with **one** cell in the fragment is
+    /// not moved and not kept: that face is where the separation happened, so the
+    /// bond no longer exists on either side.
+    ///
+    /// Returns how many records moved. Call it after the detach transaction has
+    /// been accepted; running it on a refused one would take damage off a wall
+    /// that is still standing.
+    pub fn adopt_into_fragment(&mut self, fragment: &Fragment) -> usize {
+        let origin = fragment.source_origin;
+        let local_cells: BTreeSet<CellPos> = fragment.occupied_cells().collect();
+        let space = DamageSpace::FragmentLocal(fragment.id);
+        let mut moved = 0usize;
+        let mut world_cells = Vec::with_capacity(local_cells.len());
+
+        for local in &local_cells {
+            let Some(world) = add_cell(*local, origin) else {
+                continue;
+            };
+            world_cells.push(world);
+
+            if let Some(mut record) = self.cells.remove(&DamageSite {
+                space: DamageSpace::StaticWorld,
+                cell: world,
+            }) {
+                record.site = DamageSite {
+                    space,
+                    cell: *local,
+                };
+                self.cells.insert(record.site, record);
+                moved += 1;
+            }
+
+            // Only the three positive axes: a bond is named once, by its lower
+            // cell, so walking all six would visit each face twice.
+            for axis in Axis::ALL {
+                if !local_cells.contains(&local.step_axis(axis, 1)) {
+                    continue;
+                }
+                let Some(world_bond) = BondKey::along(world, axis) else {
+                    continue;
+                };
+                let Some(local_bond) = BondKey::along(*local, axis) else {
+                    continue;
+                };
+                if let Some(mut record) = self.bonds.remove(&BondSite {
+                    space: DamageSpace::StaticWorld,
+                    bond: world_bond,
+                }) {
+                    record.site = BondSite {
+                        space,
+                        bond: local_bond,
+                    };
+                    self.bonds.insert(record.site, record);
+                    moved += 1;
+                }
+            }
+        }
+
+        // Whatever is left at those world cells described faces the fragment
+        // broke away from, so it describes nothing now.
+        for world in world_cells {
+            self.forget_cell(DamageSpace::StaticWorld, world);
+        }
+        if moved > 0 {
+            self.revision.bump();
+        }
+        moved
+    }
+
+    /// Reassign a parent fragment's records to the children that replaced it.
+    ///
+    /// Children keep the parent's local frame — that is what makes re-fracture
+    /// valid after arbitrary backend rotation — so coordinates do not move and
+    /// only the space tag changes.
+    ///
+    /// A cell no child holds is dropped. A bond whose two cells ended up in
+    /// **different** children is dropped too: that is the seam the object came
+    /// apart along, and a bond across it is not a crack any more, it is a gap.
+    ///
+    /// Returns how many records survived the split.
+    pub fn remap_fragment(&mut self, parent: FragmentId, children: &[Fragment]) -> usize {
+        let parent_space = DamageSpace::FragmentLocal(parent);
+        let owners: Vec<(FragmentId, BTreeSet<CellPos>)> = children
+            .iter()
+            .map(|child| (child.id, child.occupied_cells().collect()))
+            .collect();
+        let owner_of = |cell: CellPos| {
+            owners
+                .iter()
+                .find(|(_, cells)| cells.contains(&cell))
+                .map(|(id, _)| *id)
+        };
+
+        let cell_sites: Vec<DamageSite> = self
+            .cells
+            .keys()
+            .copied()
+            .filter(|site| site.space == parent_space)
+            .collect();
+        let bond_sites: Vec<BondSite> = self
+            .bonds
+            .keys()
+            .copied()
+            .filter(|site| site.space == parent_space)
+            .collect();
+        let cells: Vec<CellFracture> = cell_sites
+            .into_iter()
+            .filter_map(|site| self.cells.remove(&site))
+            .collect();
+        let bonds: Vec<BondFracture> = bond_sites
+            .into_iter()
+            .filter_map(|site| self.bonds.remove(&site))
+            .collect();
+        let had = cells.len() + bonds.len();
+
+        let mut kept = 0usize;
+        for mut record in cells {
+            let Some(child) = owner_of(record.site.cell) else {
+                continue;
+            };
+            record.site.space = DamageSpace::FragmentLocal(child);
+            self.cells.insert(record.site, record);
+            kept += 1;
+        }
+        for mut record in bonds {
+            let [lower, upper] = record.site.bond.cells();
+            let Some(child) = owner_of(lower) else {
+                continue;
+            };
+            if owner_of(upper) != Some(child) {
+                continue;
+            }
+            record.site.space = DamageSpace::FragmentLocal(child);
+            self.bonds.insert(record.site, record);
+            kept += 1;
+        }
+        if had > 0 {
+            self.revision.bump();
+        }
+        kept
     }
 
     /// Forget everything in one coordinate space, as when a fragment dies.

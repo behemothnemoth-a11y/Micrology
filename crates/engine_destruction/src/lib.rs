@@ -88,14 +88,16 @@ pub use fracture::{
 pub use fracture_connectivity::{
     BondGate, CrackedBonds, FractureSeparation, IntactBonds, SeparatedComponent, SeparationCause,
     classify_cracked_component, classify_cracked_from_roots, cracked_structure_result,
-    fracture_state_leaving_with, separation_from_cracks, separation_roots,
+    fracture_state_leaving_with, fragment_parts_through_cracks, separation_from_cracks,
+    separation_roots,
 };
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use impact::{
     FragmentDamageResult, FragmentImpact, FragmentImpulse, RefractureOutcome, RefractureRefusal,
     SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
     UniformImpactDamagePolicy, apply_fragment_impulse, couple_damage_to_detachment,
-    damage_fragment_store_if, reference_detachment_impulse, refracture_store_if,
+    damage_fragment_store_if, damage_fragment_store_with_parts, reference_detachment_impulse,
+    refracture_store_if,
 };
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
@@ -115,8 +117,9 @@ pub use reference_fixture::{
     REFERENCE_IMPACT_STANDOFF_CELLS, REFERENCE_LOCAL_FOOTING_MAX, REFERENCE_LOCAL_FOOTING_MIN,
     REFERENCE_LOCAL_IMPACT_CENTRE, REFERENCE_LOCAL_IMPACT_SOURCE, REFERENCE_LOCAL_WALL_MAX,
     REFERENCE_LOCAL_WALL_MIN, REFERENCE_WALL_MAX, REFERENCE_WALL_MIN, fracture_hit_toward,
-    reference_fracture_hit, reference_fracture_hit_at, reference_fracture_materials,
-    reference_fracture_world, reference_fracture_world_at, translate_cell, translate_global,
+    fracture_hit_toward_in, reference_fracture_hit, reference_fracture_hit_at,
+    reference_fracture_materials, reference_fracture_world, reference_fracture_world_at,
+    reference_impact_direction, translate_cell, translate_global,
 };
 pub use residency::{
     FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,

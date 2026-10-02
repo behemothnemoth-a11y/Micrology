@@ -394,6 +394,15 @@ impl DynamicFragments {
         &self.store
     }
 
+    /// The store itself, for a transaction that owns the whole reconcile.
+    ///
+    /// Handed out because `damage_fragment_store_with_parts` is the one atomic
+    /// path that replaces a parent with children, and reimplementing it here
+    /// would be a second thing to keep atomic.
+    pub fn store_mut(&mut self) -> &mut FragmentStore {
+        &mut self.store
+    }
+
     pub fn replace_store(&mut self, store: FragmentStore) {
         self.store = store;
     }
