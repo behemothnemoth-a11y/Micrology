@@ -204,7 +204,11 @@ mod tests {
     #[test]
     fn closed_unanchored_component_never_claims_support() {
         let mut world = World::new();
-        occupied(&mut world, CellPos::new(10, 10, 10), CellPos::new(20, 10, 10));
+        occupied(
+            &mut world,
+            CellPos::new(10, 10, 10),
+            CellPos::new(20, 10, 10),
+        );
 
         let result = prove_all_roots_supported(
             &world,
@@ -221,11 +225,7 @@ mod tests {
     #[test]
     fn unknown_space_is_not_treated_as_empty_or_supported() {
         let mut world = World::new();
-        occupied(
-            &mut world,
-            CellPos::new(120, 0, 0),
-            CellPos::new(135, 0, 0),
-        );
+        occupied(&mut world, CellPos::new(120, 0, 0), CellPos::new(135, 0, 0));
         world.set_anchor(CellPos::new(135, 0, 0), true);
         let loaded = |region: RegionPos| region == RegionPos::new(0, 0, 0);
         let residency = ResidentRegions { is_loaded: &loaded };

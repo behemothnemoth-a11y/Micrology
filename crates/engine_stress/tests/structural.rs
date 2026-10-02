@@ -10,9 +10,9 @@ use engine_destruction::{
     AllResident, StructuralLimits, SupportWitnessLimits, classify_from_roots,
     prove_all_roots_supported,
 };
-use engine_world::WorldEditBatch;
 use engine_stress::structural::{StructuralBaseline, StructuralCounters};
 use engine_stress::{STRUCTURAL_BASELINE_PATH, StructuralScenario, all_structural_scenarios};
+use engine_world::WorldEditBatch;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -461,10 +461,12 @@ fn the_control_scenario_leaves_its_anchors_alone() {
     );
 }
 
-
 fn damaged_structure(
     scenario: StructuralScenario,
-) -> (engine_stress::structural::StructuralWorld, engine_world::EditOutcome) {
+) -> (
+    engine_stress::structural::StructuralWorld,
+    engine_world::EditOutcome,
+) {
     let mut built = scenario.build();
     let mut batch = WorldEditBatch::new();
     for cell in scenario.damage() {
