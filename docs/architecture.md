@@ -3,19 +3,30 @@
 ## The shape of it
 
 ```text
-engine_core ──┬── engine_volume ──── engine_world ──┐
-              │                                     ├── engine_io
-              └── engine_geometry ──────────────────┤
-                                                    └── apps/sandbox (Bevy)
+engine_core          ← serde only
+engine_volume        ← engine_core
+engine_geometry      ← engine_core
+engine_world         ← engine_core, engine_volume
+engine_destruction   ← engine_core, engine_geometry, engine_volume, engine_world
+engine_stream        ← engine_core, engine_geometry, engine_volume, engine_world
+engine_io            ← engine_core, engine_volume, engine_world, engine_destruction
+engine_mechanics     ← engine_core, engine_destruction
+engine_stress        ← engine_core, engine_geometry, engine_volume, engine_world,
+                       engine_stream, engine_destruction, engine_io
+apps/sandbox         ← engine_core, engine_geometry, engine_volume, engine_world,
+                       engine_stream, engine_destruction, engine_io, Bevy, Avian
 ```
 
-Five small library crates and one app. The dependency arrows only ever point left,
-and two of them are load-bearing:
+Nine library crates and one app, listed in topological order: every crate's
+dependencies appear above it, so the dependency arrows only ever point left and
+never back down the list. Two facts about that graph are load-bearing:
 
 **`engine_geometry` depends only on `engine_core`.** It never learns how cells are
 stored. It asks a `CellSource` "what material is at this global cell address?" and
 that is the entire interface. Swapping the dense volume for an octree, or meshing
 a procedurally generated region that has no storage at all, changes nothing here.
+(`engine_volume` and `engine_world` appear in its `[dev-dependencies]`, as fixtures
+the tests build worlds out of; the library itself never sees them.)
 
 **Bevy appears only in `apps/sandbox`,** and almost entirely in one file
 (`src/render.rs`). Engine data, editing and geometry are plain Rust that compiles
