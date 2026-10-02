@@ -12,11 +12,15 @@ use crate::render::{RenderOriginRes, to_bevy_mesh};
 use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use engine_core::CellPos;
-use engine_destruction::{FragmentFootprint, FragmentId, FragmentPressure};
-use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
+use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
+use engine_destruction::{
+    FragmentFootprint, FragmentGeometryFingerprint, FragmentId, FragmentMeshJobInput,
+    FragmentMeshJobResult, FragmentPressure,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME: usize = 4;
+const MAX_ACTIVE_FRAGMENT_MESH_JOBS: usize = 4;
 /// Moving fragment meshes are useful much farther than active collision, but
 /// still should not exist globally just because their persisted payload is loaded.
 const FRAGMENT_RENDER_RADIUS_CELLS: f64 = 256.0;
@@ -25,6 +29,7 @@ const FRAGMENT_RENDER_RADIUS_CELLS: f64 = 256.0;
 struct FragmentRenderEntry {
     entity: Entity,
     mesh_bytes: u64,
+    fingerprint: FragmentGeometryFingerprint,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -32,7 +37,10 @@ pub struct FragmentRenderStats {
     pub entities: usize,
     pub mesh_bytes: u64,
     pub pending_uploads: usize,
+    pub active_jobs: usize,
+    pub ready_results: usize,
     pub uploaded_this_frame: usize,
+    pub stale_results: u64,
     pub withheld_current: u64,
     pub withheld_total: u64,
 }
@@ -44,7 +52,9 @@ pub struct FragmentRenderStats {
 #[derive(Resource, Default)]
 pub struct FragmentEntities {
     entries: HashMap<FragmentId, FragmentRenderEntry>,
-    blocked: std::collections::BTreeSet<FragmentId>,
+    jobs: BTreeMap<FragmentId, (FragmentGeometryFingerprint, Task<FragmentMeshJobResult>)>,
+    ready: BTreeMap<FragmentId, FragmentMeshJobResult>,
+    blocked: BTreeSet<FragmentId>,
     last_remaining_bytes: Option<u64>,
     material: Option<Handle<StandardMaterial>>,
     stats: FragmentRenderStats,
@@ -67,10 +77,14 @@ impl FragmentEntities {
         for (_, entry) in self.entries.drain() {
             commands.entity(entry.entity).despawn();
         }
+        self.jobs.clear();
+        self.ready.clear();
         self.blocked.clear();
         self.last_remaining_bytes = None;
         self.stats.withheld_current = 0;
         self.stats.pending_uploads = 0;
+        self.stats.active_jobs = 0;
+        self.stats.ready_results = 0;
         self.refresh_stats();
     }
 
@@ -130,25 +144,67 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
     renders.stats.withheld_current = 0;
 
     let camera = camera.map(|camera| camera.global);
-    let wanted: std::collections::BTreeSet<_> = fragments
+    let wanted: BTreeSet<_> = fragments
         .iter()
         .filter(|(_, fragment)| {
             camera.is_some_and(|camera| fragment_in_render_range(fragment, camera))
         })
         .map(|(id, _)| id)
         .collect();
-    let gone: Vec<_> = renders
+
+    // Render entities and worker jobs are both geometry-derived. Motion alone
+    // keeps them current; a local-cell revision change invalidates them.
+    let remove_entries: Vec<_> = renders
         .entries
-        .keys()
-        .filter(|id| !wanted.contains(id))
-        .copied()
+        .iter()
+        .filter_map(|(id, entry)| {
+            let current = fragments.get(*id);
+            let stale = current.is_some_and(|fragment| !entry.fingerprint.matches(fragment));
+            (!wanted.contains(id) || current.is_none() || stale).then_some(*id)
+        })
         .collect();
-    for id in gone {
+    for id in remove_entries {
         if let Some(entry) = renders.entries.remove(&id) {
             commands.entity(entry.entity).despawn();
         }
     }
+
+    renders.jobs.retain(|id, (fingerprint, _)| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| fingerprint.matches(fragment))
+    });
+    renders.ready.retain(|id, result| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| result.is_current(fragment))
+    });
     renders.blocked.retain(|id| wanted.contains(id));
+
+    // Worker completion order never determines application order. Completed
+    // results land in a BTreeMap and are applied by FragmentId.
+    let mut completed = Vec::new();
+    renders
+        .jobs
+        .retain(|id, (_, task)| match check_ready(task) {
+            Some(result) => {
+                completed.push((*id, result));
+                false
+            }
+            None => true,
+        });
+    for (id, result) in completed {
+        if fragments
+            .get(id)
+            .is_some_and(|fragment| wanted.contains(&id) && result.is_current(fragment))
+        {
+            renders.ready.insert(id, result);
+        } else {
+            renders.stats.stale_results = renders.stats.stale_results.saturating_add(1);
+        }
+    }
 
     renders.refresh_stats();
     let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
@@ -163,68 +219,113 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
         renders.blocked.clear();
     }
 
-    let mut uploads = 0usize;
+    // Dispatch bounded CPU compilation work. Inputs own their fragment snapshot
+    // and material registry, so workers never read live ECS/world state.
+    let pool = AsyncComputeTaskPool::get();
     for (id, fragment) in fragments.iter() {
-        if !wanted.contains(&id) {
+        if !wanted.contains(&id)
+            || renders.entries.contains_key(&id)
+            || renders.jobs.contains_key(&id)
+            || renders.ready.contains_key(&id)
+            || renders.blocked.contains(&id)
+        {
             continue;
         }
-        let transform = fragment_transform(fragment, &origin.0);
-        if let Some(entry) = renders.entries.get(&id) {
-            if let Ok(mut existing) = transforms.get_mut(entry.entity) {
-                *existing = transform;
-            }
+        if renders.jobs.len() >= MAX_ACTIVE_FRAGMENT_MESH_JOBS {
+            break;
+        }
+        if account.footprint.tracked_bytes() >= budget.0.hard_bytes {
+            renders.blocked.insert(id);
+            renders.stats.withheld_total = renders.stats.withheld_total.saturating_add(1);
             continue;
         }
 
-        if renders.blocked.contains(&id) {
-            renders.stats.withheld_current += 1;
-            continue;
-        }
+        let input = FragmentMeshJobInput::new(fragment, world.materials());
+        let fingerprint = input.fingerprint();
+        renders
+            .jobs
+            .insert(id, (fingerprint, pool.spawn(async move { input.run() })));
+    }
+
+    // GPU asset creation remains on the host/main thread, but expensive voxel
+    // extraction and CPU mesh assembly have already happened on workers.
+    let mut uploads = 0usize;
+    let ready_ids: Vec<_> = renders.ready.keys().copied().collect();
+    for id in ready_ids {
         if uploads >= MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME {
-            renders.stats.pending_uploads += 1;
+            break;
+        }
+        let Some(fragment) = fragments.get(id) else {
+            renders.ready.remove(&id);
+            continue;
+        };
+        if !wanted.contains(&id) {
+            renders.ready.remove(&id);
             continue;
         }
 
-        let mut quads = QuadSet::default();
-        for volume in fragment.volume_positions() {
-            quads.extend(GreedyCompiler.compile(fragment, volume));
+        let result = renders.ready.remove(&id).expect("ready id came from map");
+        if !result.is_current(fragment) {
+            renders.stats.stale_results = renders.stats.stale_results.saturating_add(1);
+            continue;
         }
-        let mesh = MeshData::from_quads(&quads, world.materials(), CellPos::ZERO);
-        if mesh.is_empty() {
+        if result.mesh.is_empty() {
             continue;
         }
 
-        let mesh_bytes = mesh.cpu_bytes() as u64;
+        let mesh_bytes = result.mesh.cpu_bytes() as u64;
         let next = FragmentFootprint {
             mesh_bytes,
             ..FragmentFootprint::default()
         };
         if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
             renders.blocked.insert(id);
-            renders.stats.withheld_current += 1;
-            renders.stats.withheld_total += 1;
+            renders.stats.withheld_total = renders.stats.withheld_total.saturating_add(1);
             continue;
         }
 
-        let handle = meshes.add(to_bevy_mesh(&mesh));
+        let handle = meshes.add(to_bevy_mesh(&result.mesh));
         let material = renders.shared_material(&mut materials);
         let entity = commands
             .spawn((
                 Mesh3d(handle),
                 MeshMaterial3d(material),
-                transform,
+                fragment_transform(fragment, &origin.0),
                 FragmentMesh,
             ))
             .id();
-        renders
-            .entries
-            .insert(id, FragmentRenderEntry { entity, mesh_bytes });
+        renders.entries.insert(
+            id,
+            FragmentRenderEntry {
+                entity,
+                mesh_bytes,
+                fingerprint: result.fingerprint,
+            },
+        );
         uploads += 1;
         renders.stats.uploaded_this_frame += 1;
         account.footprint += next;
     }
 
+    // Existing entities only need their camera-relative transform refreshed.
+    for (id, entry) in &renders.entries {
+        let Some(fragment) = fragments.get(*id) else {
+            continue;
+        };
+        if let Ok(mut existing) = transforms.get_mut(entry.entity) {
+            *existing = fragment_transform(fragment, &origin.0);
+        }
+    }
+
     renders.refresh_stats();
+    renders.stats.active_jobs = renders.jobs.len();
+    renders.stats.ready_results = renders.ready.len();
+    renders.stats.pending_uploads = renders.jobs.len().saturating_add(renders.ready.len());
+    renders.stats.withheld_current = renders
+        .blocked
+        .iter()
+        .filter(|id| wanted.contains(id))
+        .count() as u64;
     renders.last_remaining_bytes = Some(
         budget
             .0
