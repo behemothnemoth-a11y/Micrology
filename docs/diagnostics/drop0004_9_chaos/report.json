@@ -1,0 +1,78 @@
+{
+  "generated_by": "engine_stress::chaos4",
+  "drop_section": "0004.9",
+  "cases": [
+    {
+      "name": "population_beyond_residency",
+      "ok": true,
+      "detail": "persisted=512 discoverable, busiest region holds 352 (>cap), emitted exactly 4 load(s) at cap 4, all wanted=true, no spurious actions=true"
+    },
+    {
+      "name": "travel_away_and_back",
+      "ok": true,
+      "detail": "dirty saved before eviction=true, clean dropped=true, clean never saved=true, still discoverable after eviction=true, unwanted not reloaded=true"
+    },
+    {
+      "name": "dirty_eviction_during_motion",
+      "ok": true,
+      "detail": "save issued=true, no drop while dirty=true, stale write left it dirty=true, outcome=Some(StillDirty)"
+    },
+    {
+      "name": "incremental_persistence_crash_windows",
+      "ok": true,
+      "detail": "index-first delete=true, index dropped=true, payload removed=true, orphan not resurrected=true, pruned=1, survivor intact=true"
+    },
+    {
+      "name": "structural_demand_at_boundary",
+      "ok": true,
+      "detail": "disposition=Inconclusive, required_regions=1, detach=Err(Inconclusive), world unchanged=true (unknown is not empty)"
+    },
+    {
+      "name": "many_simultaneous_damage_events",
+      "ok": true,
+      "detail": "256 events in one transaction, failed=256, canonical order=true, partial entries left=0, sub-threshold over-budget refused atomically=true, in-budget sub-threshold accumulated 256 entries without failing=true"
+    },
+    {
+      "name": "repeated_subthreshold_damage",
+      "ok": true,
+      "detail": "3+3+3 stayed intact, crossed on pulse 4 with 1 failure(s), post-failure pulse re-accumulated without re-failing=true"
+    },
+    {
+      "name": "radial_event_at_integer_limits",
+      "ok": true,
+      "detail": "1e18-radius bounds did not wrap=true, truncated evaluation not actionable=true (considered 64 cells), i32::MAX-centred sphere clipped sanely=true"
+    },
+    {
+      "name": "refracture_storm",
+      "ok": true,
+      "detail": "63 re-fractures, 0 destroyed, 64 live fragments, unique ids=true, no empty fragments=true, cells 66+63=129 conserved=true, sequence advanced to 1064"
+    },
+    {
+      "name": "secondary_recursion_exhaustion",
+      "ok": true,
+      "detail": "pending capped at 8 with 56 refusals, generation ceiling held=true, per-step drain 2+2 leaving 4 =true, order preserved=true, recursion chain stopped after 3 generations"
+    },
+    {
+      "name": "stale_derived_results",
+      "ok": true,
+      "detail": "motion kept mesh current=true and collider current=true, geometry damage staled mesh=true and collider=true, re-fracture child staled parent mesh=true"
+    },
+    {
+      "name": "deterministic_replay",
+      "ok": true,
+      "detail": "24 identical runs: occupied=72, fragments=[(FragmentId { sequence: 5, index: 0 }, 116)], sequence=6, failed_cells=26, impulses coupled=1"
+    },
+    {
+      "name": "fantasy_mode_structural_disabled",
+      "ok": true,
+      "detail": "unanchored floating island of 320 cells round-tripped=true, damage worked without structural participation=true (31 cells failed), opt-in analysis would have detached 1 component(s)=true, island still exactly where authored with structural system never applied=true"
+    },
+    {
+      "name": "isolation_and_integrity",
+      "ok": true,
+      "detail": "baseline=3 files, copy matched baseline=true, abused copy (1 fragment deletions + full world wipe) diverged=true, live target byte-identical afterwards=true, sandbox torn down=true"
+    }
+  ],
+  "integrity_verified": true,
+  "all_ok": true
+}

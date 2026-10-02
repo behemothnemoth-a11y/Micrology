@@ -37,25 +37,56 @@
 
 pub mod collision;
 pub mod connectivity;
+pub mod damage;
+pub mod derived_jobs;
 pub mod detach;
 pub mod fragment;
+pub mod impact;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
+pub mod progressive_damage;
+pub mod residency;
 pub mod spatial;
+pub mod support_witness;
 
 pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
     GreedyCollisionCompiler,
 };
 
+pub use damage::{
+    DamageAmount, DamageEvaluation, DamageEvaluationError, DamageEvaluationLimits, DamageEvent,
+    DamageEventError, DamageEventId, DamageFalloff, DamageImpulse, DamagePolicy, DamageSequence,
+    DamageSource, DamageSpace, DamageTarget, DamageVolume, DamageWork, UniformDamagePolicy,
+    evaluate_damage_event,
+};
+pub use derived_jobs::{
+    FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,
+    FragmentMeshJobInput, FragmentMeshJobResult,
+};
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
+pub use impact::{
+    FragmentDamageResult, FragmentImpact, FragmentImpulse, RefractureOutcome, RefractureRefusal,
+    SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
+    UniformImpactDamagePolicy, apply_fragment_impulse, couple_damage_to_detachment,
+    damage_fragment_store_if, reference_detachment_impulse, refracture_store_if,
+};
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
+pub use progressive_damage::{
+    AccumulatedDamageRecord, DamageFailurePolicy, DamageSite, ProgressiveDamageLimits,
+    ProgressiveDamageOutcome, ProgressiveDamageRefusal, ProgressiveDamageStore,
+    UniformFailurePolicy, fragment_after_failures, static_failure_batch,
+};
+pub use residency::{
+    FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,
+    FragmentResidencyConfig, FragmentResidencyCounts, FragmentSaveOutcome, FragmentSaveTicket,
+};
 pub use spatial::{FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment};
 
 pub use jobs::{
@@ -67,4 +98,8 @@ pub use connectivity::{
     AllResident, Classification, Component, ComponentSet, DeferReason, Residency, ResidentRegions,
     StructuralCounts, StructuralLimits, classify_component, classify_from_roots,
     split_into_components, touched_regions,
+};
+
+pub use support_witness::{
+    SupportWitness, SupportWitnessLimits, SupportWitnessStats, prove_all_roots_supported,
 };

@@ -23,10 +23,12 @@ use avian3d::prelude::{
     RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::prelude::*;
+use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
 use engine_destruction::{
     CollisionCompiler, CollisionShape, Fragment, FragmentAccount, FragmentBudget,
-    FragmentDerivedFootprint, FragmentFootprint, FragmentId, FragmentPhysicsDescriptor,
+    FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentDerivedFootprint,
+    FragmentFootprint, FragmentGeometryFingerprint, FragmentId, FragmentPhysicsDescriptor,
     FragmentPhysicsState, FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
     Rotation as FragmentRotation,
 };
@@ -50,6 +52,7 @@ const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
 /// A fragment storm can otherwise turn one destruction result into hundreds of
 /// synchronous Avian compound-collider builds on the main thread.
 const MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME: usize = 8;
+const MAX_ACTIVE_FRAGMENT_COLLISION_JOBS: usize = 8;
 
 /// Avian stays a host dependency. Returning the plugin group from here keeps
 /// even the application root from needing to know its types.
@@ -367,10 +370,6 @@ impl DynamicFragments {
         self.store.insert(fragment)
     }
 
-    #[expect(
-        dead_code,
-        reason = "consumed by fragment lifecycle/streaming in 0003.13"
-    )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.store.remove(id)
     }
@@ -389,6 +388,10 @@ impl DynamicFragments {
 
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
         self.store.iter()
+    }
+
+    pub fn store_ref(&self) -> &FragmentStore {
+        &self.store
     }
 
     pub fn replace_store(&mut self, store: FragmentStore) {
@@ -426,6 +429,7 @@ struct FragmentBodyEntry {
     entity: Entity,
     collision_boxes: u64,
     collision_bytes: u64,
+    fingerprint: FragmentGeometryFingerprint,
 }
 
 /// Backend entities corresponding to engine-owned fragments.
@@ -459,11 +463,20 @@ impl FragmentCapacity {
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
+    jobs: BTreeMap<
+        FragmentId,
+        (
+            FragmentGeometryFingerprint,
+            Task<FragmentCollisionJobResult>,
+        ),
+    >,
+    ready: BTreeMap<FragmentId, FragmentCollisionJobResult>,
     blocked: BTreeSet<FragmentId>,
     last_capacity: Option<FragmentCapacity>,
     withheld_current: u64,
     withheld_total: u64,
     pending_spawn_current: u64,
+    stale_results: u64,
 }
 
 impl FragmentBodies {
@@ -487,6 +500,8 @@ impl FragmentBodies {
         for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
         }
+        self.jobs.clear();
+        self.ready.clear();
         self.blocked.clear();
         self.last_capacity = None;
         self.withheld_current = 0;
@@ -566,6 +581,12 @@ fn env_u64(name: &str) -> Option<u64> {
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct DynamicFragmentBody(FragmentId);
 
+impl DynamicFragmentBody {
+    pub(crate) const fn id(self) -> FragmentId {
+        self.0
+    }
+}
+
 type FragmentBodyQuery<'w, 's> = Query<
     'w,
     's,
@@ -630,18 +651,55 @@ pub fn sync_fragment_bodies(
         .map(|(id, _)| id)
         .collect();
 
-    let gone: Vec<_> = bodies
+    // A body may move indefinitely without changing its local collider. Only a
+    // geometry fingerprint change (or leaving physics residency) invalidates it.
+    let remove_bodies: Vec<_> = bodies
         .entries
-        .keys()
-        .filter(|id| !wanted.contains(id))
-        .copied()
+        .iter()
+        .filter_map(|(id, entry)| {
+            let current = fragments.get(*id);
+            let stale = current.is_some_and(|fragment| !entry.fingerprint.matches(fragment));
+            (!wanted.contains(id) || current.is_none() || stale).then_some(*id)
+        })
         .collect();
-    for id in gone {
+    for id in remove_bodies {
         if let Some(entry) = bodies.entries.remove(&id) {
             commands.entity(entry.entity).despawn();
         }
     }
+
+    bodies.jobs.retain(|id, (fingerprint, _)| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| fingerprint.matches(fragment))
+    });
+    bodies.ready.retain(|id, result| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| result.is_current(fragment))
+    });
     bodies.blocked.retain(|id| wanted.contains(id));
+
+    let mut completed = Vec::new();
+    bodies.jobs.retain(|id, (_, task)| match check_ready(task) {
+        Some(result) => {
+            completed.push((*id, result));
+            false
+        }
+        None => true,
+    });
+    for (id, result) in completed {
+        if fragments
+            .get(id)
+            .is_some_and(|fragment| wanted.contains(&id) && result.is_current(fragment))
+        {
+            bodies.ready.insert(id, result);
+        } else {
+            bodies.stale_results = bodies.stale_results.saturating_add(1);
+        }
+    }
 
     let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
     let capacity = FragmentCapacity::remaining(budget.0, account);
@@ -649,49 +707,74 @@ pub fn sync_fragment_bodies(
         .last_capacity
         .is_some_and(|previous| capacity.increased_from(previous))
     {
-        // Only retry fragments rejected by the hard budget when capacity has
-        // actually increased. Otherwise a permanently-too-large fragment would
-        // rebuild the same greedy collider every rendered frame forever.
         bodies.blocked.clear();
     }
 
-    let mut spawned_this_frame = 0usize;
+    // Collider compilation is pure CPU work and runs on bounded workers. Avian
+    // entity creation remains on the main thread after stale/budget validation.
+    let pool = AsyncComputeTaskPool::get();
     for (id, fragment) in fragments.iter() {
-        if !wanted.contains(&id) {
+        if !wanted.contains(&id)
+            || bodies.entries.contains_key(&id)
+            || bodies.jobs.contains_key(&id)
+            || bodies.ready.contains_key(&id)
+            || bodies.blocked.contains(&id)
+        {
             continue;
         }
-        if bodies.entries.contains_key(&id) {
-            continue;
-        }
-        // In the sandbox, visible geometry is admitted first. Do not create an
-        // invisible simulated body for a fragment whose render mesh was held
-        // back by the shared fragment budget.
         if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
-            bodies.pending_spawn_current += 1;
+            bodies.pending_spawn_current = bodies.pending_spawn_current.saturating_add(1);
             continue;
         }
-        if bodies.blocked.contains(&id) {
-            bodies.withheld_current += 1;
-            continue;
-        }
-        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
-            bodies.pending_spawn_current += 1;
+        if bodies.jobs.len() >= MAX_ACTIVE_FRAGMENT_COLLISION_JOBS {
+            bodies.pending_spawn_current = bodies.pending_spawn_current.saturating_add(1);
             continue;
         }
 
-        // Cheap caps first: do not compile a collider merely to discover that
-        // no additional body or box can possibly be admitted.
+        // Cheap caps first. Exact collision size is checked when the worker
+        // returns, before any backend body is created.
         if account.footprint.physics_bodies >= budget.0.max_physics_bodies
             || account.footprint.collision_boxes >= budget.0.max_collision_boxes
             || account.footprint.tracked_bytes() >= budget.0.hard_bytes
         {
             bodies.blocked.insert(id);
-            bodies.withheld_current += 1;
-            bodies.withheld_total += 1;
+            bodies.withheld_total = bodies.withheld_total.saturating_add(1);
             continue;
         }
 
-        let descriptor = FragmentPhysicsDescriptor::from_fragment(fragment);
+        let input = FragmentCollisionJobInput::new(fragment);
+        let fingerprint = input.fingerprint();
+        bodies
+            .jobs
+            .insert(id, (fingerprint, pool.spawn(async move { input.run() })));
+    }
+
+    let ready_ids: Vec<_> = bodies.ready.keys().copied().collect();
+    let mut spawned_this_frame = 0usize;
+    for id in ready_ids {
+        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
+            break;
+        }
+        let Some(fragment) = fragments.get(id) else {
+            bodies.ready.remove(&id);
+            continue;
+        };
+        if !wanted.contains(&id) {
+            bodies.ready.remove(&id);
+            continue;
+        }
+        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
+            continue;
+        }
+
+        let result = bodies.ready.remove(&id).expect("ready id came from map");
+        if !result.is_current(fragment) {
+            bodies.stale_results = bodies.stale_results.saturating_add(1);
+            continue;
+        }
+
+        let descriptor =
+            FragmentPhysicsDescriptor::from_fragment_with_collider(fragment, result.collider);
         let next = FragmentFootprint {
             collision_bytes: descriptor.collision_bytes(),
             collision_boxes: descriptor.collision_boxes() as u64,
@@ -700,8 +783,7 @@ pub fn sync_fragment_bodies(
         };
         if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
             bodies.blocked.insert(id);
-            bodies.withheld_current += 1;
-            bodies.withheld_total += 1;
+            bodies.withheld_total = bodies.withheld_total.saturating_add(1);
             continue;
         }
 
@@ -742,11 +824,22 @@ pub fn sync_fragment_bodies(
                 entity: entity.id(),
                 collision_boxes: descriptor.collision_boxes() as u64,
                 collision_bytes: descriptor.collision_bytes(),
+                fingerprint: result.fingerprint,
             },
         );
         spawned_this_frame += 1;
         account.footprint += next;
     }
+
+    bodies.pending_spawn_current = bodies
+        .pending_spawn_current
+        .saturating_add(bodies.jobs.len() as u64)
+        .saturating_add(bodies.ready.len() as u64);
+    bodies.withheld_current = bodies
+        .blocked
+        .iter()
+        .filter(|id| wanted.contains(id))
+        .count() as u64;
     bodies.last_capacity = Some(FragmentCapacity::remaining(budget.0, account));
 }
 

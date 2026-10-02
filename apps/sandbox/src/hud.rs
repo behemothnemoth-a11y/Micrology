@@ -12,6 +12,7 @@ use crate::camera::FlyCamera;
 use crate::destruction::DestructionHost;
 use crate::edit::Palette;
 use crate::fragment_render::FragmentEntities;
+use crate::fragment_streaming::FragmentStreamRes;
 use crate::physics::{
     DynamicFragments, FragmentBodies, FragmentBudgetRes, PHYSICS_RADIUS_CELLS, StaticColliders,
 };
@@ -166,6 +167,7 @@ pub struct Diagnostics<'w> {
     pub fragments: Res<'w, DynamicFragments>,
     pub fragment_bodies: Res<'w, FragmentBodies>,
     pub fragment_renders: Res<'w, FragmentEntities>,
+    pub fragment_stream: Res<'w, FragmentStreamRes>,
     pub fragment_budget: Res<'w, FragmentBudgetRes>,
     pub destruction: Res<'w, DestructionHost>,
 }
@@ -189,6 +191,7 @@ pub fn update(
         fragments,
         fragment_bodies,
         fragment_renders,
+        fragment_stream,
         fragment_budget,
         destruction,
     } = sources;
@@ -222,6 +225,8 @@ pub fn update(
     let budget = stream.streamer.budget();
     let physics_stats = physics.stats();
     let fragment_stats = fragments.stats();
+    let fragment_storage = fragment_stream.residency.counts();
+    let fragment_persisted = fragment_stream.persisted_index.fragment_count();
     let fragment_render_stats = fragment_renders.stats();
     let fragment_account =
         fragment_budget.account(&fragments, &fragment_bodies, fragment_renders.mesh_bytes());
@@ -230,17 +235,17 @@ pub fn update(
     let destruction_stats = destruction.stats();
 
     **text.into_inner() = format!(
-        "Micrology · DROP 0003 · mesher: {mesher}\n\
+        "Micrology · DROP 0004 · mesher: {mesher}\n\
          camera {cx:.0} {cy:.0} {cz:.0}  region {rx} {ry} {rz}  origin {ox} {oy} {oz}\n\
-         regions: wanted {wanted}  resident {resident}  ready {ready}  dirty {dirty_regions}\n\
+         regions: wanted {wanted}  demand {region_demand}  resident {resident}  ready {ready}  dirty {dirty_regions}\n\
          io: loading {loading}  saving {saving}  tasks {loads}L/{saves}S/{meshing}M\n\
          volumes {volumes}  cells {cells}  dirty sections {dirty_sections}\n\
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
          physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
-         fragments: owned {fragment_count}  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  body-pending {fragment_body_pending}  render {fragment_render_count}/{fragment_render_pending}  cells {fragment_cells}\n\
+         fragments: resident {fragment_count}/{fragment_persisted} persisted  wanted {fragment_wanted}  io {fragment_loads}L/{fragment_saves}S  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  body-pending {fragment_body_pending}  render {fragment_render_count}/{fragment_render_pending}  cells {fragment_cells}\n\
          fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}  body-held {fragment_withheld}/{fragment_withheld_total}  render-held {fragment_render_withheld}/{fragment_render_withheld_total}\n\
-         destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  stale {destruction_stale}  inconclusive {destruction_inconclusive}  byte-cap {destruction_byte_limited}  budget-held {destruction_rejected}  made {destruction_fragments} frag / {destruction_cells} cells\n\
+         destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  wait {destruction_waiting}  demand {destruction_demanded}/{destruction_demand_withheld} held  stale {destruction_stale}  inconclusive {destruction_inconclusive}  byte-cap {destruction_byte_limited}  budget-held {destruction_rejected}  made {destruction_fragments} frag / {destruction_cells} cells\n\
          bytes: cells {cell_bytes}  palettes {palette_bytes}  mesh {mesh_bytes}  inflight {inflight}\n\
          budget: {used} / {soft} soft / {hard} hard  {pressure}  radius {radius}  \
          evicted {evicted}  withheld {withheld}\n\
@@ -257,6 +262,7 @@ pub fn update(
         oy = anchor.y,
         oz = anchor.z,
         wanted = streaming.wanted_regions,
+        region_demand = streaming.demanded_regions,
         resident = world_stats.regions,
         ready = residency.ready,
         dirty_regions = world.dirty_regions().count(),
@@ -284,6 +290,10 @@ pub fn update(
         physics_built = physics_stats.rebuilt_this_frame,
         physics_radius = PHYSICS_RADIUS_CELLS,
         fragment_count = fragments.len(),
+        fragment_persisted = fragment_persisted,
+        fragment_wanted = fragment_storage.wanted_fragments,
+        fragment_loads = fragment_storage.active_loads,
+        fragment_saves = fragment_storage.active_saves,
         fragment_dynamic = fragment_stats.dynamic,
         fragment_sleeping = fragment_stats.sleeping,
         fragment_body_count = fragment_bodies.len(),
@@ -303,6 +313,9 @@ pub fn update(
         destruction_requested = destruction_stats.requested,
         destruction_active = destruction_stats.active_jobs,
         destruction_pending = destruction_stats.pending_requests,
+        destruction_waiting = destruction_stats.waiting_for_regions,
+        destruction_demanded = destruction_stats.demanded_regions,
+        destruction_demand_withheld = destruction_stats.demand_withheld_regions,
         destruction_stale = destruction_stats.stale,
         destruction_inconclusive = destruction_stats.inconclusive,
         destruction_byte_limited = destruction_stats.byte_limited,

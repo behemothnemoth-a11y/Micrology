@@ -25,8 +25,12 @@ mod camera;
 mod destruction;
 mod edit;
 mod fragment_render;
+mod fragment_streaming;
 mod hud;
+mod impact;
+mod impact_demo;
 mod physics;
+mod progressive_demo;
 mod render;
 mod scene;
 mod streaming;
@@ -106,7 +110,7 @@ fn main() {
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            title: "Micrology — DROP 0003 sandbox".into(),
+            title: "Micrology — DROP 0004 sandbox".into(),
             present_mode: PresentMode::AutoVsync,
             ..default()
         }),
@@ -131,8 +135,13 @@ fn main() {
     .init_resource::<physics::FragmentBudgetRes>()
     .init_resource::<physics::FragmentSmoke>()
     .init_resource::<fragment_render::FragmentEntities>()
+    .init_resource::<fragment_streaming::FragmentStreamRes>()
+    .init_resource::<fragment_streaming::FragmentStreamTasks>()
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
+    .init_resource::<impact::ImpactHost>()
+    .init_resource::<impact_demo::ImpactDemo>()
+    .init_resource::<progressive_demo::ProgressiveDamageDemo>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -142,6 +151,8 @@ fn main() {
         (
             scene::setup_world,
             destruction::load_fragment_state,
+            progressive_demo::seed,
+            impact_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -163,10 +174,14 @@ fn main() {
                 edit::save_and_load,
                 edit::toggle_compiler,
                 edit::quit,
+                progressive_demo::drive,
+                impact_demo::drive,
+                impact::process_secondary_damage,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
                 destruction::dispatch_structural_jobs,
                 destruction::poll_structural_jobs,
+                destruction::sync_structural_region_demand,
             )
                 .chain(),
             (
@@ -177,6 +192,10 @@ fn main() {
                 streaming::queue_dirty_sections,
                 streaming::dispatch_mesh_jobs,
                 streaming::apply_mesh_results,
+                // Fragment payload residency is independent of both terrain
+                // residency and the smaller render/physics neighbourhoods.
+                fragment_streaming::poll_fragment_tasks,
+                fragment_streaming::drive_fragment_streaming,
                 // Physics residency is deliberately smaller than render residency.
                 // Rebuild only nearby static colliders, from the live cell world.
                 physics::sync_static_colliders,
@@ -200,6 +219,7 @@ fn main() {
         FixedPostUpdate,
         (
             physics::readback_fragment_bodies,
+            impact::collect_fragment_impacts,
             physics::verify_fragment_smoke,
             destruction::verify_destruction_smoke,
         )

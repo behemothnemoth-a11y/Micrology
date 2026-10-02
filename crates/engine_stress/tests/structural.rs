@@ -6,8 +6,13 @@
 //! destruction measurement taken against it.
 
 use engine_core::{CellPos, REGION_EDGE_CELLS, VOLUME_EDGE};
+use engine_destruction::{
+    AllResident, StructuralLimits, SupportWitnessLimits, classify_from_roots,
+    prove_all_roots_supported,
+};
 use engine_stress::structural::{StructuralBaseline, StructuralCounters};
 use engine_stress::{STRUCTURAL_BASELINE_PATH, StructuralScenario, all_structural_scenarios};
+use engine_world::WorldEditBatch;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -453,5 +458,89 @@ fn the_control_scenario_leaves_its_anchors_alone() {
             .damage()
             .iter()
             .all(|c: &CellPos| c.y > 1)
+    );
+}
+
+fn damaged_structure(
+    scenario: StructuralScenario,
+) -> (
+    engine_stress::structural::StructuralWorld,
+    engine_world::EditOutcome,
+) {
+    let mut built = scenario.build();
+    let mut batch = WorldEditBatch::new();
+    for cell in scenario.damage() {
+        batch.remove(cell);
+    }
+    let outcome = built.world.apply(&batch);
+    (built, outcome)
+}
+
+#[test]
+fn support_witness_never_hides_an_exact_detachment() {
+    for scenario in all_structural_scenarios() {
+        let (built, outcome) = damaged_structure(scenario);
+        let witness = prove_all_roots_supported(
+            &built.world,
+            &built.world,
+            &AllResident,
+            outcome.structural_candidates.iter().copied(),
+            SupportWitnessLimits::UNLIMITED,
+        );
+        let exact = classify_from_roots(
+            &built.world,
+            &built.world,
+            &AllResident,
+            outcome.structural_candidates.iter().copied(),
+            StructuralLimits::UNLIMITED,
+        );
+
+        if witness.proved_all_supported() {
+            assert_eq!(
+                exact.detached().count(),
+                0,
+                "{}: witness claimed support but exact classifier found detachment",
+                scenario.name()
+            );
+            assert!(
+                exact.is_settled(),
+                "{}: witness claimed support for an unsettled exact result",
+                scenario.name()
+            );
+        }
+    }
+}
+
+#[test]
+fn large_supported_structure_witness_does_less_work_than_exact() {
+    let scenario = StructuralScenario::LargeSupportedStructure;
+    let (built, outcome) = damaged_structure(scenario);
+    let witness = prove_all_roots_supported(
+        &built.world,
+        &built.world,
+        &AllResident,
+        outcome.structural_candidates.iter().copied(),
+        SupportWitnessLimits::UNLIMITED,
+    );
+    let exact = classify_from_roots(
+        &built.world,
+        &built.world,
+        &AllResident,
+        outcome.structural_candidates.iter().copied(),
+        StructuralLimits::UNLIMITED,
+    );
+
+    assert!(witness.proved_all_supported());
+    assert_eq!(exact.detached().count(), 0);
+    println!(
+        "witness cells: {}, exact cells: {}",
+        witness.stats().cells_visited,
+        exact.cells_visited
+    );
+    assert!(
+        witness.stats().cells_visited < exact.cells_visited,
+        "support witness visited {} cells; exact visited {}",
+        witness.stats().cells_visited,
+        exact.cells_visited
     );
 }

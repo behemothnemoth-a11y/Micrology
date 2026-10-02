@@ -16,6 +16,7 @@ engine_world = { workspace = true }
 engine_geometry = { workspace = true }
 engine_stream = { workspace = true }
 engine_destruction = { workspace = true }
+engine_mechanics = { workspace = true }
 engine_io = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

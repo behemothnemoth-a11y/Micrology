@@ -690,6 +690,107 @@ fn a_dirty_region_is_never_dropped_without_a_save() {
 }
 
 #[test]
+fn external_demand_loads_and_pins_a_far_region() {
+    let mut disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    let far = RegionPos::new(5, 0, 0);
+
+    streamer.set_demanded_regions([far]);
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+
+    assert!(
+        world.region(far).is_some(),
+        "explicit demand must load without moving the camera"
+    );
+    assert!(streamer.is_demanded(far));
+    assert!(streamer.is_wanted(far));
+
+    // Several updates at the original camera must not distance-evict the pin.
+    for _ in 0..4 {
+        step(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    }
+    assert!(
+        world.region(far).is_some(),
+        "demanded region must stay pinned outside the camera unload radius"
+    );
+
+    streamer.set_demanded_regions([]);
+    settle(&mut streamer, &mut world, &mut disk, RegionPos::ZERO);
+    assert!(
+        world.region(far).is_none(),
+        "releasing demand makes the far region eligible for normal eviction"
+    );
+}
+
+#[test]
+fn external_demand_is_withheld_past_the_hard_memory_ceiling() {
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    streamer.set_budget(MemoryBudget::new(1_000, 2_000));
+    streamer.note_memory(using(5_000));
+
+    let far = RegionPos::new(5, 0, 0);
+    streamer.set_demanded_regions([far]);
+    let actions = streamer.update(&mut world, RegionPos::ZERO);
+    assert!(
+        !actions.iter().any(
+            |action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)
+        ),
+        "external demand must not push residency farther past the hard ceiling"
+    );
+    assert!(streamer.is_demanded(far));
+    assert!(streamer.counts().loads_withheld > 0);
+
+    // Demand is remembered and begins as soon as memory pressure clears.
+    streamer.note_memory(using(0));
+    let actions = streamer.update(&mut world, RegionPos::ZERO);
+    assert!(
+        actions.iter().any(
+            |action| matches!(action, StreamAction::LoadRegion(ticket) if ticket.region == far)
+        ),
+        "withheld demand must not be forgotten"
+    );
+}
+
+#[test]
+fn releasing_demand_makes_an_in_flight_far_load_stale() {
+    let disk = disk(8);
+    let mut world = World::with_materials(materials());
+    let mut streamer = RegionStreamer::new(config());
+    let far = RegionPos::new(5, 0, 0);
+
+    streamer.set_demanded_regions([far]);
+    let ticket = streamer
+        .update(&mut world, RegionPos::ZERO)
+        .into_iter()
+        .find_map(|action| match action {
+            StreamAction::LoadRegion(ticket) if ticket.region == far => Some(ticket),
+            _ => None,
+        })
+        .expect("far demanded load");
+
+    streamer.set_demanded_regions([]);
+    streamer.update(&mut world, RegionPos::ZERO);
+
+    assert_eq!(
+        streamer.on_load_finished(&mut world, ticket, read(&disk, far)),
+        LoadOutcome::DiscardedStale
+    );
+    assert!(world.region(far).is_none());
+}
+
+#[test]
+fn duplicate_external_demands_are_deduplicated() {
+    let mut streamer = RegionStreamer::new(config());
+    let far = RegionPos::new(5, 0, 0);
+
+    streamer.set_demanded_regions([far, far, far]);
+    assert_eq!(streamer.demanded().collect::<Vec<_>>(), vec![far]);
+    assert_eq!(streamer.counts().demanded_regions, 1);
+}
+
+#[test]
 fn clearing_forgets_every_in_flight_request() {
     let mut world = World::with_materials(materials());
     let mut streamer = RegionStreamer::new(config());
