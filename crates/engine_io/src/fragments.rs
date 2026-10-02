@@ -174,8 +174,7 @@ impl FragmentIndex {
     /// Keep the persisted sequence at least as new as the engine-owned
     /// destruction sequence. It never moves backwards.
     pub fn note_sequence(&mut self, sequence: DestructionSequence) {
-        self.next_destruction_sequence =
-            self.next_destruction_sequence.max(sequence.peek());
+        self.next_destruction_sequence = self.next_destruction_sequence.max(sequence.peek());
     }
 }
 
@@ -374,10 +373,7 @@ pub fn fragment_index_state_to_json(index: &FragmentIndex) -> Result<String, IoE
         format: FRAGMENT_INDEX_TAG.to_string(),
         version: FORMAT_VERSION_V3,
         next_destruction_sequence: index.next_destruction_sequence,
-        fragments: index
-            .fragment_ids()
-            .map(FragmentIdFile::from)
-            .collect(),
+        fragments: index.fragment_ids().map(FragmentIdFile::from).collect(),
         regions: index
             .spatial
             .regions()
@@ -649,9 +645,11 @@ mod tests {
         assert!(round_trip.contains(first.id));
         assert!(round_trip.contains(second.id));
         assert_eq!(round_trip.fragment_count(), 2);
-        assert!(round_trip
-            .fragments_in(RegionPos::new(4, 0, 0))
-            .any(|id| id == first.id));
+        assert!(
+            round_trip
+                .fragments_in(RegionPos::new(4, 0, 0))
+                .any(|id| id == first.id)
+        );
     }
 
     #[test]
