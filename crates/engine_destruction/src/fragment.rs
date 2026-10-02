@@ -122,6 +122,13 @@ pub struct Fragment {
     /// Local bounds of the occupied cells.
     pub bounds: CellBounds,
     pub state: FragmentState,
+    /// Runtime-only revision of the fragment's local cell geometry.
+    ///
+    /// Physics motion/state changes bump `revision` for persistence but must
+    /// not invalidate mesh/collider jobs whose inputs are unchanged. This
+    /// revision is intentionally reset when a fragment is reconstructed from
+    /// persistence because derived caches/tasks do not survive that boundary.
+    geometry_revision: Revision,
     pub revision: Revision,
 }
 
@@ -191,6 +198,7 @@ impl Fragment {
             angular_velocity: [0.0; 3],
             bounds,
             state: FragmentState::Dynamic,
+            geometry_revision: Revision::ZERO,
             revision: Revision::ZERO,
         })
     }
@@ -241,6 +249,7 @@ impl Fragment {
             } else {
                 FragmentState::Dynamic
             },
+            geometry_revision: Revision::ZERO,
             revision,
         })
     }
@@ -325,6 +334,13 @@ impl Fragment {
 
     pub fn is_sleeping(&self) -> bool {
         self.state == FragmentState::Sleeping
+    }
+
+    /// Revision used only for derived geometry/collision invalidation.
+    ///
+    /// It does not move when physics changes pose, velocity or sleep state.
+    pub fn geometry_revision(&self) -> Revision {
+        self.geometry_revision
     }
 
     /// Record what the physics backend reports.
