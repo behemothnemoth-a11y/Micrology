@@ -37,8 +37,8 @@
 
 pub mod collision;
 pub mod connectivity;
-pub mod detach;
 pub mod derived_jobs;
+pub mod detach;
 pub mod fragment;
 pub mod jobs;
 pub mod lifecycle;
@@ -51,11 +51,11 @@ pub use collision::{
     GreedyCollisionCompiler,
 };
 
-pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use derived_jobs::{
     FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,
     FragmentMeshJobInput, FragmentMeshJobResult,
 };
+pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,

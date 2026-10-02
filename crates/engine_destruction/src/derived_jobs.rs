@@ -5,9 +5,7 @@
 //! result against the fragment's geometry revision before applying it. No Bevy,
 //! Avian, renderer or task-pool type appears here.
 
-use crate::{
-    CollisionCompiler, CollisionShape, Fragment, FragmentId, GreedyCollisionCompiler,
-};
+use crate::{CollisionCompiler, CollisionShape, Fragment, FragmentId, GreedyCollisionCompiler};
 use engine_core::{CellPos, MaterialRegistry, Revision};
 use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
 
@@ -138,9 +136,7 @@ mod tests {
         );
         world.take_dirty();
         let cells: BTreeSet<_> = (0..6)
-            .flat_map(|y| {
-                (0..4).flat_map(move |z| (0..8).map(move |x| CellPos::new(x, y, z)))
-            })
+            .flat_map(|y| (0..4).flat_map(move |z| (0..8).map(move |x| CellPos::new(x, y, z))))
             .collect();
         Fragment::from_cells(FragmentId::new(7, 0), &world, &cells).unwrap()
     }
