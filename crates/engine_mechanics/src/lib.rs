@@ -30,12 +30,17 @@
 //! participation contract. There is no capacity model, no load path and no
 //! failure here yet.
 
+pub mod capacity;
 pub mod damage;
 pub mod mass;
 pub mod policy;
 pub mod profile;
 pub mod units;
 
+pub use capacity::{
+    CapacityDefer, CapacityLimits, CapacityMeasurement, CapacityOutcome, OverloadedConnection,
+    evaluate_capacity, load_mode,
+};
 pub use damage::{MaterialDamagePolicy, MaterialFailurePolicy};
 pub use mass::{UNPROFILED_CELL_MASS, density_detachment_impulse, fragment_mass};
 pub use policy::{
