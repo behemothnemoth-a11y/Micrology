@@ -6,6 +6,9 @@
 //! the engine crates remain independent from Bevy.
 
 use crate::fragment_render::FragmentEntities;
+use crate::fragment_streaming::{
+    FragmentStreamRes, FragmentStreamTasks, flush_fragment_state, reload_fragment_index,
+};
 use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
@@ -274,19 +277,23 @@ pub fn load_fragment_state(
     stream: Res<StreamRes>,
     mut host: ResMut<DestructionHost>,
     mut fragments: ResMut<DynamicFragments>,
+    mut fragment_stream: ResMut<FragmentStreamRes>,
+    mut fragment_tasks: ResMut<FragmentStreamTasks>,
     mut status: ResMut<StatusLine>,
 ) {
-    match engine_io::load_fragment_store(&stream.dir) {
-        Ok((store, sequence, _spatial)) => {
-            let count = store.len();
-            fragments.replace_store(store);
-            host.sequence = sequence;
+    match engine_io::load_fragment_index(&stream.dir) {
+        Ok(index) => {
+            let count = index.fragment_count();
+            host.sequence = DestructionSequence::new(index.next_destruction_sequence);
+            fragments.replace_store(Default::default());
+            fragment_tasks.clear();
+            fragment_stream.reset(index);
             if count > 0 {
-                status.0 = format!("loaded {count} persisted fragment(s)");
+                status.0 = format!("indexed {count} persisted fragment(s) for streaming");
             }
         }
         Err(error) => {
-            status.0 = format!("fragment load failed: {error}");
+            status.0 = format!("fragment index load failed: {error}");
         }
     }
 }
@@ -295,28 +302,29 @@ pub fn save_fragment_state(
     stream: &StreamRes,
     host: &DestructionHost,
     fragments: &DynamicFragments,
-) -> Result<usize, engine_io::IoError> {
-    if let Some(store) = fragments.persistent_store_ref() {
-        let count = store.len();
-        engine_io::save_fragment_store(&stream.dir, store, host.sequence)?;
-        return Ok(count);
-    }
-
-    // Only the opt-in runtime smoke reaches this path; exclude its reserved ID.
-    let store = fragments.persistent_store();
-    let count = store.len();
-    engine_io::save_fragment_store(&stream.dir, &store, host.sequence)?;
-    Ok(count)
+    fragment_stream: &mut FragmentStreamRes,
+) -> Result<usize, String> {
+    flush_fragment_state(
+        &stream.dir,
+        host.sequence,
+        fragments,
+        fragment_stream,
+    )
 }
 
 pub fn reload_fragment_state(
     stream: &StreamRes,
     host: &mut DestructionHost,
     fragments: &mut DynamicFragments,
-) -> Result<usize, engine_io::IoError> {
-    let (store, sequence, _spatial) = engine_io::load_fragment_store(&stream.dir)?;
-    let count = store.len();
-    fragments.replace_store(store);
+    fragment_stream: &mut FragmentStreamRes,
+    fragment_tasks: &mut FragmentStreamTasks,
+) -> Result<usize, String> {
+    let (sequence, count) = reload_fragment_index(
+        &stream.dir,
+        fragments,
+        fragment_stream,
+        fragment_tasks,
+    )?;
     host.sequence = sequence;
     host.requests.clear();
     host.tasks.clear();
@@ -514,11 +522,12 @@ pub fn flush_fragments_on_exit(
     stream: Res<StreamRes>,
     host: Res<DestructionHost>,
     fragments: Res<DynamicFragments>,
+    mut fragment_stream: ResMut<FragmentStreamRes>,
 ) {
     if exits.read().next().is_none() {
         return;
     }
-    match save_fragment_state(&stream, &host, &fragments) {
+    match save_fragment_state(&stream, &host, &fragments, &mut fragment_stream) {
         Ok(count) => info!("flushed {count} fragment(s) on exit"),
         Err(error) => error!("fragment flush FAILED: {error}"),
     }
