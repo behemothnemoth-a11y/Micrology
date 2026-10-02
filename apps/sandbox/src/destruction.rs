@@ -7,7 +7,8 @@
 
 use crate::fragment_render::FragmentEntities;
 use crate::fragment_streaming::{
-    FragmentStreamRes, FragmentStreamTasks, flush_fragment_state, reload_fragment_index,
+    FragmentStreamRes, FragmentStreamTasks, finish_fragment_saves, flush_fragment_state,
+    reload_fragment_index,
 };
 use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
@@ -514,10 +515,19 @@ pub fn flush_fragments_on_exit(
     host: Res<DestructionHost>,
     fragments: Res<DynamicFragments>,
     mut fragment_stream: ResMut<FragmentStreamRes>,
+    mut fragment_tasks: ResMut<FragmentStreamTasks>,
+    mut status: ResMut<StatusLine>,
 ) {
     if exits.read().next().is_none() {
         return;
     }
+    finish_fragment_saves(
+        &stream,
+        &mut fragment_stream,
+        &mut fragment_tasks,
+        &fragments,
+        &mut status,
+    );
     match save_fragment_state(&stream, &host, &fragments, &mut fragment_stream) {
         Ok(count) => info!("flushed {count} fragment(s) on exit"),
         Err(error) => error!("fragment flush FAILED: {error}"),
