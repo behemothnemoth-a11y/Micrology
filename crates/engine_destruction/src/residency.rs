@@ -370,11 +370,7 @@ mod tests {
 
     #[test]
     fn stale_load_does_not_resurrect_an_unwanted_fragment() {
-        let f = fragment(
-            FragmentId::new(2, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let f = fragment(FragmentId::new(2, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         let mut indexed = FragmentStore::default();
         indexed.insert(f.clone());
         let spatial = FragmentSpatialIndex::from_store(&indexed).unwrap();
@@ -396,11 +392,7 @@ mod tests {
 
     #[test]
     fn dirty_fragment_is_saved_before_it_can_drop() {
-        let f = fragment(
-            FragmentId::new(3, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let f = fragment(FragmentId::new(3, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         let mut store = FragmentStore::default();
         store.insert(f.clone());
         let spatial = FragmentSpatialIndex::from_store(&store).unwrap();
@@ -437,11 +429,7 @@ mod tests {
 
     #[test]
     fn edit_during_save_keeps_newer_revision_dirty() {
-        let f = fragment(
-            FragmentId::new(4, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let f = fragment(FragmentId::new(4, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         let mut store = FragmentStore::default();
         store.insert(f.clone());
         let spatial = FragmentSpatialIndex::from_store(&store).unwrap();
@@ -481,11 +469,7 @@ mod tests {
 
     #[test]
     fn clean_unwanted_fragment_can_drop_without_a_save() {
-        let f = fragment(
-            FragmentId::new(5, 0),
-            CellPos::ZERO,
-            CellPos::new(1, 1, 1),
-        );
+        let f = fragment(FragmentId::new(5, 0), CellPos::ZERO, CellPos::new(1, 1, 1));
         let mut store = FragmentStore::default();
         store.insert(f.clone());
         let spatial = FragmentSpatialIndex::from_store(&store).unwrap();
@@ -515,9 +499,7 @@ mod tests {
         let mut residency = FragmentResidency::new(config());
         residency.note_loaded(&f);
 
-        assert!(residency
-            .update(&store, &spatial, [regions[0]])
-            .is_empty());
+        assert!(residency.update(&store, &spatial, [regions[0]]).is_empty());
         assert!(residency.is_wanted(f.id));
     }
 }
