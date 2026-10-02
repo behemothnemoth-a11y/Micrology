@@ -127,6 +127,25 @@ can achieve literally nothing; `material_stress` blocks merging without changing
 the shape; `boundary_storm` is the one that forces neighbouring sections to
 rebuild. When a change makes `dense_solid` faster, check what it did to `checker`.
 
+## DROP 0006 destruction benchmark pack
+
+The permanent homogeneous destruction wall and its ordered acceptance protocol
+live in `engine_stress::destruction_benchmark`, with the committed canonical spec
+at `fixtures/destruction/benchmark-pack.json`. This pack contains no fracture
+implementation; it exists so fracture algorithms are judged against a stable
+fixture rather than moving the wall every time behavior changes.
+
+```sh
+cargo run -p engine_stress --bin destruction_bench
+cargo run -p engine_stress --bin destruction_bench -- --check
+cargo run -p engine_stress --bin destruction_bench -- --template
+```
+
+Fracture-specific result fields use `null` until an implementation can actually
+measure them. Never rewrite missing data as zero. See
+`docs/drop-0006-destruction-benchmarks.md` for the eight ordered cases and their
+acceptance rules.
+
 ## The other harness tools
 
 ```sh
