@@ -45,6 +45,7 @@ pub mod lifecycle;
 pub mod physics;
 pub mod residency;
 pub mod spatial;
+pub mod support_witness;
 
 pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
@@ -77,4 +78,8 @@ pub use connectivity::{
     AllResident, Classification, Component, ComponentSet, DeferReason, Residency, ResidentRegions,
     StructuralCounts, StructuralLimits, classify_component, classify_from_roots,
     split_into_components, touched_regions,
+};
+
+pub use support_witness::{
+    SupportWitness, SupportWitnessLimits, SupportWitnessStats, prove_all_roots_supported,
 };
