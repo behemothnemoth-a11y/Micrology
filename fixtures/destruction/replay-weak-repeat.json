@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "weak_repeat",
+  "fixture_checksum_fnv1a64": "17d99fb3450ed265",
+  "commands": [
+    {
+      "op": "pause"
+    },
+    {
+      "op": "dump",
+      "label": "intact"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "weak_center_hit"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "after_weak_1"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "weak_center_hit"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "after_weak_2"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "weak_center_hit"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "after_weak_3"
+    }
+  ]
+}
