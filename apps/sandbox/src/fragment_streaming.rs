@@ -141,10 +141,6 @@ pub struct FragmentStreamTasks {
 }
 
 impl FragmentStreamTasks {
-    pub fn counts(&self) -> (usize, usize) {
-        (self.loads.len(), self.saves.len())
-    }
-
     pub fn clear(&mut self) {
         self.loads.clear();
         self.saves.clear();
