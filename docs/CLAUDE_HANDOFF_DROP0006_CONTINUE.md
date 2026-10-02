@@ -1,5 +1,14 @@
 # Claude Code Handoff — Continue Micrology Core Destruction
 
+> **2026-10-02 follow-up:** 0006.1 acceptance was completed in `dc30b64`,
+> preserving Claude's 0006.1-0006.3 work. The user then requested deep research
+> and progress toward full Astra-style, one-material destruction with a focus
+> on eliminating stalls. See `astra-destruction-performance-research.md` for
+> the evidence and priorities. The follow-up pass repairs history-sized copies
+> during a local fracture commit without changing the fracture model. Keep
+> the section/checks/evidence/review workflow. 0006.4 remains the next proposed
+> behavioral section; `chunk_into_wall` is still unimplemented.
+
 > **2026-10-02 takeover override:** the user has replaced continuous progression
 > with one-section review gates. Preserve the remote 0006.1 (`f8f19a5`), 0006.2
 > (`3c04ca6`), and 0006.3 (`cb6e283`) commits. Current work is acceptance and

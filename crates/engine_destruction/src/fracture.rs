@@ -126,6 +126,82 @@ use engine_core::{
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 
+#[cfg(test)]
+mod reference_commit;
+
+/// A transaction reads unchanged records in place and stages only touched keys.
+/// Removed keys are tombstones, never a fallback to the old record. Keeping
+/// the final length lets admission remain atomic without copying world history.
+struct MapDelta<'a, K, V> {
+    base: &'a BTreeMap<K, V>,
+    edits: BTreeMap<K, V>,
+    removed: BTreeSet<K>,
+    len: usize,
+}
+
+impl<'a, K: Ord + Copy, V> MapDelta<'a, K, V> {
+    fn new(base: &'a BTreeMap<K, V>) -> Self {
+        Self {
+            base,
+            edits: BTreeMap::new(),
+            removed: BTreeSet::new(),
+            len: base.len(),
+        }
+    }
+
+    fn get(&self, key: &K) -> Option<&V> {
+        self.edits.get(key).or_else(|| {
+            if self.removed.contains(key) {
+                None
+            } else {
+                self.base.get(key)
+            }
+        })
+    }
+
+    fn insert(&mut self, key: K, value: V) {
+        if self.get(&key).is_none() {
+            self.len += 1;
+        }
+        self.removed.remove(&key);
+        self.edits.insert(key, value);
+    }
+
+    fn remove(&mut self, key: &K) {
+        if self.get(key).is_some() {
+            self.len -= 1;
+            self.edits.remove(key);
+            self.removed.insert(*key);
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn into_edits(self) -> (BTreeMap<K, V>, BTreeSet<K>) {
+        (self.edits, self.removed)
+    }
+}
+
+fn commit_edits<K: Ord, V>(
+    base: &mut BTreeMap<K, V>,
+    (edits, removed): (BTreeMap<K, V>, BTreeSet<K>),
+) {
+    if base.is_empty() {
+        // The first impact has no history to preserve: transfer the already
+        // allocated tree instead of allocating and inserting every record twice.
+        *base = edits;
+        return;
+    }
+    for key in removed {
+        base.remove(&key);
+    }
+    for (key, value) in edits {
+        base.insert(key, value);
+    }
+}
+
 /// Fixed-point scale: one whole unit is 1000.
 ///
 /// Deliberately not `engine_mechanics::Milli`. That type lives downstream of
@@ -1512,8 +1588,8 @@ impl FractureState {
         }
 
         let space = load.space;
-        let mut staged_cells = self.cells.clone();
-        let mut staged_bonds = self.bonds.clone();
+        let mut staged_cells = MapDelta::new(&self.cells);
+        let mut staged_bonds = MapDelta::new(&self.bonds);
         let mut crushed: BTreeSet<CellPos> = BTreeSet::new();
         let mut broken: Vec<BondSite> = Vec::new();
 
@@ -1679,8 +1755,10 @@ impl FractureState {
             .filter(|target| crushed.contains(&target.cell()))
             .count();
 
-        self.cells = staged_cells;
-        self.bonds = staged_bonds;
+        let cell_edits = staged_cells.into_edits();
+        let bond_edits = staged_bonds.into_edits();
+        commit_edits(&mut self.cells, cell_edits);
+        commit_edits(&mut self.bonds, bond_edits);
         self.revision.bump();
 
         Ok(FractureOutcome {
