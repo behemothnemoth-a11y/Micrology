@@ -170,6 +170,7 @@ fn main() {
                 // validated before it can remove cells or create fragments.
                 destruction::dispatch_structural_jobs,
                 destruction::poll_structural_jobs,
+                destruction::sync_structural_region_demand,
             )
                 .chain(),
             (
