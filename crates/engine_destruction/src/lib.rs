@@ -37,6 +37,7 @@
 
 pub mod collision;
 pub mod connectivity;
+pub mod damage;
 pub mod derived_jobs;
 pub mod detach;
 pub mod fragment;
@@ -52,6 +53,11 @@ pub use collision::{
     GreedyCollisionCompiler,
 };
 
+pub use damage::{
+    DamageAmount, DamageEvent, DamageEventError, DamageEventId, DamageFalloff, DamageImpulse,
+    DamagePolicy, DamageSequence, DamageSpace, DamageTarget, DamageVolume, DamageWork,
+    UniformDamagePolicy,
+};
 pub use derived_jobs::{
     FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,
     FragmentMeshJobInput, FragmentMeshJobResult,
