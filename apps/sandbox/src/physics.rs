@@ -367,10 +367,6 @@ impl DynamicFragments {
         self.store.insert(fragment)
     }
 
-    #[expect(
-        dead_code,
-        reason = "consumed by fragment lifecycle/streaming in 0003.13"
-    )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.store.remove(id)
     }
@@ -389,6 +385,10 @@ impl DynamicFragments {
 
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
         self.store.iter()
+    }
+
+    pub fn store_ref(&self) -> &FragmentStore {
+        &self.store
     }
 
     pub fn replace_store(&mut self, store: FragmentStore) {
