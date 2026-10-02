@@ -304,12 +304,7 @@ pub fn save_fragment_state(
     fragments: &DynamicFragments,
     fragment_stream: &mut FragmentStreamRes,
 ) -> Result<usize, String> {
-    flush_fragment_state(
-        &stream.dir,
-        host.sequence,
-        fragments,
-        fragment_stream,
-    )
+    flush_fragment_state(&stream.dir, host.sequence, fragments, fragment_stream)
 }
 
 pub fn reload_fragment_state(
@@ -319,12 +314,8 @@ pub fn reload_fragment_state(
     fragment_stream: &mut FragmentStreamRes,
     fragment_tasks: &mut FragmentStreamTasks,
 ) -> Result<usize, String> {
-    let (sequence, count) = reload_fragment_index(
-        &stream.dir,
-        fragments,
-        fragment_stream,
-        fragment_tasks,
-    )?;
+    let (sequence, count) =
+        reload_fragment_index(&stream.dir, fragments, fragment_stream, fragment_tasks)?;
     host.sequence = sequence;
     host.requests.clear();
     host.tasks.clear();
