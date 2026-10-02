@@ -9,54 +9,19 @@
 //! cargo run -p engine_destruction --example fracture_wall
 //! ```
 
-use engine_core::{CellPos, CellSource, GlobalPos, MaterialId};
+use engine_core::{CellPos, CellSource};
 use engine_destruction::{
-    AllResident, BaselineFracturePolicy, DamageAmount, DamageEvent, DamageEventId, DamageFalloff,
-    DamageImpulse, DamageSequence, DamageSpace, DamageVolume, FractureEvaluation, FractureImpact,
-    FractureLimits, FractureScene, FractureState, evaluate_fracture, static_failure_batch,
+    AllResident, BaselineFracturePolicy, DamageSequence, FractureEvaluation, FractureImpact,
+    FractureLimits, FractureScene, FractureState, REFERENCE_FIXTURE_OFFSET,
+    REFERENCE_IMPACT_ENERGY, REFERENCE_IMPACT_RADIUS, REFERENCE_WALL_MAX as WALL_MAX,
+    REFERENCE_WALL_MIN as WALL_MIN, evaluate_fracture, reference_fracture_hit,
+    reference_fracture_world, static_failure_batch,
 };
-use engine_world::World;
 
-const REFERENCE_SOLID: MaterialId = MaterialId(1);
 const SHOTS: u32 = 7;
-const ENERGY: DamageAmount = DamageAmount(900);
-const RADIUS: f64 = 7.0;
-
-/// 32 wide, 18 tall, 5 thick, on an anchored footing, one material.
-const WALL_MIN: CellPos = CellPos::new(-16, 1, -2);
-const WALL_MAX: CellPos = CellPos::new(15, 18, 2);
-
-fn destruction_wall() -> World {
-    let mut world = World::new();
-    world.fill_box(
-        CellPos::new(-18, 0, -3),
-        CellPos::new(17, 0, 3),
-        Some(REFERENCE_SOLID),
-    );
-    world.set_anchor_box(CellPos::new(-18, 0, -3), CellPos::new(17, 0, 3), true);
-    world.fill_box(WALL_MIN, WALL_MAX, Some(REFERENCE_SOLID));
-    world.take_dirty();
-    world
-}
-
-fn centre_hit(id: DamageEventId) -> DamageEvent {
-    DamageEvent::new(
-        id,
-        DamageSpace::StaticWorld,
-        Some(GlobalPos::new(0.5, 10.5, 26.0)),
-        DamageVolume::Sphere {
-            center: GlobalPos::new(0.5, 10.5, 3.0),
-            radius: RADIUS,
-            falloff: DamageFalloff::Linear,
-        },
-        ENERGY,
-        DamageImpulse::new([0.0, 0.0, -40.0]).ok(),
-    )
-    .expect("the fixture impact is finite")
-}
 
 fn main() {
-    let mut world = destruction_wall();
+    let mut world = reference_fracture_world();
     let mut state = FractureState::new();
     let mut sequence = DamageSequence::default();
     let policy = BaselineFracturePolicy::REFERENCE;
@@ -64,14 +29,14 @@ fn main() {
 
     println!("the Micrology destruction wall: {intact} cells, one material");
     println!(
-        "{SHOTS} identical hits, energy {}, reach {RADIUS} cells\n",
-        ENERGY.0
+        "{SHOTS} identical hits, energy {}, reach {} cells\n",
+        REFERENCE_IMPACT_ENERGY.0, REFERENCE_IMPACT_RADIUS
     );
     println!("hit  cracked  removed   damaged cells  loaded bonds  broken  walked  bonds");
 
     let mut removed_cells: Vec<CellPos> = Vec::new();
     for shot in 1..=SHOTS {
-        let event = centre_hit(sequence.next_root());
+        let event = reference_fracture_hit(sequence.next_root());
         let impact = FractureImpact::from_static_event(&event).expect("finite impact");
         let scene = FractureScene::static_world(&world, &world, &AllResident);
         let load =
@@ -112,11 +77,16 @@ fn main() {
         "\n{} of {intact} cells removed in total",
         intact - world.occupied_count()
     );
-    let hole = removed_cells.iter().map(|c| c.x.abs()).max().unwrap_or(0);
+    let centre_x = REFERENCE_FIXTURE_OFFSET.x;
+    let hole = removed_cells
+        .iter()
+        .map(|c| (c.x - centre_x).abs())
+        .max()
+        .unwrap_or(0);
     let cracks = state
         .bonds()
         .filter(|bond| bond.is_broken())
-        .map(|bond| bond.site.bond.lower().x.abs())
+        .map(|bond| (bond.site.bond.lower().x - centre_x).abs())
         .max()
         .unwrap_or(0);
     println!("hole half-width {hole} cells, crack half-width {cracks} cells");

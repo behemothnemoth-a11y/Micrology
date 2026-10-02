@@ -12,7 +12,11 @@ use crate::{StatusLine, WorldRes};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::time::{Fixed, Virtual};
-use engine_destruction::DestructionSequence;
+use engine_destruction::{
+    AllResident, BaselineFracturePolicy, DamageSequence, DestructionSequence, FractureEvaluation,
+    FractureImpact, FractureLimits, FractureScene, FractureState, evaluate_fracture,
+    reference_fracture_hit, static_failure_batch,
+};
 use engine_stress::{
     DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall, structural_state_digest,
     validate_replay, weak_repeat_replay,
@@ -20,6 +24,10 @@ use engine_stress::{
 use std::path::{Path, PathBuf};
 
 const SPEEDS_MILLI: [u32; 4] = [100, 250, 500, 1000];
+
+fn fracture_limits() -> FractureLimits {
+    FractureLimits::new(200_000, 400_000, 1 << 18, 1 << 19)
+}
 
 #[derive(Clone, Debug)]
 struct ReplaySession {
@@ -35,6 +43,9 @@ pub struct SimulationLab {
     pending_fixed_steps: u32,
     pub fixed_ticks: u64,
     replay: Option<ReplaySession>,
+    fracture_sequence: DamageSequence,
+    fracture_state: FractureState,
+    fracture_policy: BaselineFracturePolicy,
     last_dump: Option<PathBuf>,
 }
 
@@ -46,6 +57,9 @@ impl Default for SimulationLab {
             pending_fixed_steps: 0,
             fixed_ticks: 0,
             replay: None,
+            fracture_sequence: DamageSequence::default(),
+            fracture_state: FractureState::new(),
+            fracture_policy: BaselineFracturePolicy::REFERENCE,
             last_dump: None,
         }
     }
@@ -140,13 +154,16 @@ pub fn seed(resources: LabSeedResources) {
     stream.enabled = false;
     stream.scheduler.clear();
     stream.streamer.clear();
-    stream.meta.spawn = [47.5, 11.0, 68.0];
-    stream.meta.look_at = Some([47.5, 9.0, 34.0]);
+    stream.meta.spawn = [64.0, 11.0, 95.0];
+    stream.meta.look_at = Some([64.0, 10.5, 64.0]);
 
     fragments.replace_store(Default::default());
     fragment_stream.reset(engine_io::FragmentIndex::default());
     fragment_tasks.clear();
     destruction.sequence = DestructionSequence::new(0);
+    lab.fracture_sequence = DamageSequence::default();
+    lab.fracture_state = FractureState::new();
+    lab.fracture_policy = BaselineFracturePolicy::REFERENCE;
 
     virtual_time.set_relative_speed(1.0);
     virtual_time.pause();
@@ -234,6 +251,7 @@ fn dump_state(
             "blocked_case": session.blocked_case.map(|case| case.name()),
         })
     });
+    let fracture = lab.fracture_state.stats();
 
     let document = serde_json::json!({
         "label": label,
@@ -241,6 +259,12 @@ fn dump_state(
         "paused": virtual_time.is_paused(),
         "speed_milli": lab.speed_milli(),
         "structural": digest,
+        "fracture": {
+            "cell_entries": fracture.cell_entries,
+            "bond_entries": fracture.bond_entries,
+            "broken_bonds": fracture.broken_bonds,
+            "revision": fracture.revision.0,
+        },
         "fragment_dynamics": dynamics,
         "replay": replay,
     });
@@ -274,11 +298,71 @@ fn advance_replay_cursor(lab: &mut SimulationLab) {
     }
 }
 
+fn apply_weak_center_hit(
+    lab: &mut SimulationLab,
+    world: &mut WorldRes,
+    destruction: &mut DestructionHost,
+) -> Result<String, String> {
+    let event = reference_fracture_hit(lab.fracture_sequence.next_root());
+    let impact = FractureImpact::from_static_event(&event)
+        .map_err(|error| format!("fracture impact: {error:?}"))?;
+    let policy = lab.fracture_policy;
+    let scene = FractureScene::static_world(&world.0, &world.0, &AllResident);
+    let evaluation = evaluate_fracture(
+        &impact,
+        scene,
+        &policy,
+        &lab.fracture_state,
+        fracture_limits(),
+    )
+    .map_err(|error| format!("fracture evaluation: {error:?}"))?;
+
+    let load = match evaluation {
+        FractureEvaluation::Loaded(load) => load,
+        FractureEvaluation::Deferred { reason } => {
+            return Err(format!("fracture deferred: {reason:?}"));
+        }
+        FractureEvaluation::Indeterminate { required_regions } => {
+            return Err(format!(
+                "fracture indeterminate: {} region(s) required",
+                required_regions.len()
+            ));
+        }
+    };
+
+    let walked = load.measurement.cells_visited;
+    let bonds = load.measurement.bonds_considered;
+    let scene = FractureScene::static_world(&world.0, &world.0, &AllResident);
+    let outcome = lab
+        .fracture_state
+        .apply(&load, scene, &policy, fracture_limits())
+        .map_err(|error| format!("fracture commit refused: {error}"))?;
+
+    let removed = if outcome.failed.is_empty() {
+        0usize
+    } else {
+        let edit = world.0.apply(&static_failure_batch(&outcome.failed));
+        let removed = edit.removed_cells.len();
+        destruction.enqueue_edit(&edit);
+        removed
+    };
+    let stats = lab.fracture_state.stats();
+
+    Ok(format!(
+        "weak hit: {} cracks opened, {removed} cells removed | state {} cells / {} bonds / {} broken | walked {walked}, loaded {bonds}",
+        outcome.broken.len(),
+        stats.cell_entries,
+        stats.bond_entries,
+        stats.broken_bonds,
+    ))
+}
+
 fn execute_next_replay_command(
     lab: &mut SimulationLab,
     virtual_time: &mut Time<Virtual>,
-    world: &WorldRes,
+    world: &mut WorldRes,
     fragments: &DynamicFragments,
+    destruction: &mut DestructionHost,
 ) -> Result<String, String> {
     let Some(replay) = lab.replay.as_ref() else {
         return Err("no replay loaded".into());
@@ -328,13 +412,16 @@ fn execute_next_replay_command(
             Ok(format!("replay {index}: dumped {}", path.display()))
         }
         ReplayCommand::BenchmarkCase { case } => {
-            if let Some(replay) = lab.replay.as_mut() {
-                replay.blocked_case = Some(case);
+            if case == DestructionBenchmarkCase::WeakCenterHit {
+                let result = apply_weak_center_hit(lab, world, destruction)?;
+                advance_replay_cursor(lab);
+                Ok(format!("replay {index}: {result}"))
+            } else {
+                if let Some(replay) = lab.replay.as_mut() {
+                    replay.blocked_case = Some(case);
+                }
+                Ok(format!("replay {index}: waiting at {}", case.name()))
             }
-            Ok(format!(
-                "replay {index}: BLOCKED at {} until fracture hook applies it",
-                case.name()
-            ))
         }
     }
 }
@@ -343,8 +430,9 @@ pub fn controls(
     keys: Res<ButtonInput<KeyCode>>,
     mut lab: ResMut<SimulationLab>,
     mut virtual_time: ResMut<Time<Virtual>>,
-    world: Res<WorldRes>,
+    mut world: ResMut<WorldRes>,
     fragments: Res<DynamicFragments>,
+    mut destruction: ResMut<DestructionHost>,
     mut status: ResMut<StatusLine>,
 ) {
     if !lab.enabled {
@@ -401,11 +489,16 @@ pub fn controls(
     }
 
     if keys.just_pressed(KeyCode::F11) {
-        status.0 =
-            match execute_next_replay_command(&mut lab, &mut virtual_time, &world, &fragments) {
-                Ok(message) => message,
-                Err(error) => format!("destruction replay held: {error}"),
-            };
+        status.0 = match execute_next_replay_command(
+            &mut lab,
+            &mut virtual_time,
+            &mut world,
+            &fragments,
+            &mut destruction,
+        ) {
+            Ok(message) => message,
+            Err(error) => format!("destruction replay held: {error}"),
+        };
     }
 }
 pub fn apply_pending_fixed_step(

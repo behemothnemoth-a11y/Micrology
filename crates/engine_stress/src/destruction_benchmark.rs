@@ -4,18 +4,24 @@
 //! homogeneous wall, ordered abuse cases, metrics future fracture code must
 //! report, and a deterministic fixture checksum.
 
-use engine_core::{CellPos, CellSource, Material, MaterialId, MaterialRegistry, Rgb};
+use engine_core::{CellPos, MaterialId, MaterialRegistry};
+use engine_destruction::{
+    REFERENCE_FOOTING_MAX, REFERENCE_FOOTING_MIN, REFERENCE_FRACTURE_MATERIAL, REFERENCE_WALL_MAX,
+    REFERENCE_WALL_MIN, reference_fracture_materials, reference_fracture_world,
+};
 use engine_world::World;
 use serde::{Deserialize, Serialize};
 
 pub const DESTRUCTION_BENCHMARK_PATH: &str = "fixtures/destruction/benchmark-pack.json";
-pub const DESTRUCTION_BENCHMARK_VERSION: u32 = 1;
-pub const BASELINE_MATERIAL: MaterialId = MaterialId(9000);
+pub const DESTRUCTION_BENCHMARK_VERSION: u32 = 2;
+pub const BASELINE_MATERIAL: MaterialId = REFERENCE_FRACTURE_MATERIAL;
 
-pub const WALL_MIN: CellPos = CellPos::new(32, 0, 32);
-pub const WALL_MAX: CellPos = CellPos::new(63, 17, 36);
-pub const WALL_HIT_CENTER: CellPos = CellPos::new(47, 9, 36);
-pub const WALL_EDGE_HIT: CellPos = CellPos::new(33, 9, 36);
+pub const WALL_MIN: CellPos = REFERENCE_WALL_MIN;
+pub const WALL_MAX: CellPos = REFERENCE_WALL_MAX;
+pub const FOOTING_MIN: CellPos = REFERENCE_FOOTING_MIN;
+pub const FOOTING_MAX: CellPos = REFERENCE_FOOTING_MAX;
+pub const WALL_HIT_CENTER: CellPos = CellPos::new(64, 10, 66);
+pub const WALL_EDGE_HIT: CellPos = CellPos::new(49, 10, 66);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -102,9 +108,10 @@ pub struct DestructionCaseSpec {
 pub struct WallFixtureSpec {
     pub material_id: u32,
     pub material_name: String,
-    pub min: [i32; 3],
-    pub max: [i32; 3],
-    pub anchored_y: i32,
+    pub wall_min: [i32; 3],
+    pub wall_max: [i32; 3],
+    pub footing_min: [i32; 3],
+    pub footing_max: [i32; 3],
     pub occupied_cells: u64,
     pub anchored_cells: u64,
     pub populated_volumes: u64,
@@ -142,28 +149,15 @@ pub struct DestructionCaseResult {
 }
 
 pub fn baseline_materials() -> MaterialRegistry {
-    let mut materials = MaterialRegistry::new();
-    materials.insert(Material::named(
-        BASELINE_MATERIAL,
-        Rgb::new(142, 142, 146),
-        "baseline_structural_test_material",
-    ));
-    materials
+    reference_fracture_materials()
 }
 
-/// Build the permanent homogeneous destruction wall.
+/// Build the permanent homogeneous destruction fixture.
 ///
-/// It lives entirely inside one persistence region so the core fixture never
-/// accidentally becomes a streaming-boundary test.
+/// The wall sits on a wider anchored footing, exactly matching the fracture
+/// tests/demo/example, translated so the complete fixture stays in one region.
 pub fn baseline_wall() -> World {
-    let mut world = World::with_materials(baseline_materials());
-    world.fill_box(WALL_MIN, WALL_MAX, Some(BASELINE_MATERIAL));
-    world.set_anchor_box(
-        CellPos::new(WALL_MIN.x, WALL_MIN.y, WALL_MIN.z),
-        CellPos::new(WALL_MAX.x, WALL_MIN.y, WALL_MAX.z),
-        true,
-    );
-    world
+    reference_fracture_world()
 }
 
 fn fnv_u64(mut hash: u64, value: u64) -> u64 {
@@ -176,17 +170,14 @@ fn fnv_u64(mut hash: u64, value: u64) -> u64 {
 
 pub fn baseline_wall_checksum(world: &World) -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for y in WALL_MIN.y..=WALL_MAX.y {
-        for z in WALL_MIN.z..=WALL_MAX.z {
-            for x in WALL_MIN.x..=WALL_MAX.x {
-                let cell = CellPos::new(x, y, z);
-                let material = world.material_at(cell).map(|id| id.0).unwrap_or(0);
-                hash = fnv_u64(hash, x as i64 as u64);
-                hash = fnv_u64(hash, y as i64 as u64);
-                hash = fnv_u64(hash, z as i64 as u64);
-                hash = fnv_u64(hash, u64::from(material));
-                hash = fnv_u64(hash, u64::from(world.is_anchor(cell)));
-            }
+    for (volume_pos, volume) in world.volumes_sorted() {
+        for (local, material) in volume.iter_occupied() {
+            let cell = CellPos::from_parts(volume_pos, local);
+            hash = fnv_u64(hash, cell.x as i64 as u64);
+            hash = fnv_u64(hash, cell.y as i64 as u64);
+            hash = fnv_u64(hash, cell.z as i64 as u64);
+            hash = fnv_u64(hash, u64::from(material.0));
+            hash = fnv_u64(hash, u64::from(world.is_anchor(cell)));
         }
     }
     format!("{hash:016x}")
@@ -239,7 +230,7 @@ fn case_spec(case: DestructionBenchmarkCase) -> DestructionCaseSpec {
             stimulus: stimulus(
                 WALL_HIT_CENTER,
                 [0, 0, -1000],
-                1000,
+                900,
                 1,
                 "fresh baseline wall",
             ),
@@ -260,7 +251,7 @@ fn case_spec(case: DestructionBenchmarkCase) -> DestructionCaseSpec {
             stimulus: stimulus(
                 WALL_HIT_CENTER,
                 [0, 0, -1000],
-                1000,
+                900,
                 3,
                 "same wall state carried forward between repetitions",
             ),
@@ -403,16 +394,17 @@ pub fn destruction_benchmark_pack() -> DestructionBenchmarkPack {
     let world = baseline_wall();
     let occupied_cells = world.occupied_count();
     let anchored_cells =
-        (WALL_MAX.x - WALL_MIN.x + 1) as u64 * (WALL_MAX.z - WALL_MIN.z + 1) as u64;
+        (FOOTING_MAX.x - FOOTING_MIN.x + 1) as u64 * (FOOTING_MAX.z - FOOTING_MIN.z + 1) as u64;
 
     DestructionBenchmarkPack {
         version: DESTRUCTION_BENCHMARK_VERSION,
         fixture: WallFixtureSpec {
             material_id: BASELINE_MATERIAL.0,
             material_name: "baseline_structural_test_material".into(),
-            min: [WALL_MIN.x, WALL_MIN.y, WALL_MIN.z],
-            max: [WALL_MAX.x, WALL_MAX.y, WALL_MAX.z],
-            anchored_y: WALL_MIN.y,
+            wall_min: [WALL_MIN.x, WALL_MIN.y, WALL_MIN.z],
+            wall_max: [WALL_MAX.x, WALL_MAX.y, WALL_MAX.z],
+            footing_min: [FOOTING_MIN.x, FOOTING_MIN.y, FOOTING_MIN.z],
+            footing_max: [FOOTING_MAX.x, FOOTING_MAX.y, FOOTING_MAX.z],
             occupied_cells,
             anchored_cells,
             populated_volumes: world.volume_count() as u64,
@@ -461,30 +453,37 @@ pub fn result_template_to_json() -> serde_json::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine_core::CellSource;
     use std::collections::BTreeSet;
 
     #[test]
-    fn baseline_wall_is_one_material_one_region_and_bottom_anchored() {
+    fn baseline_wall_is_the_shared_one_material_one_region_fixture() {
         let world = baseline_wall();
         assert_eq!(world.materials().len(), 1);
-        assert_eq!(world.occupied_count(), 32 * 18 * 5);
+        assert_eq!(world.occupied_count(), 3_132);
         assert_eq!(world.region_count(), 1);
-        assert_eq!(world.volume_count(), 4);
 
-        let mut anchors = 0u64;
         for y in WALL_MIN.y..=WALL_MAX.y {
             for z in WALL_MIN.z..=WALL_MAX.z {
                 for x in WALL_MIN.x..=WALL_MAX.x {
-                    let cell = CellPos::new(x, y, z);
-                    assert_eq!(world.material_at(cell), Some(BASELINE_MATERIAL));
-                    if world.is_anchor(cell) {
-                        anchors += 1;
-                        assert_eq!(y, WALL_MIN.y);
-                    }
+                    assert_eq!(
+                        world.material_at(CellPos::new(x, y, z)),
+                        Some(BASELINE_MATERIAL)
+                    );
                 }
             }
         }
-        assert_eq!(anchors, 32 * 5);
+
+        let mut anchors = 0u64;
+        for z in FOOTING_MIN.z..=FOOTING_MAX.z {
+            for x in FOOTING_MIN.x..=FOOTING_MAX.x {
+                let cell = CellPos::new(x, FOOTING_MIN.y, z);
+                assert_eq!(world.material_at(cell), Some(BASELINE_MATERIAL));
+                assert!(world.is_anchor(cell));
+                anchors += 1;
+            }
+        }
+        assert_eq!(anchors, 36 * 7);
     }
 
     #[test]

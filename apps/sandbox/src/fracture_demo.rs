@@ -33,16 +33,13 @@ use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
 use bevy::app::AppExit;
 use bevy::prelude::*;
-use engine_core::{Axis, CellPos, GlobalPos, MaterialId, Rgb};
+use engine_core::Axis;
 use engine_destruction::{
-    AllResident, BaselineFracturePolicy, DamageAmount, DamageEvent, DamageEventId, DamageFalloff,
-    DamageImpulse, DamageSequence, DamageSpace, DamageVolume, FractureEvaluation, FractureImpact,
-    FractureLimits, FracturePolicy, FractureScene, FractureState, static_failure_batch,
+    AllResident, BaselineFracturePolicy, DamageAmount, DamageSequence, FractureEvaluation,
+    FractureImpact, FractureLimits, FracturePolicy, FractureScene, FractureState,
+    REFERENCE_IMPACT_CENTRE, reference_fracture_hit, reference_fracture_world,
+    static_failure_batch,
 };
-
-/// The one material. Deliberately not named after anything real: DROP 0006.0 is
-/// not tuning realism, and a real name would invite exactly that comparison.
-pub const REFERENCE_SOLID: MaterialId = MaterialId(6);
 
 /// How long the intact wall is held before anything happens, so that what the
 /// impact changed is visible rather than inferred.
@@ -56,17 +53,6 @@ const HOLD_SECONDS: f32 = 4.5;
 /// Identical hits on one spot. Enough to carry the wall from "intact but
 /// cracked" to "material has come away", which is the whole acceptance arc.
 const SHOTS: u32 = 7;
-
-/// Energy per hit. A tuning constant: low enough that one hit cannot delete a
-/// cell, high enough that repetition eventually does.
-const SHOT_ENERGY: DamageAmount = DamageAmount(900);
-/// Impact reach in cells, which is also the event's sphere radius.
-const SHOT_RADIUS: f64 = 7.0;
-
-/// Where the wall is struck, and from which side.
-const IMPACT_CENTRE: GlobalPos = GlobalPos::new(0.5, 10.5, 3.0);
-const IMPACT_SOURCE: GlobalPos = GlobalPos::new(0.5, 10.5, 26.0);
-const IMPACT_IMPULSE: [f64; 3] = [0.0, 0.0, -40.0];
 
 /// Drawing caps. These bound the *overlay*, never the model. The status line
 /// always reports the real sparse-state totals, so a capped draw shows up there
@@ -133,41 +119,17 @@ pub fn seed(
         return;
     }
 
-    // The registry is rebuilt here rather than taken from disk, so the fixture
-    // does not depend on which materials a previously saved world happened to
-    // know about.
-    let mut materials = world.0.materials().clone();
-    materials.define(
-        REFERENCE_SOLID.0,
-        Rgb::new(150, 146, 138),
-        "reference_solid",
-    );
-    world.0 = engine_world::World::with_materials(materials);
+    // One shared reference fixture: tests, CLI, benchmark, replay lab and this
+    // visual all use the same geometry/material/impact definition.
+    world.0 = reference_fracture_world();
+    world.0.mark_all_dirty();
     stream.enabled = false;
     stream.scheduler.clear();
     stream.streamer.clear();
 
-    // An anchored footing, wider than the wall so the wall is what fails.
-    world.0.fill_box(
-        CellPos::new(-18, 0, -3),
-        CellPos::new(17, 0, 3),
-        Some(REFERENCE_SOLID),
-    );
-    world
-        .0
-        .set_anchor_box(CellPos::new(-18, 0, -3), CellPos::new(17, 0, 3), true);
-
-    // The wall: 32 x 18 x 5, one material.
-    world.0.fill_box(
-        CellPos::new(-16, 1, -2),
-        CellPos::new(15, 18, 2),
-        Some(REFERENCE_SOLID),
-    );
-    world.0.mark_all_dirty();
-
-    // A fixed camera, square on to the struck face.
-    stream.meta.spawn = [0.0, 11.0, 31.0];
-    stream.meta.look_at = Some([0.0, 10.5, 0.0]);
+    // Same view as the original 0006.0 demo, translated with the fixture.
+    stream.meta.spawn = [64.0, 11.0, 95.0];
+    stream.meta.look_at = Some([64.0, 10.5, 64.0]);
 
     // Fracture state is interior state. Drawn with depth respected, a crack
     // field inside a solid wall is invisible, so the diagnostic would show
@@ -184,24 +146,6 @@ pub fn seed(
         "0006.0 fracture demo: the destruction wall, {} cells, one material; {SHOTS} identical hits",
         world.0.occupied_count()
     );
-}
-
-/// The hit. Identical every time, which is what makes "the state accumulated"
-/// the only possible explanation for anything changing.
-fn centre_hit(id: DamageEventId) -> DamageEvent {
-    DamageEvent::new(
-        id,
-        DamageSpace::StaticWorld,
-        Some(IMPACT_SOURCE),
-        DamageVolume::Sphere {
-            center: IMPACT_CENTRE,
-            radius: SHOT_RADIUS,
-            falloff: DamageFalloff::Linear,
-        },
-        SHOT_ENERGY,
-        DamageImpulse::new(IMPACT_IMPULSE).ok(),
-    )
-    .expect("the demo impact is finite")
 }
 
 pub fn drive(
@@ -235,7 +179,7 @@ pub fn drive(
         return;
     }
 
-    let event = centre_hit(demo.sequence.next_root());
+    let event = reference_fracture_hit(demo.sequence.next_root());
     let impact = FractureImpact::from_static_event(&event).expect("the demo impact quantises");
     // Copied out so the state can be borrowed mutably for the commit while the
     // policy is still being read.
@@ -425,7 +369,7 @@ pub fn draw(
     }
 
     // Where the energy went in.
-    let impact = Vec3::from_array(origin.to_render(IMPACT_CENTRE));
+    let impact = Vec3::from_array(origin.to_render(REFERENCE_IMPACT_CENTRE));
     let marker = Color::srgb(0.95, 0.97, 1.0);
     for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
         gizmos.line(impact - axis * 0.9, impact + axis * 0.9, marker);

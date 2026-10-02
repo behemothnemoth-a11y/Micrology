@@ -56,6 +56,7 @@ pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
 pub mod progressive_damage;
+pub mod reference_fixture;
 pub mod residency;
 pub mod spatial;
 pub mod support_witness;
@@ -99,6 +100,16 @@ pub use progressive_damage::{
     AccumulatedDamageRecord, DamageFailurePolicy, DamageSite, ProgressiveDamageLimits,
     ProgressiveDamageOutcome, ProgressiveDamageRefusal, ProgressiveDamageStore,
     UniformFailurePolicy, fragment_after_failures, static_failure_batch,
+};
+pub use reference_fixture::{
+    REFERENCE_FIXTURE_OFFSET, REFERENCE_FOOTING_MAX, REFERENCE_FOOTING_MIN,
+    REFERENCE_FRACTURE_MATERIAL, REFERENCE_IMPACT_CENTRE, REFERENCE_IMPACT_ENERGY,
+    REFERENCE_IMPACT_IMPULSE, REFERENCE_IMPACT_RADIUS, REFERENCE_IMPACT_SOURCE,
+    REFERENCE_LOCAL_FOOTING_MAX, REFERENCE_LOCAL_FOOTING_MIN, REFERENCE_LOCAL_IMPACT_CENTRE,
+    REFERENCE_LOCAL_IMPACT_SOURCE, REFERENCE_LOCAL_WALL_MAX, REFERENCE_LOCAL_WALL_MIN,
+    REFERENCE_WALL_MAX, REFERENCE_WALL_MIN, reference_fracture_hit, reference_fracture_hit_at,
+    reference_fracture_materials, reference_fracture_world, reference_fracture_world_at,
+    translate_cell, translate_global,
 };
 pub use residency::{
     FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,

@@ -10,49 +10,28 @@ use engine_destruction::{
     CellDeposit, DamageAmount, DamageEvent, DamageEventId, DamageFalloff, DamageImpulse,
     DamageSite, DamageSpace, DamageTarget, DamageVolume, FractureDefer, FractureEvaluation,
     FractureImpact, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
-    FractureProfile, FractureRefusal, FractureScene, FractureState, Residency, evaluate_fracture,
+    FractureProfile, FractureRefusal, FractureScene, FractureState, REFERENCE_FRACTURE_MATERIAL,
+    Residency, evaluate_fracture, reference_fracture_hit_at, reference_fracture_world_at,
     static_failure_batch,
 };
 use engine_world::World;
 
 /// The one material. Not called steel, concrete or stone: nothing here is tuned
 /// for realism, and a real name would invite exactly that comparison.
-const REFERENCE_SOLID: MaterialId = MaterialId(1);
+const REFERENCE_SOLID: MaterialId = REFERENCE_FRACTURE_MATERIAL;
 
-/// The Micrology destruction wall: 32 wide, 18 tall, 5 thick, on an anchored
-/// footing, made of one material throughout.
+/// The exact reference shape, translated around the origin for unit tests.
 fn destruction_wall() -> World {
-    let mut world = World::new();
-    world.fill_box(
-        CellPos::new(-18, 0, -3),
-        CellPos::new(17, 0, 3),
-        Some(REFERENCE_SOLID),
-    );
-    world.set_anchor_box(CellPos::new(-18, 0, -3), CellPos::new(17, 0, 3), true);
-    world.fill_box(
-        CellPos::new(-16, 1, -2),
-        CellPos::new(15, 18, 2),
-        Some(REFERENCE_SOLID),
-    );
-    world.take_dirty();
-    world
+    reference_fracture_world_at(CellPos::ZERO)
 }
 
-/// One deterministic hit on the wall's centre, from the +Z side.
+/// The canonical impact geometry/direction with caller-selected energy.
 fn centre_hit(sequence: u64, energy: u32) -> DamageEvent {
-    DamageEvent::new(
+    reference_fracture_hit_at(
         DamageEventId::new(sequence, 0),
-        DamageSpace::StaticWorld,
-        Some(GlobalPos::new(0.5, 10.5, 24.0)),
-        DamageVolume::Sphere {
-            center: GlobalPos::new(0.5, 10.5, 3.0),
-            radius: 7.0,
-            falloff: DamageFalloff::Linear,
-        },
+        CellPos::ZERO,
         DamageAmount(energy),
-        DamageImpulse::new([0.0, 0.0, -40.0]).ok(),
     )
-    .expect("the demo event is finite")
 }
 
 fn policy() -> BaselineFracturePolicy {

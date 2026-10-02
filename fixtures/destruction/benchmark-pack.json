@@ -1,24 +1,33 @@
 {
-  "version": 1,
+  "version": 2,
   "fixture": {
     "material_id": 9000,
     "material_name": "baseline_structural_test_material",
-    "min": [
-      32,
+    "wall_min": [
+      48,
+      1,
+      62
+    ],
+    "wall_max": [
+      79,
+      18,
+      66
+    ],
+    "footing_min": [
+      46,
       0,
-      32
+      61
     ],
-    "max": [
-      63,
-      17,
-      36
+    "footing_max": [
+      81,
+      0,
+      67
     ],
-    "anchored_y": 0,
-    "occupied_cells": 2880,
-    "anchored_cells": 160,
-    "populated_volumes": 4,
+    "occupied_cells": 3132,
+    "anchored_cells": 252,
+    "populated_volumes": 12,
     "resident_regions": 1,
-    "checksum_fnv1a64": "17d99fb3450ed265"
+    "checksum_fnv1a64": "704df76eee29b211"
   },
   "cases": [
     {
@@ -27,16 +36,16 @@
       "description": "One weak normal hit into a fresh homogeneous wall.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           0,
           0,
           -1000
         ],
-        "relative_energy_milli": 1000,
+        "relative_energy_milli": 900,
         "repetitions": 1,
         "precondition": "fresh baseline wall"
       },
@@ -56,16 +65,16 @@
       "description": "Repeat the exact weak center hit against existing damage.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           0,
           0,
           -1000
         ],
-        "relative_energy_milli": 1000,
+        "relative_energy_milli": 900,
         "repetitions": 3,
         "precondition": "same wall state carried forward between repetitions"
       },
@@ -85,9 +94,9 @@
       "description": "One strong center impact must produce local irregular failure.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           0,
@@ -114,9 +123,9 @@
       "description": "A hit near a free wall edge exercises local geometry response.",
       "stimulus": {
         "target": [
-          33,
-          9,
-          36
+          49,
+          10,
+          66
         ],
         "direction_milli": [
           0,
@@ -143,9 +152,9 @@
       "description": "An oblique impact proves that incoming direction is observable.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           700,
@@ -172,9 +181,9 @@
       "description": "A follow-up hit targets a region weakened by an earlier impact.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           0,
@@ -230,9 +239,9 @@
       "description": "A detached chunk impacts a fresh wall and feeds energy back into destruction.",
       "stimulus": {
         "target": [
-          47,
-          9,
-          36
+          64,
+          10,
+          66
         ],
         "direction_milli": [
           0,
