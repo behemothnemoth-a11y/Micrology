@@ -31,6 +31,7 @@ const MAX_STRUCTURAL_DISPATCH_PER_FRAME: usize = 1;
 const DEFAULT_MAX_IN_FLIGHT_SNAPSHOT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_RETRIES: u8 = 4;
 const MAX_PENDING_DESTRUCTION_REQUESTS: usize = 64;
+const MAX_STRUCTURAL_DEMAND_REGIONS: usize = 64;
 
 fn snapshot_byte_cap() -> u64 {
     std::env::var("MICROLOGY_STRUCTURE_SNAPSHOT_MB")
@@ -73,6 +74,8 @@ pub struct DestructionStats {
     pub pending_requests: usize,
     pub active_jobs: usize,
     pub waiting_for_regions: usize,
+    pub demanded_regions: usize,
+    pub demand_withheld_regions: usize,
     pub in_flight_snapshot_bytes: u64,
     pub last_snapshot_bytes: u64,
 }
@@ -323,6 +326,29 @@ pub fn reload_fragment_state(
     Ok(count)
 }
 
+/// Publish the bounded union of regions currently required by structural
+/// questions. The generic streamer owns actual I/O, memory pressure and pinning;
+/// destruction only states what data would make its exact answer conclusive.
+pub fn sync_structural_region_demand(
+    mut stream: ResMut<StreamRes>,
+    mut host: ResMut<DestructionHost>,
+) {
+    let all: BTreeSet<RegionPos> = host
+        .requests
+        .iter()
+        .flat_map(|request| request.waiting_for.iter().copied())
+        .collect();
+    let total = all.len();
+    let demanded: BTreeSet<RegionPos> = all
+        .into_iter()
+        .take(MAX_STRUCTURAL_DEMAND_REGIONS)
+        .collect();
+
+    host.stats.demanded_regions = demanded.len();
+    host.stats.demand_withheld_regions = total.saturating_sub(demanded.len());
+    stream.streamer.set_demanded_regions(demanded);
+}
+
 /// Dispatch at most one structural snapshot per rendered frame.
 ///
 /// Snapshot creation itself copies world data, so bounding worker count is not
@@ -436,7 +462,7 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                 if !required.is_empty() {
                     request.waiting_for = required;
                     status.0 = format!(
-                        "destruction waiting for {} region(s); move closer to load them",
+                        "destruction requesting {} structural region(s)",
                         request.waiting_for.len()
                     );
                     host.requeue(request);
