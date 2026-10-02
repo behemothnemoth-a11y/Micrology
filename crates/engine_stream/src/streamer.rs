@@ -295,10 +295,7 @@ impl RegionStreamer {
     /// Replace the exact set of regions temporarily demanded independently of
     /// the camera. The caller owns lifetime/priority policy; the streamer owns
     /// deduplication, I/O bounds, memory pressure and eviction safety.
-    pub fn set_demanded_regions(
-        &mut self,
-        regions: impl IntoIterator<Item = RegionPos>,
-    ) {
+    pub fn set_demanded_regions(&mut self, regions: impl IntoIterator<Item = RegionPos>) {
         self.demanded = regions.into_iter().collect();
     }
 
