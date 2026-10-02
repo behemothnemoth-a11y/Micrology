@@ -491,10 +491,7 @@ pub fn save_fragment_index_state(
     )
 }
 
-fn remove_fragment_payload_if_present(
-    dir: &Path,
-    id: FragmentId,
-) -> Result<bool, IoError> {
+fn remove_fragment_payload_if_present(dir: &Path, id: FragmentId) -> Result<bool, IoError> {
     let path = fragment_path(dir, id);
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(true),

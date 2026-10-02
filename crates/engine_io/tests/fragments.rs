@@ -242,7 +242,6 @@ fn index_accepts_sequence_strictly_after_all_existing_fragments() {
     assert_eq!(index.next_destruction_sequence, 13);
 }
 
-
 #[test]
 fn streamed_authoritative_deletion_updates_index_before_removing_payload() {
     let dir = temp_dir("streamed-delete");
@@ -273,11 +272,7 @@ fn committed_index_can_prune_a_payload_left_by_the_delete_crash_window() {
     let keep_id = FragmentId::new(40, 0);
     let delete_id = FragmentId::new(40, 1);
     let keep = fragment(keep_id, CellPos::ZERO, CellPos::new(1, 1, 1));
-    let delete = fragment(
-        delete_id,
-        CellPos::new(256, 0, 0),
-        CellPos::new(257, 1, 1),
-    );
+    let delete = fragment(delete_id, CellPos::new(256, 0, 0), CellPos::new(257, 1, 1));
     let mut store = FragmentStore::default();
     store.insert(keep);
     store.insert(delete);
