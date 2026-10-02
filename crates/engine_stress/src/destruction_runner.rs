@@ -34,6 +34,7 @@ use engine_destruction::{
     fracture_hit_toward, fracture_state_leaving_with, separation_from_cracks, separation_roots,
     static_failure_batch,
 };
+use engine_world::World;
 
 /// Work and memory ceilings for a benchmark run.
 ///
@@ -56,6 +57,7 @@ pub fn implemented_destruction_cases() -> Vec<DestructionBenchmarkCase> {
         DestructionBenchmarkCase::StrongCenterHit,
         DestructionBenchmarkCase::EdgeHit,
         DestructionBenchmarkCase::AngledHit,
+        DestructionBenchmarkCase::PreviouslyDamagedArea,
     ]
 }
 
@@ -112,13 +114,97 @@ fn damage_centroid_milli(state: &FractureState) -> [i64; 3] {
     ]
 }
 
-/// Run one stimulus against a fresh wall and measure the result.
+/// One group of identical hits.
+///
+/// A case is a sequence of these so that a precondition — "the wall after a weak
+/// hit" — is applied by the same code path as the case's own stimulus, rather
+/// than by a second one that could drift away from it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Stage {
+    pub target: CellPos,
+    pub direction_milli: [i32; 3],
+    pub energy: u32,
+    pub repetitions: u8,
+}
+
+impl Stage {
+    pub const fn new(
+        target: CellPos,
+        direction_milli: [i32; 3],
+        energy: u32,
+        repetitions: u8,
+    ) -> Self {
+        Self {
+            target,
+            direction_milli,
+            energy,
+            repetitions,
+        }
+    }
+}
+
+/// A case's **own** stimulus, without whatever precondition it needs.
+///
+/// The headless runner always starts from a fresh wall, so it applies the
+/// precondition itself. A replay script spells the precondition out as its own
+/// visible command instead, because the whole point of stepping through a case is
+/// seeing each hit land — so the lab asks for this and never for the stages.
+pub fn case_stimulus(case: DestructionBenchmarkCase) -> Option<Stage> {
+    destruction_benchmark_pack()
+        .cases
+        .iter()
+        .find(|spec| spec.case == case)
+        .map(stage_of)
+}
+
+/// The stimulus a case's spec describes, as one stage.
+fn stage_of(spec: &DestructionCaseSpec) -> Stage {
+    Stage::new(
+        CellPos::new(
+            spec.stimulus.target[0],
+            spec.stimulus.target[1],
+            spec.stimulus.target[2],
+        ),
+        spec.stimulus.direction_milli,
+        spec.stimulus.relative_energy_milli,
+        spec.stimulus.repetitions,
+    )
+}
+
+/// What a case needs done to the wall before its own stimulus lands.
+///
+/// Keyed on the case rather than parsed out of the spec's prose `precondition`
+/// field, because string-matching a sentence is exactly the kind of coupling that
+/// breaks in silence. A test asserts the prose and this agree.
+fn precondition_stages(case: DestructionBenchmarkCase) -> Vec<Stage> {
+    let pack = destruction_benchmark_pack();
+    let find = |wanted: DestructionBenchmarkCase| {
+        pack.cases
+            .iter()
+            .find(|spec| spec.case == wanted)
+            .map(stage_of)
+            .expect("the benchmark pack contains every case")
+    };
+    match case {
+        // "wall after weak_center_hit" — the weak case's own stimulus, so the
+        // two can never describe different hits.
+        DestructionBenchmarkCase::PreviouslyDamagedArea => {
+            vec![find(DestructionBenchmarkCase::WeakCenterHit)]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Run a sequence of stages against a fresh wall and measure the result.
 ///
 /// The whole pipeline, in the order a host runs it: evaluate, commit, remove
 /// failed cells through the ordinary edit path, ask what the cracks separated,
 /// detach that through the existing atomic transaction, forget the state that
 /// left with it.
-fn execute(target: CellPos, direction_milli: [i32; 3], energy: u32, repetitions: u8) -> Measured {
+///
+/// Measurement starts at `measure_from`, so a precondition shapes the wall
+/// without its own damage being counted as the case's.
+fn execute_stages(stages: &[Stage], measure_from: usize) -> Measured {
     let mut world = baseline_wall();
     let mut state = FractureState::new();
     let mut damage = DamageSequence::default();
@@ -134,75 +220,28 @@ fn execute(target: CellPos, direction_milli: [i32; 3], energy: u32, repetitions:
     let mut cells_detached_by_occupancy = 0u64;
     let mut fragment_size_cells: Vec<u64> = Vec::new();
 
-    for _ in 0..repetitions.max(1) {
-        let event = fracture_hit_toward(
-            next_event_id(&mut damage),
-            target,
-            direction_milli,
-            DamageAmount(energy),
-        );
-        let Ok(impact) = FractureImpact::from_static_event(&event) else {
-            continue;
-        };
-        let scene = FractureScene::static_world(&world, &world, &AllResident);
-        let evaluation = evaluate_fracture(&impact, scene, &policy, &state, fracture_limits())
-            .expect("the benchmark stimulus and the benchmark wall share the static world");
-        let load = match evaluation {
-            FractureEvaluation::Loaded(load) => load,
-            // A held answer is a real outcome, not a failure to record. It
-            // contributes no damage and no work beyond what it already spent.
-            _ => continue,
-        };
-        cells_touched += load.measurement.cells_visited;
-        bonds_touched += load.measurement.bonds_considered;
-        work_budget_used += load.measurement.cells_visited + load.measurement.bonds_considered;
-
-        let scene = FractureScene::static_world(&world, &world, &AllResident);
-        let Ok(outcome) = state.apply(&load, scene, &policy, fracture_limits()) else {
-            continue;
-        };
-        failed_cells += outcome.failed.len() as u64;
-        if !outcome.failed.is_empty() {
-            let edit = world.apply(&static_failure_batch(&outcome.failed));
-            debug_assert_eq!(edit.removed_cells.len(), outcome.failed.len());
-        }
-
-        let separation = separation_from_cracks(
-            &world,
-            &world,
-            &AllResident,
-            &CrackedBonds::static_world(&state),
-            separation_roots(&outcome),
-            structural_limits(),
-        );
-        if !separation.is_settled() {
-            continue;
-        }
-        cells_freed_by_cracks += separation.cells_freed_by_cracks();
-        components_freed_by_cracks += separation.freed_by_cracks().count() as u64;
-        cells_detached_by_occupancy += separation.cells_detached_by_occupancy();
-        if separation.separated.is_empty() {
-            continue;
-        }
-
-        let result = cracked_structure_result(
-            &world,
-            separation_roots(&outcome),
-            separation.components.clone(),
-        );
-        if let Ok(detached) = detach(&mut world, &mut destruction, &result) {
-            for fragment in &detached.fragments {
-                fragment_size_cells.push(fragment.cell_count());
-            }
-            // The plug's own cracks go with the plug. Carrying them into the
-            // fragment needs fragment-local fracture space, which is 0006.3;
-            // until then the records are forgotten rather than left to describe
-            // geometry the static world no longer has.
-            for component in &separation.separated {
-                for leaving in fracture_state_leaving_with(&world, &component.cells) {
-                    state.forget_cell(engine_destruction::DamageSpace::StaticWorld, leaving.cell());
-                }
-            }
+    for (index, stage) in stages.iter().enumerate() {
+        let measured = index >= measure_from;
+        for _ in 0..stage.repetitions.max(1) {
+            run_one_hit(
+                stage,
+                measured,
+                &mut world,
+                &mut state,
+                &mut damage,
+                &mut destruction,
+                &policy,
+                &mut Accumulator {
+                    cells_touched: &mut cells_touched,
+                    bonds_touched: &mut bonds_touched,
+                    work_budget_used: &mut work_budget_used,
+                    failed_cells: &mut failed_cells,
+                    cells_freed_by_cracks: &mut cells_freed_by_cracks,
+                    components_freed_by_cracks: &mut components_freed_by_cracks,
+                    cells_detached_by_occupancy: &mut cells_detached_by_occupancy,
+                    fragment_size_cells: &mut fragment_size_cells,
+                },
+            );
         }
     }
 
@@ -224,6 +263,112 @@ fn execute(target: CellPos, direction_milli: [i32; 3], energy: u32, repetitions:
         fragment_size_cells,
         damage_centroid_milli: damage_centroid_milli(&state),
         world_cells_remaining: world.occupied_count(),
+    }
+}
+
+/// The counters one hit contributes to. Grouped so the hit itself stays readable
+/// and so a precondition hit can be run with measurement switched off.
+struct Accumulator<'a> {
+    cells_touched: &'a mut u64,
+    bonds_touched: &'a mut u64,
+    work_budget_used: &'a mut u64,
+    failed_cells: &'a mut u64,
+    cells_freed_by_cracks: &'a mut u64,
+    components_freed_by_cracks: &'a mut u64,
+    cells_detached_by_occupancy: &'a mut u64,
+    fragment_size_cells: &'a mut Vec<u64>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_one_hit(
+    stage: &Stage,
+    measured: bool,
+    world: &mut World,
+    state: &mut FractureState,
+    damage: &mut DamageSequence,
+    destruction: &mut DestructionSequence,
+    policy: &BaselineFracturePolicy,
+    counters: &mut Accumulator<'_>,
+) {
+    {
+        let event = fracture_hit_toward(
+            next_event_id(damage),
+            stage.target,
+            stage.direction_milli,
+            DamageAmount(stage.energy),
+        );
+        let Ok(impact) = FractureImpact::from_static_event(&event) else {
+            return;
+        };
+        let scene = FractureScene::static_world(world, world, &AllResident);
+        let evaluation = evaluate_fracture(&impact, scene, policy, state, fracture_limits())
+            .expect("the benchmark stimulus and the benchmark wall share the static world");
+        let load = match evaluation {
+            FractureEvaluation::Loaded(load) => load,
+            // A held answer is a real outcome, not a failure to record. It
+            // contributes no damage and no work beyond what it already spent.
+            _ => return,
+        };
+        if measured {
+            *counters.cells_touched += load.measurement.cells_visited;
+            *counters.bonds_touched += load.measurement.bonds_considered;
+            *counters.work_budget_used +=
+                load.measurement.cells_visited + load.measurement.bonds_considered;
+        }
+
+        let scene = FractureScene::static_world(world, world, &AllResident);
+        let Ok(outcome) = state.apply(&load, scene, policy, fracture_limits()) else {
+            return;
+        };
+        if measured {
+            *counters.failed_cells += outcome.failed.len() as u64;
+        }
+        if !outcome.failed.is_empty() {
+            let edit = world.apply(&static_failure_batch(&outcome.failed));
+            debug_assert_eq!(edit.removed_cells.len(), outcome.failed.len());
+        }
+
+        let separation = separation_from_cracks(
+            world,
+            world,
+            &AllResident,
+            &CrackedBonds::static_world(state),
+            separation_roots(&outcome),
+            structural_limits(),
+        );
+        if !separation.is_settled() {
+            return;
+        }
+        if measured {
+            *counters.cells_freed_by_cracks += separation.cells_freed_by_cracks();
+            *counters.components_freed_by_cracks += separation.freed_by_cracks().count() as u64;
+            *counters.cells_detached_by_occupancy += separation.cells_detached_by_occupancy();
+        }
+        if separation.separated.is_empty() {
+            return;
+        }
+
+        let result = cracked_structure_result(
+            world,
+            separation_roots(&outcome),
+            separation.components.clone(),
+        );
+        if let Ok(detached) = detach(world, destruction, &result) {
+            if measured {
+                for fragment in &detached.fragments {
+                    counters.fragment_size_cells.push(fragment.cell_count());
+                }
+            }
+            // The plug's own cracks go with the plug. Carrying them into the
+            // fragment needs fragment-local fracture space, which is 0006.3;
+            // until then the records are forgotten rather than left to describe
+            // geometry the static world no longer has.
+            for component in &separation.separated {
+                for leaving in fracture_state_leaving_with(world, &component.cells) {
+                    state.forget_cell(engine_destruction::DamageSpace::StaticWorld, leaving.cell());
+                }
+            }
+        }
     }
 }
 
@@ -251,19 +396,18 @@ pub fn run_destruction_case(case: DestructionBenchmarkCase) -> Option<Destructio
     }
     let pack = destruction_benchmark_pack();
     let spec = pack.cases.iter().find(|spec| spec.case == case)?.clone();
-    let target = CellPos::new(
-        spec.stimulus.target[0],
-        spec.stimulus.target[1],
-        spec.stimulus.target[2],
-    );
-    let direction = spec.stimulus.direction_milli;
-    let energy = spec.stimulus.relative_energy_milli;
+    let own = stage_of(&spec);
 
-    let measured = execute(target, direction, energy, spec.stimulus.repetitions);
+    // A precondition shapes the wall first; measurement starts at the case's own
+    // stimulus so a precondition's damage is never counted as the case's.
+    let mut stages = precondition_stages(case);
+    let measure_from = stages.len();
+    stages.push(own);
+    let measured = execute_stages(&stages, measure_from);
 
     // Controls. Each case's acceptance names a comparison, and the comparison is
     // run rather than asserted from intuition.
-    let (cumulative, directional, note) = controls(&spec, target, direction, energy, &measured);
+    let (cumulative, directional, note) = controls(&spec, own, &measured);
 
     let mut result = DestructionCaseResult::unmeasured(case, pack.fixture.checksum_fnv1a64.clone());
     result.cells_touched = Some(measured.cells_touched);
@@ -307,9 +451,7 @@ const CENTROID_SHIFT_THRESHOLD_MILLI: i64 = 100;
 /// Run each case's named control and report what differed.
 fn controls(
     spec: &DestructionCaseSpec,
-    target: CellPos,
-    direction: [i32; 3],
-    energy: u32,
+    own: Stage,
     measured: &Measured,
 ) -> (Option<bool>, Option<bool>, Option<String>) {
     use DestructionBenchmarkCase as C;
@@ -317,7 +459,13 @@ fn controls(
         // Does a repeated hit build on what the last one left, or start over?
         // The control is the same stimulus applied once.
         C::RepeatedCenterHits => {
-            let single = execute(target, direction, energy, 1);
+            let single = execute_stages(
+                &[Stage {
+                    repetitions: 1,
+                    ..own
+                }],
+                0,
+            );
             let observed = measured.fracture_checksum != single.fracture_checksum
                 && measured.broken_bonds != single.broken_bonds;
             (
@@ -334,10 +482,16 @@ fn controls(
         C::EdgeHit => {
             let centre = CellPos::new(
                 crate::destruction_benchmark::WALL_HIT_CENTER.x,
-                target.y,
-                target.z,
+                own.target.y,
+                own.target.z,
             );
-            let control = execute(centre, direction, energy, spec.stimulus.repetitions);
+            let control = execute_stages(
+                &[Stage {
+                    target: centre,
+                    ..own
+                }],
+                0,
+            );
             let observed = measured.bonds_touched != control.bonds_touched
                 || measured.cells_touched != control.cells_touched
                 || measured.broken_bonds != control.broken_bonds;
@@ -359,7 +513,13 @@ fn controls(
         // Is the incoming direction observable? The control is the same cell and
         // energy struck square on, and the test is where the energy ended up.
         C::AngledHit => {
-            let control = execute(target, [0, 0, -1000], energy, spec.stimulus.repetitions);
+            let control = execute_stages(
+                &[Stage {
+                    direction_milli: [0, 0, -1000],
+                    ..own
+                }],
+                0,
+            );
             let shift = centroid_distance_milli(
                 measured.damage_centroid_milli,
                 control.damage_centroid_milli,
@@ -371,6 +531,30 @@ fn controls(
                 Some(format!(
                     "control: same cell and energy struck square on — damage centroid moved \
                      {shift} milli-cells, threshold {CENTROID_SHIFT_THRESHOLD_MILLI}"
+                )),
+            )
+        }
+        // Does prior damage change the outcome? The control is the identical
+        // energy on a wall nothing has touched. If the two agree, the state is
+        // being reset somewhere.
+        C::PreviouslyDamagedArea => {
+            let fresh = execute_stages(&[own], 0);
+            let observed = measured.fracture_checksum != fresh.fracture_checksum
+                && (measured.broken_bonds != fresh.broken_bonds
+                    || measured.failed_cells != fresh.failed_cells
+                    || measured.cells_freed_by_cracks != fresh.cells_freed_by_cracks);
+            (
+                Some(observed),
+                None,
+                Some(format!(
+                    "control: the same energy on a fresh wall — {} broken / {} failed / {} freed, \
+                     against {} / {} / {} on the wall a weak hit already damaged",
+                    fresh.broken_bonds,
+                    fresh.failed_cells,
+                    fresh.cells_freed_by_cracks,
+                    measured.broken_bonds,
+                    measured.failed_cells,
+                    measured.cells_freed_by_cracks,
                 )),
             )
         }
@@ -631,7 +815,6 @@ mod tests {
     #[test]
     fn cases_a_later_section_owns_report_nothing_rather_than_zero() {
         for case in [
-            DestructionBenchmarkCase::PreviouslyDamagedArea,
             DestructionBenchmarkCase::DetachedChunkHit,
             DestructionBenchmarkCase::ChunkIntoWall,
         ] {
@@ -639,7 +822,56 @@ mod tests {
         }
         let results = run_destruction_cases();
         let unmeasured = results.iter().filter(|r| !r.is_measured()).count();
-        assert_eq!(unmeasured, 3);
+        assert_eq!(unmeasured, 2);
+    }
+
+    /// The precondition is keyed on the case, so the pack's prose and this code
+    /// could drift apart in silence. They are checked against each other instead.
+    #[test]
+    fn a_precondition_matches_what_its_spec_says_in_words() {
+        let pack = destruction_benchmark_pack();
+        for spec in &pack.cases {
+            let stages = precondition_stages(spec.case);
+            let prose = spec.stimulus.precondition.as_str();
+            // "after <something>" is the pack's way of naming a prior, different
+            // hit. A case that repeats its own stimulus carries state forward
+            // without needing one, and says so differently.
+            let names_a_prior_hit = prose.contains("after");
+            assert_eq!(
+                names_a_prior_hit,
+                !stages.is_empty(),
+                "{} runs {} precondition stage(s) but its spec says {prose:?}",
+                spec.case.name(),
+                stages.len()
+            );
+        }
+        // And the one precondition that exists is literally the weak hit.
+        assert_eq!(
+            precondition_stages(DestructionBenchmarkCase::PreviouslyDamagedArea),
+            vec![stage_of(
+                pack.cases
+                    .iter()
+                    .find(|spec| spec.case == DestructionBenchmarkCase::WeakCenterHit)
+                    .unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn hitting_a_damaged_area_differs_from_hitting_a_fresh_wall() {
+        let result = run_destruction_case(DestructionBenchmarkCase::PreviouslyDamagedArea).unwrap();
+        assert_eq!(
+            result.cumulative_response_observed,
+            Some(true),
+            "{:?}",
+            result.control_note
+        );
+        // The precondition's own damage must not be counted as the case's work.
+        let weak = run_destruction_case(DestructionBenchmarkCase::WeakCenterHit).unwrap();
+        assert_eq!(
+            result.cells_touched, weak.cells_touched,
+            "one hit's worth of walking, whatever happened before it"
+        );
     }
 
     #[test]

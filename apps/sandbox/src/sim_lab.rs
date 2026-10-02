@@ -20,9 +20,8 @@ use engine_destruction::{
     separation_roots, static_failure_batch,
 };
 use engine_stress::{
-    DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall,
-    destruction_benchmark_pack, is_implemented, structural_state_digest, validate_replay,
-    weak_repeat_replay,
+    DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall, case_stimulus,
+    is_implemented, structural_state_digest, validate_replay, weak_repeat_replay,
 };
 use std::path::{Path, PathBuf};
 
@@ -347,22 +346,17 @@ fn apply_benchmark_case(
             case.name()
         ));
     }
-    let pack = destruction_benchmark_pack();
-    let spec = pack
-        .cases
-        .iter()
-        .find(|spec| spec.case == case)
+    // The case's *own* stimulus, never its precondition. A replay script spells
+    // a precondition out as its own command so every hit is a visible step; the
+    // headless runner applies it itself because it always starts from a fresh
+    // wall.
+    let stage = case_stimulus(case)
         .ok_or_else(|| format!("{} is not in the benchmark pack", case.name()))?;
-    let target = engine_core::CellPos::new(
-        spec.stimulus.target[0],
-        spec.stimulus.target[1],
-        spec.stimulus.target[2],
-    );
     let event = fracture_hit_toward(
         lab.fracture_sequence.next_root(),
-        target,
-        spec.stimulus.direction_milli,
-        DamageAmount(spec.stimulus.relative_energy_milli),
+        stage.target,
+        stage.direction_milli,
+        DamageAmount(stage.energy),
     );
     let impact = FractureImpact::from_static_event(&event)
         .map_err(|error| format!("fracture impact: {error:?}"))?;

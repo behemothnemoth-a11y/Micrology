@@ -82,8 +82,8 @@ pub use fracture::{
     BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondKey, BondLoad, BondMode, BondSite,
     CellDeposit, CellFracture, FractureDefer, FractureDigest, FractureEvaluation, FractureImpact,
     FractureImpactError, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
-    FracturePolicy, FractureProfile, FractureRefusal, FractureScene, FractureSpaceMismatch,
-    FractureState, FractureStats, evaluate_fracture,
+    FracturePolicy, FractureProfile, FracturePrune, FractureRefusal, FractureScene,
+    FractureSpaceMismatch, FractureState, FractureStats, RegionFracture, evaluate_fracture,
 };
 pub use fracture_connectivity::{
     BondGate, CrackedBonds, FractureSeparation, IntactBonds, SeparatedComponent, SeparationCause,

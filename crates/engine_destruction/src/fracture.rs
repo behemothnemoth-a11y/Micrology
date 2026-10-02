@@ -255,6 +255,15 @@ impl BondKey {
         })
     }
 
+    /// The bond along `axis` from `lower`, or `None` when the upper cell would
+    /// leave the representable cell-address space.
+    ///
+    /// The form a persisted bond is rebuilt from: the fields stay private, so a
+    /// file cannot smuggle in a key that breaks the one-name-per-face invariant.
+    pub fn along(lower: CellPos, axis: Axis) -> Option<Self> {
+        Self::new(lower, positive_dir(axis))
+    }
+
     /// The bond between two face-adjacent cells, or `None` when they are not
     /// face neighbours.
     pub fn between(a: CellPos, b: CellPos) -> Option<Self> {
@@ -889,6 +898,59 @@ pub struct FractureDigest {
     pub checksum: u64,
 }
 
+/// Every fracture record one region owns.
+///
+/// Ownership follows identity rather than inventing a second rule: a cell record
+/// belongs to its cell's region, and a bond record belongs to its **lower**
+/// cell's region, which is already the bond's canonical name.
+///
+/// A bond whose upper cell lives in a different region therefore leaves memory
+/// with the lower one. That is the conservative direction: while the record is
+/// away the face reads as intact, and an intact bond carries support, so a
+/// structure stays standing rather than falling because part of it was evicted.
+#[derive(Clone, PartialEq, Eq, Default, Debug)]
+pub struct RegionFracture {
+    pub region: RegionPos,
+    /// Canonical order, so the same damage always serialises the same way.
+    pub cells: Vec<CellFracture>,
+    pub bonds: Vec<BondFracture>,
+}
+
+impl RegionFracture {
+    pub fn is_empty(&self) -> bool {
+        self.cells.is_empty() && self.bonds.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.cells.len() + self.bonds.len()
+    }
+}
+
+/// What a hygiene sweep found and what it cost.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct FracturePrune {
+    pub cells_dropped: usize,
+    pub bonds_dropped: usize,
+    /// Records looked at. The size of the state, never the size of the world.
+    pub records_examined: u64,
+}
+
+impl FracturePrune {
+    pub const fn dropped_anything(&self) -> bool {
+        self.cells_dropped > 0 || self.bonds_dropped > 0
+    }
+}
+
+/// Whether `region` owns this cell record.
+fn owns_cell(region: RegionPos, site: DamageSite) -> bool {
+    site.space == DamageSpace::StaticWorld && site.cell.region() == region
+}
+
+/// Whether `region` owns this bond record.
+fn owns_bond(region: RegionPos, site: BondSite) -> bool {
+    site.space == DamageSpace::StaticWorld && site.bond.lower().region() == region
+}
+
 /// Sparse, deterministic, persistent fracture state.
 ///
 /// An untouched world allocates nothing: a cell with no absorbed energy has no
@@ -1038,6 +1100,178 @@ impl FractureState {
             self.revision.bump();
         }
         removed
+    }
+
+    /// Which regions hold any static fracture state, in canonical order.
+    ///
+    /// What a streaming host iterates when deciding what to save.
+    pub fn static_regions(&self) -> BTreeSet<RegionPos> {
+        let mut regions = BTreeSet::new();
+        for site in self.cells.keys() {
+            if site.space == DamageSpace::StaticWorld {
+                regions.insert(site.cell.region());
+            }
+        }
+        for site in self.bonds.keys() {
+            if site.space == DamageSpace::StaticWorld {
+                regions.insert(site.bond.lower().region());
+            }
+        }
+        regions
+    }
+
+    /// Read one region's static fracture state without removing it.
+    ///
+    /// For saving a region that stays resident. Canonical order, so the same
+    /// damage always serialises to the same bytes.
+    pub fn region_fracture(&self, region: RegionPos) -> RegionFracture {
+        RegionFracture {
+            region,
+            cells: self
+                .cells
+                .values()
+                .filter(|record| owns_cell(region, record.site))
+                .copied()
+                .collect(),
+            bonds: self
+                .bonds
+                .values()
+                .filter(|record| owns_bond(region, record.site))
+                .copied()
+                .collect(),
+        }
+    }
+
+    /// Remove and return one region's static fracture state.
+    ///
+    /// For eviction: the damage leaves memory with the cells it describes, and
+    /// [`restore_region`](Self::restore_region) puts it back byte for byte.
+    pub fn take_static_region(&mut self, region: RegionPos) -> RegionFracture {
+        let extracted = self.region_fracture(region);
+        if extracted.is_empty() {
+            return extracted;
+        }
+        for record in &extracted.cells {
+            self.cells.remove(&record.site);
+        }
+        for record in &extracted.bonds {
+            self.bonds.remove(&record.site);
+        }
+        self.revision.bump();
+        extracted
+    }
+
+    /// Put a region's static fracture state back, atomically.
+    ///
+    /// Refused as a whole if it would exceed an entry ceiling, so a load can
+    /// never leave half a region's damage in memory. A zero-amount cell record
+    /// or a full-integrity bond record is dropped rather than stored: those mean
+    /// "undamaged", and storing them would make the state's size depend on how
+    /// it was written rather than on how much damage there is.
+    pub fn restore_region(
+        &mut self,
+        records: RegionFracture,
+        limits: FractureLimits,
+    ) -> Result<(), FractureRefusal> {
+        let mut staged_cells = self.cells.clone();
+        let mut staged_bonds = self.bonds.clone();
+        for record in records.cells {
+            if record.energy == DamageAmount::ZERO {
+                staged_cells.remove(&record.site);
+            } else {
+                staged_cells.insert(record.site, record);
+            }
+        }
+        for record in records.bonds {
+            if record.integrity >= BOND_INTEGRITY {
+                staged_bonds.remove(&record.site);
+            } else {
+                staged_bonds.insert(record.site, record);
+            }
+        }
+        if staged_cells.len() > limits.max_cell_entries {
+            return Err(FractureRefusal::CellEntryLimit {
+                required: staged_cells.len(),
+                limit: limits.max_cell_entries,
+            });
+        }
+        if staged_bonds.len() > limits.max_bond_entries {
+            return Err(FractureRefusal::BondEntryLimit {
+                required: staged_bonds.len(),
+                limit: limits.max_bond_entries,
+            });
+        }
+        self.cells = staged_cells;
+        self.bonds = staged_bonds;
+        self.revision.bump();
+        Ok(())
+    }
+
+    /// Forget every record belonging to cells that have left.
+    ///
+    /// The bounded hygiene path, driven by an edit's own
+    /// `EditOutcome::removed_cells` rather than by a sweep of the whole state.
+    /// Call it whenever geometry disappears by a route fracture did not drive —
+    /// a carve, a detachment, a collapse.
+    pub fn forget_removed(
+        &mut self,
+        space: DamageSpace,
+        cells: impl IntoIterator<Item = CellPos>,
+    ) -> usize {
+        cells
+            .into_iter()
+            .map(|cell| self.forget_cell(space, cell))
+            .sum()
+    }
+
+    /// Drop every record that no longer describes the material it was recorded
+    /// against.
+    ///
+    /// The belt-and-braces sweep, for after a bulk change whose extent a host
+    /// did not track — a repaint, a region swap, a world reload. Cost is the
+    /// size of the *state*, not the size of the world, and it is reported so the
+    /// sweep can be judged on evidence rather than on comfort.
+    ///
+    /// A cell that is gone, or now made of something else, cannot carry the
+    /// damage recorded for what used to be there.
+    pub fn prune_against(&mut self, space: DamageSpace, cells: &dyn CellSource) -> FracturePrune {
+        let mut prune = FracturePrune::default();
+        let mut stale_cells = Vec::new();
+        for (site, record) in &self.cells {
+            prune.records_examined += 1;
+            if site.space != space {
+                continue;
+            }
+            if cells.material_at(site.cell) != Some(record.material) {
+                stale_cells.push(*site);
+            }
+        }
+        let mut stale_bonds = Vec::new();
+        for (site, record) in &self.bonds {
+            prune.records_examined += 1;
+            if site.space != space {
+                continue;
+            }
+            // A bond is named by its lower cell, so that is the material it was
+            // recorded against; the upper cell only has to still be there.
+            let lower_matches = cells.material_at(site.bond.lower()) == Some(record.material);
+            let upper_present = cells.material_at(site.bond.upper()).is_some();
+            if !lower_matches || !upper_present {
+                stale_bonds.push(*site);
+            }
+        }
+        for site in &stale_cells {
+            self.cells.remove(site);
+        }
+        for site in &stale_bonds {
+            self.bonds.remove(site);
+        }
+        prune.cells_dropped = stale_cells.len();
+        prune.bonds_dropped = stale_bonds.len();
+        if prune.dropped_anything() {
+            self.revision.bump();
+        }
+        prune
     }
 
     /// Forget everything in one coordinate space, as when a fragment dies.

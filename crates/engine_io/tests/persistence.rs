@@ -317,3 +317,185 @@ fn the_committed_empty_fixture_still_loads() {
     let world = engine_io::load_world(&path).unwrap();
     assert_eq!(world, World::new());
 }
+
+// ---------------------------------------------------------------------------
+// DROP 0006.2: the fracture sidecar.
+//
+// Damage has to stay real when world ownership moves. These go through the disk
+// rather than through `serde` alone, because an eviction is a disk round trip.
+// ---------------------------------------------------------------------------
+
+/// Damage the shared reference wall, so the cracks under test are ones the real
+/// model produced rather than ones a test invented.
+fn damaged_reference_wall() -> (World, engine_destruction::FractureState) {
+    use engine_destruction::{
+        AllResident, BaselineFracturePolicy, DamageEventId, FractureEvaluation, FractureImpact,
+        FractureLimits, FractureScene, FractureState, evaluate_fracture, reference_fracture_hit,
+        reference_fracture_world, static_failure_batch,
+    };
+
+    let mut world = reference_fracture_world();
+    let mut state = FractureState::new();
+    let policy = BaselineFracturePolicy::REFERENCE;
+    for shot in 1..=3u64 {
+        let event = reference_fracture_hit(DamageEventId::new(shot, 0));
+        let impact = FractureImpact::from_static_event(&event).unwrap();
+        let scene = FractureScene::static_world(&world, &world, &AllResident);
+        let load =
+            match evaluate_fracture(&impact, scene, &policy, &state, FractureLimits::UNLIMITED)
+                .unwrap()
+            {
+                FractureEvaluation::Loaded(load) => load,
+                other => panic!("expected a conclusive evaluation, got {other:?}"),
+            };
+        let scene = FractureScene::static_world(&world, &world, &AllResident);
+        let outcome = state
+            .apply(&load, scene, &policy, FractureLimits::UNLIMITED)
+            .unwrap();
+        if !outcome.failed.is_empty() {
+            world.apply(&static_failure_batch(&outcome.failed));
+        }
+    }
+    assert!(!state.is_empty(), "the fixture must actually be damaged");
+    (world, state)
+}
+
+#[test]
+fn cracks_survive_a_disk_round_trip_with_the_same_checksum() {
+    use engine_destruction::FractureLimits;
+
+    let dir = scratch("fracture-roundtrip");
+    let (_, state) = damaged_reference_wall();
+    let before = state.digest();
+
+    let written = engine_io::save_all_fracture(&dir, &state).unwrap();
+    assert!(!written.is_empty());
+    assert_eq!(engine_io::scan_region_fracture(&dir).unwrap(), written);
+
+    let reloaded = engine_io::load_all_fracture(&dir, FractureLimits::UNLIMITED).unwrap();
+    assert_eq!(
+        reloaded.digest(),
+        before,
+        "a reloaded crack field must be the same crack field"
+    );
+    assert_eq!(reloaded, state);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn evicting_one_region_and_loading_it_back_restores_exactly_that_region() {
+    use engine_destruction::FractureLimits;
+
+    let dir = scratch("fracture-eviction");
+    let (_, mut state) = damaged_reference_wall();
+    let before = state.digest();
+    let region = *state.static_regions().iter().next().unwrap();
+
+    // Save, then evict: the damage leaves memory with the cells it describes.
+    engine_io::save_region_fracture(&dir, &state.region_fracture(region)).unwrap();
+    let taken = state.take_static_region(region);
+    assert!(!taken.is_empty());
+    assert_ne!(state.digest(), before);
+
+    // Stream it back in.
+    let records = engine_io::load_region_fracture(&dir, region).unwrap();
+    assert_eq!(records, taken);
+    state
+        .restore_region(records, FractureLimits::UNLIMITED)
+        .unwrap();
+    assert_eq!(state.digest(), before);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn the_same_cracks_always_write_the_same_bytes() {
+    let dir_a = scratch("fracture-bytes-a");
+    let dir_b = scratch("fracture-bytes-b");
+    let (_, state) = damaged_reference_wall();
+    let region = *state.static_regions().iter().next().unwrap();
+
+    engine_io::save_region_fracture(&dir_a, &state.region_fracture(region)).unwrap();
+    engine_io::save_region_fracture(&dir_b, &state.region_fracture(region)).unwrap();
+    let a = std::fs::read_to_string(engine_io::fracture_path(&dir_a, region)).unwrap();
+    let b = std::fs::read_to_string(engine_io::fracture_path(&dir_b, region)).unwrap();
+    assert_eq!(a, b);
+
+    std::fs::remove_dir_all(&dir_a).ok();
+    std::fs::remove_dir_all(&dir_b).ok();
+}
+
+#[test]
+fn a_world_saved_before_the_sidecar_existed_loads_with_no_damage_and_no_error() {
+    use engine_destruction::FractureLimits;
+
+    // Exactly the state every world written before DROP 0006.2 is in: regions on
+    // disk, no `fracture/` directory at all.
+    let dir = scratch("fracture-legacy");
+    let meta = engine_io::WorldMeta::new("legacy");
+    engine_io::v2::save_world_v2(&sample(), &meta, &dir).unwrap();
+
+    assert!(!dir.join(engine_io::FRACTURE_DIR).exists());
+    assert!(engine_io::scan_region_fracture(&dir).unwrap().is_empty());
+    let state = engine_io::load_all_fracture(&dir, FractureLimits::UNLIMITED).unwrap();
+    assert!(state.is_empty());
+
+    // And the world itself still loads unchanged.
+    let loaded = engine_io::v2::load_world_v2(&dir).unwrap();
+    assert!(loaded.world == sample());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_reload_that_does_not_fit_the_entry_budget_is_a_budget_error_not_a_parse_error() {
+    use engine_destruction::FractureLimits;
+
+    let dir = scratch("fracture-budget");
+    let (_, state) = damaged_reference_wall();
+    engine_io::save_all_fracture(&dir, &state).unwrap();
+
+    let refused = engine_io::load_all_fracture(&dir, FractureLimits::new(u64::MAX, u64::MAX, 2, 2));
+    assert!(matches!(refused, Err(IoError::FractureBudget { .. })));
+    // The message has to send a reader to the budget, not to the file.
+    assert!(
+        refused.unwrap_err().to_string().contains("budget"),
+        "a budget refusal must say so"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn repairing_a_region_removes_its_sidecar_rather_than_leaving_stale_cracks() {
+    use engine_destruction::{DamageSpace, FractureLimits, RegionFracture};
+
+    let dir = scratch("fracture-repair");
+    let (_, mut state) = damaged_reference_wall();
+    engine_io::save_all_fracture(&dir, &state).unwrap();
+    let regions = engine_io::scan_region_fracture(&dir).unwrap();
+    assert!(!regions.is_empty());
+
+    // Everything the damage described is gone; the sidecar must go with it.
+    for region in &regions {
+        state.take_static_region(*region);
+        engine_io::save_region_fracture(
+            &dir,
+            &RegionFracture {
+                region: *region,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    let _ = state.forget_space(DamageSpace::StaticWorld);
+    assert!(engine_io::scan_region_fracture(&dir).unwrap().is_empty());
+    assert!(
+        engine_io::load_all_fracture(&dir, FractureLimits::UNLIMITED)
+            .unwrap()
+            .is_empty()
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

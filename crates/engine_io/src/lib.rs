@@ -26,11 +26,17 @@
 
 mod error;
 mod format;
+pub mod fracture;
 pub mod fragments;
 pub mod v2;
 
 pub use error::IoError;
 pub use format::{FORMAT_TAG, FORMAT_VERSION, from_json, load_world, save_world, to_json};
+pub use fracture::{
+    FRACTURE_DIR, FRACTURE_TAG, delete_region_fracture, fracture_from_json, fracture_path,
+    fracture_to_json, load_all_fracture, load_region_fracture, save_all_fracture,
+    save_region_fracture, scan_region_fracture,
+};
 pub use fragments::{
     FRAGMENT_INDEX_NAME, FRAGMENT_INDEX_TAG, FRAGMENT_TAG, FRAGMENTS_DIR, FragmentIndex,
     delete_persisted_fragment, fragment_file_name, fragment_from_json, fragment_index_from_json,

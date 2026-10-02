@@ -36,6 +36,12 @@ pub enum IoError {
     },
     /// The manifest lists a region whose file is not there.
     MissingRegion { region: RegionPos, path: PathBuf },
+    /// Fracture state on disk does not fit the host's sparse entry ceiling.
+    ///
+    /// Kept apart from `IoError::Parse` because the file is fine and the budget
+    /// is not: reporting it as a parse error would send whoever reads the
+    /// message to look at the wrong thing entirely.
+    FractureBudget { detail: String },
     /// A region file does not describe the region it was loaded as.
     RegionMismatch {
         expected: RegionPos,
@@ -109,6 +115,9 @@ impl fmt::Display for IoError {
                 "the manifest lists region {region:?} but {} is missing",
                 path.display()
             ),
+            IoError::FractureBudget { detail } => {
+                write!(f, "fracture state does not fit its entry budget: {detail}")
+            }
             IoError::RegionMismatch { expected, found } => write!(
                 f,
                 "region file claims to be {found:?} but was loaded as {expected:?}"
@@ -172,6 +181,7 @@ impl std::error::Error for IoError {
             IoError::FragmentSpatial { source } => Some(source),
             IoError::WrongFormat { .. }
             | IoError::UnsupportedVersion { .. }
+            | IoError::FractureBudget { .. }
             | IoError::MissingRegion { .. }
             | IoError::RegionMismatch { .. }
             | IoError::VolumeOutsideRegion { .. }

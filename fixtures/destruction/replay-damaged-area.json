@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "damaged_area",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    {
+      "op": "pause"
+    },
+    {
+      "op": "dump",
+      "label": "intact"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "previously_damaged_area"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "fresh_wall_control"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "weak_center_hit"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "weakened"
+    },
+    {
+      "op": "benchmark_case",
+      "case": "previously_damaged_area"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 1
+    },
+    {
+      "op": "dump",
+      "label": "damaged_area_hit"
+    }
+  ]
+}

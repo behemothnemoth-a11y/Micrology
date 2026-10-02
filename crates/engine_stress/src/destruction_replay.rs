@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DESTRUCTION_REPLAY_VERSION: u32 = 1;
 pub const WEAK_REPEAT_REPLAY_PATH: &str = "fixtures/destruction/replay-weak-repeat.json";
+pub const DAMAGED_AREA_REPLAY_PATH: &str = "fixtures/destruction/replay-damaged-area.json";
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -143,6 +144,55 @@ pub fn weak_repeat_replay() -> ReplayScript {
             },
         ],
     }
+}
+
+/// Step through the difference prior damage makes: DROP 0006.2.
+///
+/// The precondition is an explicit command rather than something the case does
+/// to itself, so the dump after `weakened` and the dump after
+/// `damaged_area_hit` can be compared directly — and the same 1800-energy hit on
+/// a wall nothing has touched is right there in the same script to compare
+/// against.
+pub fn damaged_area_replay() -> ReplayScript {
+    let fixture = destruction_benchmark_pack();
+    ReplayScript {
+        version: DESTRUCTION_REPLAY_VERSION,
+        name: "damaged_area".into(),
+        fixture_checksum_fnv1a64: fixture.fixture.checksum_fnv1a64,
+        commands: vec![
+            ReplayCommand::Pause,
+            ReplayCommand::Dump {
+                label: "intact".into(),
+            },
+            // The control first, on the fresh wall, so its numbers are recorded
+            // before anything else has touched the fixture.
+            ReplayCommand::BenchmarkCase {
+                case: DestructionBenchmarkCase::PreviouslyDamagedArea,
+            },
+            ReplayCommand::AdvanceFixed { steps: 1 },
+            ReplayCommand::Dump {
+                label: "fresh_wall_control".into(),
+            },
+            ReplayCommand::BenchmarkCase {
+                case: DestructionBenchmarkCase::WeakCenterHit,
+            },
+            ReplayCommand::AdvanceFixed { steps: 1 },
+            ReplayCommand::Dump {
+                label: "weakened".into(),
+            },
+            ReplayCommand::BenchmarkCase {
+                case: DestructionBenchmarkCase::PreviouslyDamagedArea,
+            },
+            ReplayCommand::AdvanceFixed { steps: 1 },
+            ReplayCommand::Dump {
+                label: "damaged_area_hit".into(),
+            },
+        ],
+    }
+}
+
+pub fn damaged_area_replay_json() -> serde_json::Result<String> {
+    replay_to_json(&damaged_area_replay())
 }
 
 pub fn replay_to_json(script: &ReplayScript) -> serde_json::Result<String> {
@@ -318,5 +368,35 @@ mod tests {
         let generated = weak_repeat_replay_json().unwrap();
         let committed = include_str!("../../../fixtures/destruction/replay-weak-repeat.json");
         assert_eq!(generated, committed);
+    }
+
+    #[test]
+    fn the_damaged_area_replay_is_valid_and_pinned_to_the_same_wall() {
+        let replay = damaged_area_replay();
+        validate_replay(&replay).unwrap();
+        assert_eq!(
+            replay.fixture_checksum_fnv1a64,
+            destruction_benchmark_pack().fixture.checksum_fnv1a64
+        );
+        let generated = damaged_area_replay_json().unwrap();
+        let committed = include_str!("../../../fixtures/destruction/replay-damaged-area.json");
+        assert_eq!(generated, committed);
+    }
+
+    /// The script has to put its control before anything damages the wall, or the
+    /// comparison it exists to make is not a comparison.
+    #[test]
+    fn the_damaged_area_replay_measures_its_control_on_an_untouched_wall() {
+        let commands = damaged_area_replay().commands;
+        let first_hit = commands
+            .iter()
+            .position(|command| matches!(command, ReplayCommand::BenchmarkCase { .. }))
+            .expect("the script hits something");
+        assert!(matches!(
+            commands[first_hit],
+            ReplayCommand::BenchmarkCase {
+                case: DestructionBenchmarkCase::PreviouslyDamagedArea
+            }
+        ));
     }
 }

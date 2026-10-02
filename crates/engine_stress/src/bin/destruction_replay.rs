@@ -1,7 +1,8 @@
 use engine_destruction::FragmentStore;
 use engine_stress::{
-    ReplayCommand, ReplayScript, WEAK_REPEAT_REPLAY_PATH, baseline_wall, structural_state_digest,
-    validate_replay, weak_repeat_replay, weak_repeat_replay_json,
+    DAMAGED_AREA_REPLAY_PATH, ReplayCommand, ReplayScript, WEAK_REPEAT_REPLAY_PATH, baseline_wall,
+    damaged_area_replay, damaged_area_replay_json, structural_state_digest, validate_replay,
+    weak_repeat_replay, weak_repeat_replay_json,
 };
 use std::path::Path;
 
@@ -20,31 +21,55 @@ fn load(path: &Path) -> ReplayScript {
 fn main() {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
-        None => print_plan(&weak_repeat_replay()),
+        None => {
+            print_plan(&weak_repeat_replay());
+            println!();
+            print_plan(&damaged_area_replay());
+        }
         Some("--json") => {
             print!("{}", weak_repeat_replay_json().expect("serialize replay"));
         }
         Some("--write") => {
-            let json = weak_repeat_replay_json().expect("serialize replay");
-            let path = Path::new(WEAK_REPEAT_REPLAY_PATH);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("create replay fixture directory");
+            for (path, json) in [
+                (
+                    WEAK_REPEAT_REPLAY_PATH,
+                    weak_repeat_replay_json().expect("serialize replay"),
+                ),
+                (
+                    DAMAGED_AREA_REPLAY_PATH,
+                    damaged_area_replay_json().expect("serialize replay"),
+                ),
+            ] {
+                let path = Path::new(path);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).expect("create replay fixture directory");
+                }
+                std::fs::write(path, json).expect("write canonical replay");
+                println!("wrote {}", path.display());
             }
-            std::fs::write(path, json).expect("write canonical replay");
-            println!("wrote {}", path.display());
         }
         Some("--check") => {
-            let expected = weak_repeat_replay_json().expect("serialize replay");
-            let actual = std::fs::read_to_string(WEAK_REPEAT_REPLAY_PATH)
-                .expect("read committed canonical replay");
-            if actual != expected {
-                eprintln!("{WEAK_REPEAT_REPLAY_PATH} is not current");
-                std::process::exit(1);
+            for (path, expected) in [
+                (
+                    WEAK_REPEAT_REPLAY_PATH,
+                    weak_repeat_replay_json().expect("serialize replay"),
+                ),
+                (
+                    DAMAGED_AREA_REPLAY_PATH,
+                    damaged_area_replay_json().expect("serialize replay"),
+                ),
+            ] {
+                let actual =
+                    std::fs::read_to_string(path).expect("read committed canonical replay");
+                if actual != expected {
+                    eprintln!("{path} is not current");
+                    std::process::exit(1);
+                }
+                let script: ReplayScript =
+                    serde_json::from_str(&actual).expect("parse committed canonical replay");
+                validate_or_exit(&script);
+                println!("{path} is current and valid");
             }
-            let script: ReplayScript =
-                serde_json::from_str(&actual).expect("parse committed canonical replay");
-            validate_or_exit(&script);
-            println!("{WEAK_REPEAT_REPLAY_PATH} is current and valid");
         }
         Some("--digest-baseline") => {
             let digest = structural_state_digest(&baseline_wall(), &FragmentStore::default());

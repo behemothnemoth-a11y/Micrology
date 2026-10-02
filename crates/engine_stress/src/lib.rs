@@ -35,16 +35,17 @@ pub use destruction_benchmark::{
     destruction_benchmark_to_json, result_template, result_template_to_json,
 };
 pub use destruction_replay::{
-    DESTRUCTION_REPLAY_VERSION, MAX_FIXED_STEPS_PER_COMMAND, MAX_REPLAY_COMMANDS, MAX_SPEED_MILLI,
-    ReplayCommand, ReplayScript, ReplayValidationError, StructuralStateDigest,
-    WEAK_REPEAT_REPLAY_PATH, replay_to_json, structural_state_digest, validate_replay,
-    weak_repeat_replay, weak_repeat_replay_json,
+    DAMAGED_AREA_REPLAY_PATH, DESTRUCTION_REPLAY_VERSION, MAX_FIXED_STEPS_PER_COMMAND,
+    MAX_REPLAY_COMMANDS, MAX_SPEED_MILLI, ReplayCommand, ReplayScript, ReplayValidationError,
+    StructuralStateDigest, WEAK_REPEAT_REPLAY_PATH, damaged_area_replay, damaged_area_replay_json,
+    replay_to_json, structural_state_digest, validate_replay, weak_repeat_replay,
+    weak_repeat_replay_json,
 };
 pub use destruction_runner::{
     AcceptanceFailure, DESTRUCTION_RESULTS_PATH, DESTRUCTION_RESULTS_VERSION,
-    DestructionResultsDocument, destruction_results_document, destruction_results_to_json,
-    implemented_destruction_cases, is_implemented, run_destruction_case, run_destruction_cases,
-    verify_case, verify_destruction_cases,
+    DestructionResultsDocument, Stage, case_stimulus, destruction_results_document,
+    destruction_results_to_json, implemented_destruction_cases, is_implemented,
+    run_destruction_case, run_destruction_cases, verify_case, verify_destruction_cases,
 };
 pub use granularity::{AUDITED_GRIDS, GridAudit, GridTimings, audit};
 pub use report::{Counters, Report, Timings};
