@@ -172,11 +172,9 @@ pub fn drive_fragment_streaming(
         &owned
     };
     let state_mut = &mut *state;
-    let actions = state_mut.residency.update(
-        store,
-        &state_mut.live_index.spatial,
-        wanted_regions,
-    );
+    let actions = state_mut
+        .residency
+        .update(store, &state_mut.live_index.spatial, wanted_regions);
 
     let pool = AsyncComputeTaskPool::get();
     for action in actions {
@@ -368,13 +366,7 @@ pub fn finish_fragment_saves(
     for (ticket, snapshot, task) in std::mem::take(&mut tasks.saves) {
         let payload_ok = block_on(task);
         finish_one_save(
-            stream,
-            state,
-            fragments,
-            status,
-            ticket,
-            snapshot,
-            payload_ok,
+            stream, state, fragments, status, ticket, snapshot, payload_ok,
         );
     }
 }
