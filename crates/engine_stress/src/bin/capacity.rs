@@ -12,8 +12,9 @@
 use engine_core::{CellPos, MaterialId};
 use engine_destruction::AllResident;
 use engine_mechanics::{
-    CapacityLimits, CapacityOutcome, MechanicalRegistry, ReferenceMaterial, evaluate_capacity,
-    reference_registry,
+    CapacityLimits, CapacityOutcome, CapacityWitness, MechanicalRegistry, ParticipationPolicy,
+    ParticipationSet, PhysicalSystem, PolicyScope, ReferenceMaterial, evaluate_capacity,
+    reference_registry, witness_capacity,
 };
 use engine_world::World;
 use serde::Serialize;
@@ -32,6 +33,9 @@ struct Case {
     connections: usize,
     augmentations: u64,
     cells_visited: u64,
+    /// What the conservative witness answered, and what it cost.
+    witness: &'static str,
+    witness_cells_visited: u64,
 }
 
 #[derive(Serialize)]
@@ -71,9 +75,36 @@ fn structure(span: i32, height: i32, material: MaterialId) -> (World, CellPos) {
     (world, CellPos::new(0, height, 0))
 }
 
+fn mechanics_on() -> ParticipationPolicy {
+    ParticipationPolicy::new().with_scope(
+        PolicyScope::World,
+        ParticipationSet::new().enabling(PhysicalSystem::StructuralCapacity),
+    )
+}
+
 fn measure(name: &'static str, span: i32, height: i32, material: MaterialId) -> Case {
     let (world, root) = structure(span, height, material);
     let registry = registry();
+    let policy = mechanics_on();
+
+    // The cheap path first, exactly as a host would run it.
+    let witness_started = Instant::now();
+    let witness = witness_capacity(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [root],
+        CapacityLimits::UNLIMITED,
+    );
+    let witness_elapsed = witness_started.elapsed();
+    let witness_label = match &witness {
+        CapacityWitness::DefinitelySufficient { .. } => "proven",
+        CapacityWitness::NeedExact { .. } => "need_exact",
+        CapacityWitness::NotEvaluated => "not_evaluated",
+    };
+    let witness_measurement = witness.measurement().unwrap_or_default();
 
     let started = Instant::now();
     let outcome = evaluate_capacity(
@@ -94,9 +125,15 @@ fn measure(name: &'static str, span: i32, height: i32, material: MaterialId) -> 
     };
     let measurement = outcome.measurement().unwrap_or_default();
 
+    let speedup = if witness_elapsed.as_nanos() > 0 {
+        elapsed.as_nanos() as f64 / witness_elapsed.as_nanos() as f64
+    } else {
+        f64::INFINITY
+    };
     println!(
-        "{name:<28} {label:<12} cells={:<7} connections={:<8} augmentations={:<7} in {elapsed:?}",
-        measurement.cells, measurement.connections, measurement.augmentations
+        "{name:<20} exact={label:<11} cells={:<6} augmentations={:<6} {elapsed:>12?}  \
+         witness={witness_label:<10} {witness_elapsed:>10?}  ({speedup:.0}x)",
+        measurement.cells, measurement.augmentations
     );
 
     Case {
@@ -106,6 +143,8 @@ fn measure(name: &'static str, span: i32, height: i32, material: MaterialId) -> 
         connections: measurement.connections,
         augmentations: measurement.augmentations,
         cells_visited: measurement.cells_visited,
+        witness: witness_label,
+        witness_cells_visited: witness_measurement.cells_visited,
     }
 }
 
@@ -115,7 +154,7 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("docs/diagnostics/drop0005_4_capacity/report.json"));
 
-    println!("DROP 0005.4 — exact capacity network cost\n");
+    println!("DROP 0005.4 / 0005.7 — exact network cost vs conservative witness\n");
     let cases = vec![
         measure("column_8x1", 1, 8, STEEL),
         measure("wall_16x8", 16, 8, MASONRY),

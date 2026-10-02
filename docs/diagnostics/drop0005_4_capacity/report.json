@@ -8,7 +8,9 @@
       "cells": 9,
       "connections": 16,
       "augmentations": 6,
-      "cells_visited": 9
+      "cells_visited": 9,
+      "witness": "need_exact",
+      "witness_cells_visited": 9
     },
     {
       "name": "wall_16x8",
@@ -16,7 +18,9 @@
       "cells": 2304,
       "connections": 12736,
       "augmentations": 2304,
-      "cells_visited": 2304
+      "cells_visited": 2304,
+      "witness": "proven",
+      "witness_cells_visited": 2304
     },
     {
       "name": "slab_16x16x2",
@@ -24,7 +28,9 @@
       "cells": 768,
       "connections": 3904,
       "augmentations": 768,
-      "cells_visited": 768
+      "cells_visited": 768,
+      "witness": "proven",
+      "witness_cells_visited": 768
     },
     {
       "name": "tower_8x8x16",
@@ -32,7 +38,9 @@
       "cells": 1088,
       "connections": 5856,
       "augmentations": 384,
-      "cells_visited": 1088
+      "cells_visited": 1088,
+      "witness": "need_exact",
+      "witness_cells_visited": 1088
     },
     {
       "name": "block_16x16x8",
@@ -40,7 +48,9 @@
       "cells": 2304,
       "connections": 12736,
       "augmentations": 2304,
-      "cells_visited": 2304
+      "cells_visited": 2304,
+      "witness": "proven",
+      "witness_cells_visited": 2304
     },
     {
       "name": "block_24x24x8",
@@ -48,7 +58,9 @@
       "cells": 5184,
       "connections": 29088,
       "augmentations": 5184,
-      "cells_visited": 5184
+      "cells_visited": 5184,
+      "witness": "proven",
+      "witness_cells_visited": 5184
     }
   ]
 }

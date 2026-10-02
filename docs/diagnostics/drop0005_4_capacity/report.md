@@ -60,3 +60,46 @@ the ceiling; no live path should ever run that way.
 
 Two further properties hold at every size measured: repeated solves are
 identical, and the answer does not depend on which cell the caller asked about.
+
+---
+
+# DROP 0005.7 — the conservative witness
+
+Re-run of the same harness, now running the cheap path first as a host would.
+
+| case | exact | exact time | witness | witness time | saving |
+| --- | --- | ---: | --- | ---: | ---: |
+| `column_8x1` | overloaded | 18 µs | need_exact | 10 µs | 2× |
+| `slab_16x16x2` | satisfied | 17 ms | **proven** | 0.7 ms | 25× |
+| `tower_8x8x16` | overloaded | 11 ms | need_exact | 0.9 ms | 11× |
+| `block_16x16x8` | satisfied | 117 ms | **proven** | 1.7 ms | 68× |
+| `wall_16x8` | satisfied | 163 ms | **proven** | 2.3 ms | 70× |
+| `block_24x24x8` | satisfied | 1.41 s | **proven** | 4.0 ms | **352×** |
+
+## The shape of the result
+
+The saving grows with the structure — 2×, then 25×, then 352× — because the
+witness is linear in cells while the exact solver is roughly quadratic. The
+largest case is the one that mattered: 1.41 seconds becomes 4 milliseconds, and
+the answer is a *proof* rather than an estimate.
+
+Just as important is **which** cases the witness declined. It proved every sound
+structure in the set and deferred only on the two the exact solver rejects. That
+is the ideal division of labour: the expensive path runs when something is
+genuinely suspicious, not on every healthy building in the world.
+
+## Why this is safe
+
+The witness never estimates. It constructs an actual routing of every cell's
+weight down to an anchor, and `DefinitelySufficient` means that routing exists
+and was exhibited — a feasible flow, which guarantees the exact solver agrees.
+`the_witness_never_contradicts_the_exact_solver` asserts exactly that across the
+scenario matrix, and `the_witness_never_declares_failure` asserts the other half:
+no input, including the ones the exact solver rejects, can make this module
+return anything readable as "overloaded".
+
+Its incompleteness is deliberate and is tested as such. A cantilever is sound,
+and the witness cannot see it: the sweep only pushes downward, so it finds
+nothing beneath the overhanging cell and declines. The exact solver routes that
+weight sideways and down. Being bad at finding routes costs a fallback; being
+wrong about one would cost a building.

@@ -37,6 +37,7 @@ pub mod policy;
 pub mod profile;
 pub mod units;
 pub mod verdict;
+pub mod witness;
 
 pub use capacity::{
     CapacityDefer, CapacityLimits, CapacityMeasurement, CapacityOutcome, OverloadedConnection,
@@ -53,6 +54,7 @@ pub use profile::{
 };
 pub use units::{Milli, SCALE};
 pub use verdict::{CapacityVerdict, Inconclusive, evaluate_structure};
+pub use witness::{CapacityWitness, NeedExactBecause, WitnessMeasurement, witness_capacity};
 
 use serde::{Deserialize, Serialize};
 
