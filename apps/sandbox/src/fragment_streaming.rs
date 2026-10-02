@@ -107,7 +107,12 @@ impl FragmentStreamRes {
         camera_region: Option<RegionPos>,
     ) -> BTreeSet<RegionPos> {
         if !stream_enabled {
-            return self.live_index.spatial.regions().map(|(region, _)| region).collect();
+            return self
+                .live_index
+                .spatial
+                .regions()
+                .map(|(region, _)| region)
+                .collect();
         }
 
         let Some(camera) = camera_region else {
@@ -193,9 +198,9 @@ pub fn drive_fragment_streaming(
                 tasks.saves.push((
                     ticket,
                     snapshot,
-                    pool.spawn(async move {
-                        engine_io::save_fragment(&dir, &worker_snapshot).is_ok()
-                    }),
+                    pool.spawn(
+                        async move { engine_io::save_fragment(&dir, &worker_snapshot).is_ok() },
+                    ),
                 ));
             }
             FragmentResidencyAction::Drop(id) => {
@@ -236,7 +241,9 @@ pub fn poll_fragment_tasks(
             FragmentLoadOutcome::Accepted => {
                 if let Ok(fragment) = result {
                     state.residency.note_loaded(&fragment);
-                    state.indexed_revisions.insert(fragment.id, fragment.revision);
+                    state
+                        .indexed_revisions
+                        .insert(fragment.id, fragment.revision);
                     fragments.insert(fragment);
                 }
             }
@@ -285,17 +292,17 @@ pub fn poll_fragment_tasks(
             status.0 = format!("fragment {} failed to save", ticket.id);
         }
 
-        match state
-            .residency
-            .on_save_finished(fragments.store_ref(), ticket, payload_ok && committed_index)
-        {
+        match state.residency.on_save_finished(
+            fragments.store_ref(),
+            ticket,
+            payload_ok && committed_index,
+        ) {
             FragmentSaveOutcome::MarkedClean => {}
             FragmentSaveOutcome::StillDirty => {}
             FragmentSaveOutcome::Failed => {}
         }
     }
 }
-
 
 /// Synchronously persist all resident fragment changes plus the authoritative
 /// discovery index. Used by F5 and shutdown, where durability outranks frame
