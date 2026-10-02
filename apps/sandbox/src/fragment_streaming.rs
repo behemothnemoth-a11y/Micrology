@@ -175,9 +175,12 @@ pub fn drive_fragment_streaming(
         owned = fragments.persistent_store();
         &owned
     };
-    let actions = state
-        .residency
-        .update(store, &state.live_index.spatial, wanted_regions);
+    let state_mut = &mut *state;
+    let actions = state_mut.residency.update(
+        store,
+        &state_mut.live_index.spatial,
+        wanted_regions,
+    );
 
     let pool = AsyncComputeTaskPool::get();
     for action in actions {
