@@ -1,5 +1,11 @@
 # Claude Code Handoff — Continue Micrology Core Destruction
 
+> **2026-10-02 takeover override:** the user has replaced continuous progression
+> with one-section review gates. Preserve the remote 0006.1 (`f8f19a5`), 0006.2
+> (`3c04ca6`), and 0006.3 (`cb6e283`) commits. Current work is acceptance and
+> narrowly scoped fixes for **0006.1 only**, then stop for user review. The older
+> instructions below to continue automatically do not apply to this takeover.
+
 ## Intent
 
 Keep working continuously on **the same one-material fracture/destruction system** and refine it toward Micrology's version of Teardown-style destruction.

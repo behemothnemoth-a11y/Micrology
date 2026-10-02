@@ -5,8 +5,9 @@
 //! time controls, replay-script plumbing, and deterministic state dumps.
 
 use crate::destruction::DestructionHost;
+use crate::fragment_render::FragmentEntities;
 use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
-use crate::physics::DynamicFragments;
+use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
 use bevy::ecs::system::SystemParam;
@@ -64,6 +65,7 @@ pub struct SimulationLab {
     fracture_policy: BaselineFracturePolicy,
     last_separation: Option<LabSeparation>,
     last_dump: Option<PathBuf>,
+    capture_timer: Option<Timer>,
 }
 
 impl Default for SimulationLab {
@@ -79,6 +81,7 @@ impl Default for SimulationLab {
             fracture_policy: BaselineFracturePolicy::REFERENCE,
             last_separation: None,
             last_dump: None,
+            capture_timer: None,
         }
     }
 }
@@ -197,6 +200,10 @@ pub fn seed(resources: LabSeedResources) {
         blocked_case: None,
     });
     lab.last_dump = None;
+    // Wall time paces presentation only. Every action still uses the exact F11
+    // command path and explicit fixed steps; it never changes fracture inputs.
+    lab.capture_timer = std::env::var_os("MICROLOGY_REPLAY_CAPTURE")
+        .map(|_| Timer::from_seconds(2.0, TimerMode::Repeating));
 
     let digest = structural_state_digest(&world.0, fragments.store_ref());
     status.0 = format!(
@@ -342,6 +349,7 @@ fn apply_benchmark_case(
     world: &mut WorldRes,
     fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
+    available_fragment_bytes: u64,
 ) -> Result<String, String> {
     if !is_implemented(case) {
         return Err(format!(
@@ -417,7 +425,14 @@ fn apply_benchmark_case(
         separation_roots(&outcome),
         StructuralLimits::default(),
     );
-    let detached = detach_separated(lab, world, fragments, destruction, &separation);
+    let detached = detach_separated(
+        lab,
+        world,
+        fragments,
+        destruction,
+        &separation,
+        available_fragment_bytes,
+    );
 
     lab.last_separation = Some(LabSeparation {
         case,
@@ -599,6 +614,7 @@ fn detach_separated(
     fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
     separation: &FractureSeparation,
+    available_fragment_bytes: u64,
 ) -> u64 {
     if !separation.is_settled() || separation.separated.is_empty() {
         return 0;
@@ -611,7 +627,12 @@ fn detach_separated(
             .filter_map(|component| component.anchor_cell()),
         separation.components.clone(),
     );
-    let Ok(outcome) = detach_if(&mut world.0, &mut destruction.sequence, &result, |_| true) else {
+    let Ok(outcome) = detach_if(
+        &mut world.0,
+        &mut destruction.sequence,
+        &result,
+        |candidate| fits_fragment_storage(candidate, available_fragment_bytes),
+    ) else {
         return 0;
     };
     // A plug's cracks are its cracks: they move into the fragment's own space, and
@@ -632,12 +653,22 @@ fn detach_separated(
     outcome.fragments.len() as u64
 }
 
+fn fits_fragment_storage(candidate: &[Fragment], available_bytes: u64) -> bool {
+    candidate
+        .iter()
+        .try_fold(0u64, |total, fragment| {
+            total.checked_add(fragment.footprint_bytes())
+        })
+        .is_some_and(|bytes| bytes <= available_bytes)
+}
+
 fn execute_next_replay_command(
     lab: &mut SimulationLab,
     virtual_time: &mut Time<Virtual>,
     world: &mut WorldRes,
     fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
+    available_fragment_bytes: u64,
 ) -> Result<String, String> {
     let Some(replay) = lab.replay.as_ref() else {
         return Err("no replay loaded".into());
@@ -688,7 +719,14 @@ fn execute_next_replay_command(
         }
         ReplayCommand::BenchmarkCase { case } => {
             if is_implemented(case) {
-                let result = apply_benchmark_case(case, lab, world, fragments, destruction)?;
+                let result = apply_benchmark_case(
+                    case,
+                    lab,
+                    world,
+                    fragments,
+                    destruction,
+                    available_fragment_bytes,
+                )?;
                 advance_replay_cursor(lab);
                 Ok(format!("replay {index}: {result}"))
             } else {
@@ -704,8 +742,17 @@ fn execute_next_replay_command(
     }
 }
 
+#[derive(SystemParam)]
+pub struct LabControlContext<'w> {
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    real_time: Res<'w, Time<Real>>,
+    budget: Res<'w, FragmentBudgetRes>,
+    bodies: Res<'w, FragmentBodies>,
+    renders: Res<'w, FragmentEntities>,
+}
+
 pub fn controls(
-    keys: Res<ButtonInput<KeyCode>>,
+    context: LabControlContext,
     mut lab: ResMut<SimulationLab>,
     mut virtual_time: ResMut<Time<Virtual>>,
     mut world: ResMut<WorldRes>,
@@ -716,6 +763,7 @@ pub fn controls(
     if !lab.enabled {
         return;
     }
+    let keys = &context.keys;
 
     if keys.just_pressed(KeyCode::F6) {
         if virtual_time.is_paused() {
@@ -766,17 +814,37 @@ pub fn controls(
         }
     }
 
-    if keys.just_pressed(KeyCode::F11) {
+    let capture_ready = lab.pending_fixed_steps == 0
+        && lab.replay.as_ref().is_some_and(|replay| {
+            replay.cursor < replay.script.commands.len() && replay.blocked_case.is_none()
+        });
+    let capture_step = capture_ready
+        && lab
+            .capture_timer
+            .as_mut()
+            .is_some_and(|timer| timer.tick(context.real_time.delta()).just_finished());
+    if keys.just_pressed(KeyCode::F11) || capture_step {
+        let current_bytes = context
+            .budget
+            .account(&fragments, &context.bodies, context.renders.mesh_bytes())
+            .footprint
+            .tracked_bytes();
+        let available_bytes = context.budget.0.hard_bytes.saturating_sub(current_bytes);
         status.0 = match execute_next_replay_command(
             &mut lab,
             &mut virtual_time,
             &mut world,
             &mut fragments,
             &mut destruction,
+            available_bytes,
         ) {
             Ok(message) => message,
-            Err(error) => format!("destruction replay held: {error}"),
+            Err(error) => {
+                lab.capture_timer = None;
+                format!("destruction replay held: {error}")
+            }
         };
+        info!("{}", status.0);
     }
 }
 pub fn apply_pending_fixed_step(
@@ -795,5 +863,136 @@ pub fn apply_pending_fixed_step(
 pub fn count_fixed_tick(mut lab: ResMut<SimulationLab>) {
     if lab.enabled {
         lab.fixed_ticks = lab.fixed_ticks.saturating_add(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine_core::{CellPos, FaceDir};
+    use engine_destruction::{BondGate, BondKey, detach};
+
+    #[test]
+    fn replay_crack_admission_holds_every_cell_and_identity_until_storage_fits() {
+        struct Cut(BondKey);
+        impl BondGate for Cut {
+            fn carries(&self, bond: BondKey) -> bool {
+                bond != self.0
+            }
+        }
+        let mut world = WorldRes(baseline_wall());
+        // A separate three-cell column uses the shared fixture's material and
+        // registry, but has exactly one cut and no cell failure to hide a loss.
+        let base = CellPos::new(90, 1, 64);
+        let material = engine_destruction::REFERENCE_FRACTURE_MATERIAL;
+        world
+            .0
+            .fill_box(base, CellPos::new(90, 3, 64), Some(material));
+        world.0.set_anchor(base, true);
+        let cut = Cut(BondKey::new(base, FaceDir::PosY).unwrap());
+        let separation = separation_from_cracks(
+            &world.0,
+            &world.0,
+            &AllResident,
+            &cut,
+            [base, CellPos::new(90, 2, 64)],
+            StructuralLimits::UNLIMITED,
+        );
+        assert_eq!(separation.cells_freed_by_cracks(), 2);
+        let result = cracked_structure_result(&world.0, [base], separation.components.clone());
+        let expected = detach(
+            &mut world.0.clone(),
+            &mut DestructionSequence::new(0),
+            &result,
+        )
+        .unwrap();
+        let bytes = expected
+            .fragments
+            .iter()
+            .map(Fragment::footprint_bytes)
+            .sum::<u64>();
+        let mut lab = SimulationLab::default();
+        let mut fragments = DynamicFragments::default();
+        let mut destruction = DestructionHost::default();
+        let before = structural_state_digest(&world.0, fragments.store_ref());
+        let damage_before = lab.fracture_state.digest();
+        let identity_before = destruction.sequence.peek();
+        for available in [0, bytes - 1] {
+            assert_eq!(
+                detach_separated(
+                    &mut lab,
+                    &mut world,
+                    &mut fragments,
+                    &mut destruction,
+                    &separation,
+                    available,
+                ),
+                0
+            );
+            assert_eq!(
+                structural_state_digest(&world.0, fragments.store_ref()),
+                before
+            );
+            assert_eq!(lab.fracture_state.digest(), damage_before);
+            assert_eq!(destruction.sequence.peek(), identity_before);
+        }
+        assert_eq!(
+            detach_separated(
+                &mut lab,
+                &mut world,
+                &mut fragments,
+                &mut destruction,
+                &separation,
+                bytes,
+            ),
+            1
+        );
+        assert_eq!(
+            fragments.iter().map(|(_, f)| f.cell_count()).sum::<u64>(),
+            2
+        );
+    }
+
+    #[test]
+    fn capture_replay_requires_real_separation_before_advancing_physics() {
+        let replay: ReplayScript = serde_json::from_str(include_str!(
+            "../../../fixtures/destruction/replay-crack-separation.json"
+        ))
+        .unwrap();
+        validate_replay(&replay).unwrap();
+        let mut lab = SimulationLab::default();
+        let mut world = WorldRes(baseline_wall());
+        let mut fragments = DynamicFragments::default();
+        let mut destruction = DestructionHost::default();
+        let mut reaches_motion = false;
+        for command in replay.commands {
+            match command {
+                ReplayCommand::BenchmarkCase { case } => {
+                    apply_benchmark_case(
+                        case,
+                        &mut lab,
+                        &mut world,
+                        &mut fragments,
+                        &mut destruction,
+                        u64::MAX,
+                    )
+                    .unwrap();
+                }
+                ReplayCommand::AdvanceFixed { steps: 120 } => {
+                    assert_eq!(lab.last_separation.unwrap().fragments_created, 15);
+                    reaches_motion = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(reaches_motion);
+        let separation = lab.last_separation.unwrap();
+        assert!(separation.settled);
+        assert_eq!(separation.cells_freed_by_cracks, 190);
+        assert_eq!(separation.fragments_created, 15);
+        assert_eq!(
+            fragments.iter().map(|(_, f)| f.cell_count()).sum::<u64>(),
+            190
+        );
     }
 }

@@ -18,6 +18,7 @@
       collapse    - DROP 0005 material mechanics: two identical towers, brick
                     and steel, where only the brick one falls
       fracture    - DROP 0006 one-material fracture wall and persistent crack field
+      replay      - deterministic lab script, paced through the existing F11 path
 
 .PARAMETER Section
     Diagnostics folder to write into, e.g. drop0004_9_hardware.
@@ -33,6 +34,10 @@
     Verify Rust, FFmpeg, ffprobe, and the ddagrab filter, then exit without
     building, launching Micrology, or touching any desktop windows.
 
+.PARAMETER ReplayScript
+    Replay JSON used by -Demo replay. Defaults to the two-strong-hit crack
+    separation proof. Presentation uses wall time; physics uses scripted steps.
+
 .EXAMPLE
     .\tools\capture-demo.ps1 -CheckOnly
     .\tools\capture-demo.ps1 -Demo impact -Section drop0004_9_hardware
@@ -41,7 +46,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('impact', 'progressive', 'collapse', 'fracture')]
+    [ValidateSet('impact', 'progressive', 'collapse', 'fracture', 'replay')]
     [string]$Demo = 'impact',
 
     [string]$Section = 'drop0004_9_hardware',
@@ -54,6 +59,8 @@ param(
 
     [switch]$KeepRaw,
 
+    [string]$ReplayScript = 'fixtures/destruction/replay-crack-separation.json',
+
     [switch]$CheckOnly
 )
 
@@ -65,6 +72,10 @@ $repo = Split-Path -Parent $PSScriptRoot
 if ($Demo -eq 'fracture') {
     if (-not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 1 }
     if (-not $PSBoundParameters.ContainsKey('Seconds')) { $Seconds = 14 }
+}
+if ($Demo -eq 'replay') {
+    if (-not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 1 }
+    if (-not $PSBoundParameters.ContainsKey('Seconds')) { $Seconds = 30 }
 }
 
 # --- Preflight -------------------------------------------------------------
@@ -112,6 +123,7 @@ $envName = switch ($Demo) {
     'progressive' { 'MICROLOGY_PROGRESSIVE_DAMAGE_DEMO' }
     'collapse'    { 'MICROLOGY_COLLAPSE_DEMO' }
     'fracture'    { 'MICROLOGY_FRACTURE_DEMO' }
+    'replay'      { 'MICROLOGY_DESTRUCTION_LAB' }
 }
 
 $outDir = Join-Path $repo "docs/diagnostics/$Section"
@@ -136,9 +148,31 @@ if (-not ('Win32Window' -as [type])) {
 using System;
 using System.Runtime.InteropServices;
 public class Win32Window {
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    public static IntPtr CaptureWindow(int processId) {
+        IntPtr best = IntPtr.Zero;
+        long largest = 0;
+        EnumWindows((window, _) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            RECT rect;
+            if (owner == (uint)processId && IsWindowVisible(window) && GetWindowRect(window, out rect)) {
+                long width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
+                if (width >= 320 && height >= 240 && width * height > largest) {
+                    best = window;
+                    largest = width * height;
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return best;
+    }
 }
 '@
 }
@@ -159,22 +193,38 @@ try {
 Write-Host "Launching with $envName=1..." -ForegroundColor Cyan
 Write-Host 'Capture is non-invasive: no other desktop windows will be moved or minimized.' -ForegroundColor DarkGray
 Write-Host 'Keep the Micrology window unobstructed while recording.' -ForegroundColor Yellow
-$exe = Join-Path $repo 'target/release/sandbox.exe'
+$metadata = (& cargo metadata --no-deps --format-version 1 --manifest-path (Join-Path $repo 'Cargo.toml') | ConvertFrom-Json)
+$exe = Join-Path $metadata.target_directory 'release/sandbox.exe'
 if (-not (Test-Path $exe)) { throw "Built binary not found at $exe" }
 
 $previous = [Environment]::GetEnvironmentVariable($envName)
+$previousScript = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT')
+$previousCapture = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE')
 [Environment]::SetEnvironmentVariable($envName, '1')
 try {
-    $proc = Start-Process -FilePath $exe -WorkingDirectory $repo -PassThru
+    if ($Demo -eq 'replay') {
+        $scriptPath = if ([IO.Path]::IsPathRooted($ReplayScript)) { $ReplayScript } else { Join-Path $repo $ReplayScript }
+        if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw "Replay script not found: $scriptPath" }
+        [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT', $scriptPath)
+        [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', '1')
+    }
+    # Hide the launcher's console; Winit creates the visible interactive render
+    # window independently. No existing desktop window is changed.
+    $proc = Start-Process -FilePath $exe -WorkingDirectory $repo -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $outDir 'sandbox.stdout.log') `
+        -RedirectStandardError (Join-Path $outDir 'sandbox.stderr.log')
 } finally {
     [Environment]::SetEnvironmentVariable($envName, $previous)
+    [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT', $previousScript)
+    [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', $previousCapture)
 }
 
 try {
     # Wait for Micrology to create its native window. We only observe it; capture
     # never changes focus, size, position, z-order, or any other desktop window.
     $deadline = (Get-Date).AddSeconds(60)
-    while (-not $proc.MainWindowHandle -or $proc.MainWindowHandle -eq [IntPtr]::Zero) {
+    while ([Win32Window]::CaptureWindow($proc.Id) -eq [IntPtr]::Zero) {
+        if ($proc.HasExited) { throw 'Sandbox exited before its render window appeared.' }
         if ((Get-Date) -gt $deadline) { throw 'Sandbox window never appeared within 60s.' }
         Start-Sleep -Milliseconds 250
         $proc.Refresh()
@@ -189,7 +239,9 @@ try {
 
     # Winit may recreate its native window during renderer initialization. Read
     # the final handle after warm-up and use it only for validation/cropping.
-    $handle = $proc.MainWindowHandle
+    # Process.MainWindowHandle can select a tiny Winit helper window. Select the
+    # largest visible window owned by this process, using read-only queries.
+    $handle = [Win32Window]::CaptureWindow($proc.Id)
     if (-not $handle -or $handle -eq [IntPtr]::Zero) {
         throw 'Sandbox lost its window handle before recording.'
     }
@@ -203,6 +255,9 @@ try {
 
     $windowWidth = $windowRect.Right - $windowRect.Left
     $windowHeight = $windowRect.Bottom - $windowRect.Top
+    if ($windowWidth -lt 320 -or $windowHeight -lt 240) {
+        throw "Micrology has not exposed a usable window (${windowWidth}x${windowHeight}); no capture accepted."
+    }
     Write-Host "Micrology window: ${windowWidth}x${windowHeight} at $($windowRect.Left),$($windowRect.Top)" -ForegroundColor DarkGray
     Write-Host "Recording ${Seconds}s with ddagrab..." -ForegroundColor Cyan
     & ffmpeg -hide_banner -loglevel warning -y `

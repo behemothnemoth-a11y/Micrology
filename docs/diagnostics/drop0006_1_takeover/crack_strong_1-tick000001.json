@@ -1,0 +1,36 @@
+{
+  "fixed_ticks": 1,
+  "fracture": {
+    "bond_entries": 1899,
+    "broken_bonds": 184,
+    "cell_entries": 596,
+    "checksum_fnv1a64": "d0e24906f2af2e9f",
+    "revision": 1
+  },
+  "fragment_dynamics": [],
+  "label": "crack_strong_1",
+  "last_separation": {
+    "case": "strong_center_hit",
+    "cells_detached_by_occupancy": 0,
+    "cells_freed_by_cracks": 0,
+    "components_freed_by_cracks": 0,
+    "fragments_created": 0,
+    "inconclusive_cross_checks": 0,
+    "settled": true
+  },
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 9,
+    "cursor": 4,
+    "name": "crack_separation"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "39e6f85a131e6070",
+    "fragment_cells": 0,
+    "fragments": 0,
+    "static_anchors": 252,
+    "static_cells": 3127
+  }
+}

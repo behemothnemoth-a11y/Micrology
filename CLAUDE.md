@@ -40,10 +40,11 @@ thing it validates is not an oracle.
 
 The same holds for structure: occupancy connectivity is the **permanent
 topological oracle**. `engine_destruction::fracture` records cracks as broken
-bonds, and a broken bond is a crack, not a cut — it does not detach anything.
-Fracture-aware connectivity, when it lands, goes *beside* the exact occupancy
-classifier and is tested against it. Do not weaken that invariant to make
-cracking easier.
+bonds; recording a broken bond alone does not detach anything. DROP 0006.1's
+fracture-aware classifier treats those bonds as cuts and lives *beside* the exact
+occupancy classifier, with independent searches tested against each other.
+Detachment still requires a settled result and atomic admission. Do not weaken
+that invariant to make cracking easier.
 
 **Rebuild locally.** Changing one cell must never re-mesh the world. If you touch
 `World::set` or the dirty-tracking logic, remember that an edit on a volume
