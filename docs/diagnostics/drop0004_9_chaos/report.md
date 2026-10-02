@@ -93,3 +93,15 @@ The hardware-acceptance half of 0004.9 has **not** been run. It needs a real
 Windows/NVIDIA/Vulkan session with `ddagrab` capture, which this headless Linux
 environment cannot provide. Nothing in the chaos pass depends on it, and no claim
 above rests on a GPU run.
+
+To run it:
+
+```powershell
+.\tools\capture-demo.ps1 -Demo impact -Section drop0004_9_hardware
+```
+
+That builds the sandbox in release, launches it with `MICROLOGY_IMPACT_DEMO=1`,
+maximizes and focuses the window, records with `ddagrab`, crops the taskbar and
+writes the video plus a thumbnail into `docs/diagnostics/drop0004_9_hardware/`.
+Check the thumbnail before committing: a blank white frame means the capture
+missed the Vulkan surface and the run is not valid.
