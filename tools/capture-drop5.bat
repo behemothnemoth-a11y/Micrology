@@ -13,10 +13,22 @@ echo  ======================================
 echo.
 echo  Two identical towers, brick and steel. Only the brick one falls.
 echo.
+echo  Checking capture prerequisites first...
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0capture-demo.ps1" -CheckOnly
+if errorlevel 1 (
+    echo.
+    echo  Capture prerequisites are missing. Fix the error above and rerun.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
 echo  This will build the sandbox (slow the first time), open a window,
 echo  record about 20 seconds, then close itself.
 echo.
-echo  Do not click anything while it records.
+echo  The capture tool will not move or minimize your other windows.
+echo  Keep the Micrology window unobstructed while it records.
 echo.
 pause
 
