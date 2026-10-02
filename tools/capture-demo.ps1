@@ -12,7 +12,11 @@
     not an option here.
 
 .PARAMETER Demo
-    Which demo to seed: impact (0004.8 loop) or progressive (0004.7 damage).
+    Which demo to seed:
+      impact      - the DROP 0004.8 loop: damage, detach, impulse, re-fracture
+      progressive - DROP 0004.7 accumulating local damage
+      collapse    - DROP 0005 material mechanics: two identical towers, brick
+                    and steel, where only the brick one falls
 
 .PARAMETER Section
     Diagnostics folder to write into, e.g. drop0004_9_hardware.
@@ -26,10 +30,11 @@
 
 .EXAMPLE
     .\tools\capture-demo.ps1 -Demo impact -Section drop0004_9_hardware
+    .\tools\capture-demo.ps1 -Demo collapse -Section drop0005_hardware
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('impact', 'progressive')]
+    [ValidateSet('impact', 'progressive', 'collapse')]
     [string]$Demo = 'impact',
 
     [string]$Section = 'drop0004_9_hardware',
@@ -72,6 +77,7 @@ Do not fall back to gdigrab: it records the Micrology window as blank white.
 $envName = switch ($Demo) {
     'impact'      { 'MICROLOGY_IMPACT_DEMO' }
     'progressive' { 'MICROLOGY_PROGRESSIVE_DAMAGE_DEMO' }
+    'collapse'    { 'MICROLOGY_COLLAPSE_DEMO' }
 }
 
 $outDir = Join-Path $repo "docs/diagnostics/$Section"

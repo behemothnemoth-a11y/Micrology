@@ -5142,6 +5142,7 @@ dependencies = [
  "engine_destruction",
  "engine_geometry",
  "engine_io",
+ "engine_mechanics",
  "engine_stream",
  "engine_volume",
  "engine_world",

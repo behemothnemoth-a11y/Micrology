@@ -22,6 +22,7 @@
 //! meshes; Bevy types do not appear anywhere below `apps/`.
 
 mod camera;
+mod collapse_demo;
 mod destruction;
 mod edit;
 mod fragment_render;
@@ -140,6 +141,7 @@ fn main() {
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
     .init_resource::<impact::ImpactHost>()
+    .init_resource::<collapse_demo::CollapseDemo>()
     .init_resource::<impact_demo::ImpactDemo>()
     .init_resource::<progressive_demo::ProgressiveDamageDemo>()
     .init_resource::<streaming::StreamTasks>()
@@ -153,6 +155,7 @@ fn main() {
             destruction::load_fragment_state,
             progressive_demo::seed,
             impact_demo::seed,
+            collapse_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -176,6 +179,7 @@ fn main() {
                 edit::quit,
                 progressive_demo::drive,
                 impact_demo::drive,
+                collapse_demo::drive,
                 impact::process_secondary_damage,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
