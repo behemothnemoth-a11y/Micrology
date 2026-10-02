@@ -149,7 +149,10 @@ impl StaticColliders {
                         f64::from(bounds.min.z),
                     ),
                     collider,
-                    StaticSectionCollider,
+                    StaticSectionCollider {
+                        volume,
+                        fingerprint,
+                    },
                 ))
                 .id()
         });
@@ -180,7 +183,15 @@ impl StaticColliders {
 
 /// Marker for invisible static collision entities.
 #[derive(Component)]
-struct StaticSectionCollider;
+pub(crate) struct StaticSectionCollider {
+    volume: VolumePos,
+    fingerprint: StaticCollisionFingerprint,
+}
+impl StaticSectionCollider {
+    pub(crate) fn is_current(&self, world: &engine_world::World) -> bool {
+        self.fingerprint == StaticCollisionFingerprint::of(world, self.volume)
+    }
+}
 
 /// Keep the static physics neighbourhood synchronized with the live world.
 ///
@@ -489,6 +500,12 @@ pub struct FragmentBodies {
 }
 
 impl FragmentBodies {
+    pub(crate) fn is_current(&self, fragment: &Fragment) -> bool {
+        self.entries
+            .get(&fragment.id)
+            .is_some_and(|entry| entry.fingerprint.matches(fragment))
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }

@@ -31,6 +31,16 @@ pub fn materials() -> MaterialRegistry {
 pub const DEFAULT_WORLD_DIR: &str = "saves/world";
 
 pub fn setup_world(mut commands: Commands, mut status: ResMut<StatusLine>) {
+    if crate::sim_lab::requested() {
+        // A lab launch does not generate or read an authored world. Its seed
+        // installs the shared fixture after these required resources exist.
+        commands.insert_resource(WorldRes(EngineWorld::new()));
+        commands.insert_resource(StreamRes::resident_only(
+            PathBuf::from("target/diagnostics/disposable-lab"),
+            WorldMeta::default(),
+        ));
+        return;
+    }
     // A world directory, so the sandbox streams rather than holding everything
     // resident. A single v1 file given on the command line is still readable,
     // but it cannot stream — there is nothing to load a region from.

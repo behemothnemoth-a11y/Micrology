@@ -1,5 +1,11 @@
 # Astra-scale destruction: research and performance direction
 
+> Update, 2026-10-02: the user superseded section review gates with a large
+> integrated drop. Historical measurements below describe the earlier commit;
+> see [the integrated drop](integrated-one-material-destruction.md) for current
+> contact fracture, byte limits, live profiles, tests and remaining limits.
+
+
 Research and code inspection: 2026-10-02. Scope: Micrology, one homogeneous
 physical material, exact microcell geometry, persistent fracture, native
 destructible fragments. This is an engineering direction with one measured
@@ -146,7 +152,7 @@ The following risks deserve measured work:
 | `forget_space`, ownership searches | Some scan all stored records | Index by ownership or bound ranges before fragment storms |
 | Replay `apply_benchmark_case` | Evaluation, fracture connectivity and exact cross-check run synchronously | A large reachable component can block a frame despite finite work limits |
 | Structural limits | Default allows up to 1,048,576 cells per component and 4,194,304 per pass | A work ceiling is not a millisecond deadline; use incremental jobs and bounded commits |
-| `apply_mesh_results` | Drains ready meshes and uploads each result | A completion burst needs explicit upload-byte/apply-work limits |
+| `apply_mesh_results` | Scheduler already caps result count per tick | Integrated drop adds a 2 MiB soft byte budget and bounded stale-result inspection; one oversized result can progress alone |
 | Physics host | Limits rebuild/body work; retains exact fragment data | Good starting point, but contact count and awake islands also need measurement |
 | Impact host | Still uses the older scalar secondary-damage route and ignores fragment-to-fragment pairs | 0006.4 must connect bounded contacts to the same fracture model |
 | Small detached piece | Existing benchmark fails 54 of 60 cells on its next hit | 0006.5 must correct free-surface over-fragility without adding materials |
@@ -299,22 +305,12 @@ labels do not identify this test's fracture version or introduce another
 material. No Bevy/Avian dependency entered an engine crate; the occupancy
 oracle, authored-world validity and optional simulation contracts are unchanged.
 
-## Work order under the renewed user direction
+## Continued direction
 
-The user's follow-up sets the direction toward full Astra-style destruction and
-explicitly asks for deep performance research while retaining one material.
-This pass handles that research and one measured performance repair. Preserve
-the established workflow of coherent sections, focused tests, full relevant
-checks, benchmark/replay evidence, and review between sections.
-
-This performance pass establishes the research, a repeatable history-scaling
-benchmark, and the local atomic commit repair. The next proposed section is
-0006.4: collision
-impulses produce bounded fracture events for static and fragment-local targets,
-with both participants eligible, canonical ordering, and generation/event/work
-caps. Activate `chunk_into_wall` without relaxing its spec. Then correct the
-single-material break character in 0006.5, and expand fragment-scale performance
-and scheduling in 0006.6. Do not add material diversity to hide weaknesses.
+The user has explicitly requested a large integrated drop, superseding the
+previous per-section stops. Contact fracture, atomic topology admission,
+interactive tools and performance measurements now ship together; the linked
+integrated report replaces the old proposed section order. Keep one material.
 
 Secondary impacts must use a canonical contact representative, explicit units
 and clamped finite energy. Contact repetition is not permission to inject energy

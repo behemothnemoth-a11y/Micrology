@@ -23,6 +23,7 @@
 
 mod camera;
 mod collapse_demo;
+mod contact_fracture;
 mod destruction;
 mod edit;
 mod fracture_demo;
@@ -31,6 +32,7 @@ mod fragment_streaming;
 mod hud;
 mod impact;
 mod impact_demo;
+mod performance;
 mod physics;
 mod progressive_demo;
 mod render;
@@ -40,7 +42,7 @@ mod streaming;
 
 use bevy::app::{RunFixedMainLoop, RunFixedMainLoopSystems};
 use bevy::prelude::*;
-use bevy::window::{PresentMode, WindowPlugin};
+use bevy::window::{PresentMode, WindowPlugin, WindowPosition};
 use engine_geometry::SectionMeshCache;
 use engine_world::World as EngineWorld;
 use std::path::PathBuf;
@@ -114,7 +116,19 @@ fn main() {
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            title: "Micrology — DROP 0004 sandbox".into(),
+            // Configure only this newly created capture window; never move or
+            // resize an existing desktop window to make a recording fit.
+            resolution: if std::env::var_os("MICROLOGY_CAPTURE_COMPACT").is_some() {
+                (800, 450).into()
+            } else {
+                default()
+            },
+            position: if std::env::var_os("MICROLOGY_CAPTURE_COMPACT").is_some() {
+                WindowPosition::At(IVec2::new(8, 8))
+            } else {
+                default()
+            },
+            title: "Micrology — volumetric destruction lab".into(),
             present_mode: PresentMode::AutoVsync,
             ..default()
         }),
@@ -144,6 +158,8 @@ fn main() {
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
     .init_resource::<impact::ImpactHost>()
+    .init_resource::<contact_fracture::ContactFractureHost>()
+    .init_resource::<performance::PerformanceCapture>()
     .init_resource::<collapse_demo::CollapseDemo>()
     .init_resource::<fracture_demo::FractureDemo>()
     .init_resource::<impact_demo::ImpactDemo>()
@@ -185,6 +201,7 @@ fn main() {
                 edit::toggle_compiler,
                 edit::quit,
                 sim_lab::controls,
+                sim_lab::strike,
                 progressive_demo::drive,
                 impact_demo::drive,
                 collapse_demo::drive,
@@ -207,8 +224,8 @@ fn main() {
                 streaming::apply_mesh_results,
                 // Fragment payload residency is independent of both terrain
                 // residency and the smaller render/physics neighbourhoods.
-                fragment_streaming::poll_fragment_tasks,
-                fragment_streaming::drive_fragment_streaming,
+                fragment_streaming::poll_fragment_tasks.run_if(sim_lab::inactive),
+                fragment_streaming::drive_fragment_streaming.run_if(sim_lab::inactive),
                 // Physics residency is deliberately smaller than render residency.
                 // Rebuild only nearby static colliders, from the live cell world.
                 physics::sync_static_colliders,
@@ -240,6 +257,8 @@ fn main() {
         (
             physics::readback_fragment_bodies,
             impact::collect_fragment_impacts,
+            contact_fracture::collect,
+            contact_fracture::process,
             physics::verify_fragment_smoke,
             destruction::verify_destruction_smoke,
         )
@@ -254,6 +273,8 @@ fn main() {
         (
             streaming::flush_on_exit.run_if(sim_lab::inactive),
             destruction::flush_fragments_on_exit.run_if(sim_lab::inactive),
+            performance::record,
+            performance::capture_snapshot,
         ),
     );
 

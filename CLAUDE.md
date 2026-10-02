@@ -91,10 +91,12 @@ detachment, applied damage, fragment physics, material mechanics and structural
 capacity are separable and individually optional. Support and anchoring are
 never material properties.
 
-**Do not expand scope.** Work the current drop's next numbered pass, named at
-the bottom of the current `docs/drop-000N.md`, and finish it before starting the
-one after. Twenty half-working subsystems is the failure mode this file exists
-to prevent.
+**Current authorized scope (2026-10-02).** The user explicitly requested a large
+integrated drop and removed the numbered-section review gates. Complete the
+one-material destruction loop and its measured performance work together. Keep
+the hard invariants, tests, deterministic benchmarks and fresh visual evidence;
+do not stop merely because a numbered section ends. Unrelated engine features
+and additional materials remain outside this request.
 
 **Correctness before cleverness.** Build the exact implementation first, behind a
 clean trait, and test it. Then optimise against it.

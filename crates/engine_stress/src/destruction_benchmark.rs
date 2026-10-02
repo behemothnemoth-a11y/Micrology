@@ -167,6 +167,8 @@ pub struct DestructionCaseResult {
     /// Whether the run observably differs from its direction-neutral control.
     #[serde(default)]
     pub directional_response_observed: Option<bool>,
+    #[serde(default)]
+    pub secondary_damage_observed: Option<bool>,
     /// What the run was compared against to decide the two flags above.
     #[serde(default)]
     pub control_note: Option<String>,
@@ -198,6 +200,7 @@ impl DestructionCaseResult {
             damage_centroid_milli: None,
             cumulative_response_observed: None,
             directional_response_observed: None,
+            secondary_damage_observed: None,
             control_note: None,
         }
     }

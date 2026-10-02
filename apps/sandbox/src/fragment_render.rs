@@ -20,6 +20,7 @@ use engine_destruction::{
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME: usize = 4;
+const MAX_FRAGMENT_UPLOAD_BYTES_PER_FRAME: u64 = 2 * 1024 * 1024;
 const MAX_ACTIVE_FRAGMENT_MESH_JOBS: usize = 4;
 /// Moving fragment meshes are useful much farther than active collision, but
 /// still should not exist globally just because their persisted payload is loaded.
@@ -40,6 +41,8 @@ pub struct FragmentRenderStats {
     pub active_jobs: usize,
     pub ready_results: usize,
     pub uploaded_this_frame: usize,
+    pub uploaded_bytes_this_frame: u64,
+    pub oversized_uploads: u64,
     pub stale_results: u64,
     pub withheld_current: u64,
     pub withheld_total: u64,
@@ -250,6 +253,8 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
     // GPU asset creation remains on the host/main thread, but expensive voxel
     // extraction and CPU mesh assembly have already happened on workers.
     let mut uploads = 0usize;
+    let mut uploaded_bytes = 0u64;
+    renders.stats.uploaded_bytes_this_frame = 0;
     let ready_ids: Vec<_> = renders.ready.keys().copied().collect();
     for id in ready_ids {
         if uploads >= MAX_FRAGMENT_MESH_UPLOADS_PER_FRAME {
@@ -274,6 +279,12 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
         }
 
         let mesh_bytes = result.mesh.cpu_bytes() as u64;
+        if uploads > 0
+            && uploaded_bytes.saturating_add(mesh_bytes) > MAX_FRAGMENT_UPLOAD_BYTES_PER_FRAME
+        {
+            renders.ready.insert(id, result);
+            continue;
+        }
         let next = FragmentFootprint {
             mesh_bytes,
             ..FragmentFootprint::default()
@@ -303,6 +314,11 @@ pub fn sync_fragment_render(mut commands: Commands, sources: FragmentRenderSourc
             },
         );
         uploads += 1;
+        uploaded_bytes = uploaded_bytes.saturating_add(mesh_bytes);
+        renders.stats.uploaded_bytes_this_frame = uploaded_bytes;
+        if mesh_bytes > MAX_FRAGMENT_UPLOAD_BYTES_PER_FRAME {
+            renders.stats.oversized_uploads += 1;
+        }
         renders.stats.uploaded_this_frame += 1;
         account.footprint += next;
     }

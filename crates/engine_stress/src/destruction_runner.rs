@@ -61,6 +61,7 @@ pub fn implemented_destruction_cases() -> Vec<DestructionBenchmarkCase> {
         DestructionBenchmarkCase::AngledHit,
         DestructionBenchmarkCase::PreviouslyDamagedArea,
         DestructionBenchmarkCase::DetachedChunkHit,
+        DestructionBenchmarkCase::ChunkIntoWall,
     ]
 }
 
@@ -433,6 +434,141 @@ fn fracture_bytes(cell_entries: u64, bond_entries: u64) -> u64 {
 /// benchmark instead of looping.
 const MAX_LIBERATING_HITS: u8 = 4;
 
+/// The same naturally liberated, already damaged chunk for live launchers and
+/// headless contacts. No hand-built projectile bypasses the fracture fixture.
+pub fn canonical_fracture_chunk() -> Option<(Fragment, FractureState, DestructionSequence)> {
+    let strong = case_stimulus(DestructionBenchmarkCase::StrongCenterHit)?;
+    let mut world = baseline_wall();
+    let mut state = FractureState::new();
+    let mut damage = DamageSequence::default();
+    let mut sequence = DestructionSequence::default();
+    let mut store = FragmentStore::default();
+    let mut sink = Measured::default();
+    for _ in 0..MAX_LIBERATING_HITS {
+        run_one_hit(
+            &strong,
+            false,
+            &mut world,
+            &mut state,
+            &mut damage,
+            &mut sequence,
+            &BaselineFracturePolicy::REFERENCE,
+            &mut sink.accumulator(),
+            Some(&mut store),
+        );
+        if !store.is_empty() {
+            break;
+        }
+    }
+    let chunk = store
+        .iter()
+        .max_by_key(|(id, f)| (f.cell_count(), std::cmp::Reverse(*id)))?
+        .1
+        .clone();
+    for id in store.ids().filter(|id| *id != chunk.id) {
+        state.forget_space(DamageSpace::FragmentLocal(id));
+    }
+    state.forget_space(DamageSpace::StaticWorld);
+    Some((chunk, state, sequence))
+}
+
+fn execute_contact(stage: Stage) -> Option<(Measured, u64, u64, u64)> {
+    use engine_core::GlobalPos;
+    use engine_destruction::{
+        ContactFracturePolicy, FractureTransactionLimits, fracture_fragment_if, fracture_static_if,
+    };
+    let (chunk, mut state, mut sequence) = canonical_fracture_chunk()?;
+    let parent = chunk.id;
+    let before = chunk.cell_count();
+    let centre = chunk.local_centre();
+    let mut world = baseline_wall();
+    let mut store = FragmentStore::default();
+    store.insert(chunk);
+    let contact = ContactFracturePolicy::default();
+    // The pack's 3000 units describe one participant. Solve the corresponding
+    // shared impulse budget (6000 total) through the same quantisation policy.
+    let energies = contact.energies(
+        f64::from(stage.energy) * 2. / f64::from(contact.energy_per_impulse),
+        12.,
+    )?;
+    let direction = reference_impact_direction(stage.direction_milli);
+    let wall_hit = contact.impact(
+        DamageSpace::StaticWorld,
+        GlobalPos::new(
+            f64::from(stage.target.x) + 0.5,
+            f64::from(stage.target.y) + 0.5,
+            f64::from(stage.target.z) + 0.75,
+        ),
+        direction,
+        energies[0],
+    )?;
+    let piece_hit = contact.impact(
+        DamageSpace::FragmentLocal(parent),
+        GlobalPos::new(centre[0], centre[1], centre[2]),
+        direction.map(|v| -v),
+        energies[1],
+    )?;
+    let limits = FractureTransactionLimits {
+        fracture: fracture_limits(),
+        structure: structural_limits(),
+    };
+    let wall = fracture_static_if(
+        &mut world,
+        &mut store,
+        &mut state,
+        &mut sequence,
+        &wall_hit,
+        &BaselineFracturePolicy::REFERENCE,
+        &AllResident,
+        limits,
+        |_| true,
+    )
+    .ok()?;
+    let piece = fracture_fragment_if(
+        &mut store,
+        &mut state,
+        &mut sequence,
+        &piece_hit,
+        &BaselineFracturePolicy::REFERENCE,
+        limits,
+        |_| true,
+    )
+    .ok()?;
+    let children = match &piece.result {
+        FragmentDamageResult::Refractured(split) => split.fragments.len() as u64,
+        _ => 0,
+    };
+    let digest = state.digest();
+    let mut sizes: Vec<_> = store.iter().map(|(_, f)| f.cell_count()).collect();
+    sizes.sort_unstable();
+    let measured = Measured {
+        cells_touched: wall.measurement.cells_visited + piece.measurement.cells_visited,
+        bonds_touched: wall.measurement.bonds_considered + piece.measurement.bonds_considered,
+        work_budget_used: wall.measurement.cells_visited
+            + piece.measurement.cells_visited
+            + wall.measurement.bonds_considered
+            + piece.measurement.bonds_considered,
+        failed_cells: (wall.fracture.failed.len() + piece.fracture.failed.len()) as u64,
+        broken_bonds: digest.broken_bonds as u64,
+        fracture_cell_entries: digest.cell_entries as u64,
+        fracture_bond_entries: digest.bond_entries as u64,
+        fracture_checksum: digest.checksum,
+        cells_freed_by_cracks: wall.separation.cells_freed_by_cracks(),
+        components_freed_by_cracks: wall.separation.freed_by_cracks().count() as u64,
+        cells_detached_by_occupancy: wall.separation.cells_detached_by_occupancy(),
+        fragments_created: wall.fragments.len() as u64 + children,
+        fragment_size_cells: sizes,
+        damage_centroid_milli: damage_centroid_milli(&state),
+        world_cells_remaining: world.occupied_count(),
+    };
+    Some((
+        measured,
+        before,
+        wall.fracture.failed.len() as u64,
+        piece.fracture.failed.len() as u64,
+    ))
+}
+
 /// Where a fragment-space stimulus lands, given the pack's centre-relative offset.
 ///
 /// The occupied cell nearest the chunk's own bounds centre, plus the offset. Ties
@@ -645,6 +781,27 @@ pub fn run_destruction_case(case: DestructionBenchmarkCase) -> Option<Destructio
     let pack = destruction_benchmark_pack();
     let spec = pack.cases.iter().find(|spec| spec.case == case)?.clone();
     let own = stage_of(&spec);
+    if case == DestructionBenchmarkCase::ChunkIntoWall {
+        let (measured, before, wall_failed, piece_failed) = execute_contact(own)?;
+        let control = execute_contact(Stage {
+            direction_milli: [1000, 0, 0],
+            ..own
+        })?;
+        let directional = measured.fracture_checksum != control.0.fracture_checksum;
+        let mut result = fill(
+            case,
+            &pack.fixture.checksum_fnv1a64,
+            &measured,
+            None,
+            Some(directional),
+        );
+        result.secondary_damage_observed = Some(wall_failed > 0 && piece_failed > 0);
+        result.control_note = Some(format!(
+            "shared contact budget: {} units per participant; canonical chunk {} cells; wall {} failed / chunk {} failed; perpendicular-direction checksum {:016x}",
+            own.energy, before, wall_failed, piece_failed, control.0.fracture_checksum
+        ));
+        return Some(result);
+    }
 
     // A precondition shapes the wall first; measurement starts at the case's own
     // stimulus so a precondition's damage is never counted as the case's.
@@ -722,6 +879,7 @@ fn fill(
     result.damage_centroid_milli = Some(measured.damage_centroid_milli);
     result.cumulative_response_observed = cumulative;
     result.directional_response_observed = directional;
+    result.secondary_damage_observed = Some(false);
     result
 }
 
@@ -932,8 +1090,7 @@ fn check_flag(
 
 /// Turn the pack's requirements into assertions against a measured result.
 ///
-/// Secondary damage is not checked here: no case that requires it is executable
-/// yet, and a check that can only pass vacuously is worse than no check.
+/// Secondary damage is checked against actual contact-generated outcomes.
 pub fn verify_case(
     spec: &DestructionCaseSpec,
     result: &DestructionCaseResult,
@@ -975,6 +1132,13 @@ pub fn verify_case(
         spec.acceptance.directional_response,
         result.directional_response_observed,
     );
+    check_flag(
+        &mut failures,
+        case,
+        "secondary_damage",
+        spec.acceptance.secondary_damage,
+        result.secondary_damage_observed,
+    );
     failures
 }
 
@@ -1008,7 +1172,7 @@ pub fn verify_destruction_cases(results: &[DestructionCaseResult]) -> Vec<Accept
 }
 
 pub const DESTRUCTION_RESULTS_PATH: &str = "fixtures/destruction/benchmark-results.json";
-pub const DESTRUCTION_RESULTS_VERSION: u32 = 1;
+pub const DESTRUCTION_RESULTS_VERSION: u32 = 2;
 
 /// Measured results, committed so that an improvement or a regression is a
 /// reviewable diff rather than a number somebody remembers.
@@ -1104,11 +1268,13 @@ mod tests {
     }
 
     #[test]
-    fn cases_a_later_section_owns_report_nothing_rather_than_zero() {
-        assert!(run_destruction_case(DestructionBenchmarkCase::ChunkIntoWall).is_none());
+    fn every_case_now_runs_including_bounded_secondary_contact_damage() {
+        let contact = run_destruction_case(DestructionBenchmarkCase::ChunkIntoWall).unwrap();
+        assert_eq!(contact.secondary_damage_observed, Some(true));
+        assert_eq!(contact.directional_response_observed, Some(true));
         let results = run_destruction_cases();
         let unmeasured = results.iter().filter(|r| !r.is_measured()).count();
-        assert_eq!(unmeasured, 1, "only chunk_into_wall is still 0006.4's");
+        assert_eq!(unmeasured, 0);
     }
 
     #[test]

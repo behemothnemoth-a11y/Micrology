@@ -23,6 +23,8 @@ pub enum ReplayCommand {
     AdvanceFixed { steps: u32 },
     BenchmarkCase { case: DestructionBenchmarkCase },
     Dump { label: String },
+    ContactFracture { enabled: bool },
+    LaunchChunks { count: u32, speed_milli: u32 },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -214,6 +216,7 @@ pub enum ReplayValidationError {
     ZeroFixedSteps { index: usize },
     TooManyFixedSteps { index: usize, max: u32, actual: u32 },
     EmptyDumpLabel { index: usize },
+    InvalidLaunch { index: usize },
 }
 
 impl std::fmt::Display for ReplayValidationError {
@@ -252,6 +255,10 @@ impl std::fmt::Display for ReplayValidationError {
             Self::EmptyDumpLabel { index } => {
                 write!(f, "command {index} has an empty dump label")
             }
+            Self::InvalidLaunch { index } => write!(
+                f,
+                "command {index}: launch requires 1..32 chunks and speed 1..40000 milli-cells/s"
+            ),
         }
     }
 }
@@ -283,6 +290,11 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
 
     for (index, command) in script.commands.iter().enumerate() {
         match command {
+            ReplayCommand::LaunchChunks { count, speed_milli }
+                if *count == 0 || *count > 32 || *speed_milli == 0 || *speed_milli > 40_000 =>
+            {
+                return Err(ReplayValidationError::InvalidLaunch { index });
+            }
             ReplayCommand::SetSpeed { milli: 0 } => {
                 return Err(ReplayValidationError::ZeroSpeed { index });
             }
@@ -320,6 +332,31 @@ pub fn weak_repeat_replay_json() -> serde_json::Result<String> {
 mod tests {
     use super::*;
     use crate::destruction_benchmark::baseline_wall;
+
+    #[test]
+    fn volley_replay_and_launch_limits_are_validated() {
+        let replay: ReplayScript = serde_json::from_str(include_str!(
+            "../../../fixtures/destruction/replay-contact-volley.json"
+        ))
+        .unwrap();
+        validate_replay(&replay).unwrap();
+        assert!(
+            replay.commands.iter().any(|command| matches!(
+                command,
+                ReplayCommand::ContactFracture { enabled: false }
+            ))
+        );
+        for (count, speed_milli) in [(0, 18_000), (33, 18_000), (1, 0), (1, 40_001)] {
+            let mut invalid = replay.clone();
+            invalid
+                .commands
+                .push(ReplayCommand::LaunchChunks { count, speed_milli });
+            assert!(matches!(
+                validate_replay(&invalid),
+                Err(ReplayValidationError::InvalidLaunch { .. })
+            ));
+        }
+    }
 
     #[test]
     fn canonical_replay_is_valid_and_pinned_to_the_benchmark_wall() {

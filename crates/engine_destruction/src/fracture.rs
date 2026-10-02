@@ -202,6 +202,47 @@ fn commit_edits<K: Ord, V>(
     }
 }
 
+/// Owned local changes, retained until geometry and fragment admission succeed.
+/// Kept private to the crate so callers cannot commit against changed geometry.
+pub(crate) struct PreparedFracture {
+    revision: Revision,
+    cells: (BTreeMap<DamageSite, CellFracture>, BTreeSet<DamageSite>),
+    bonds: (BTreeMap<BondSite, BondFracture>, BTreeSet<BondSite>),
+    pub outcome: FractureOutcome,
+}
+
+impl PreparedFracture {
+    pub fn gate<'a>(
+        &'a self,
+        state: &'a FractureState,
+        space: DamageSpace,
+    ) -> impl crate::BondGate + 'a {
+        struct Gate<'a> {
+            prepared: &'a PreparedFracture,
+            state: &'a FractureState,
+            space: DamageSpace,
+        }
+        impl crate::BondGate for Gate<'_> {
+            fn carries(&self, bond: BondKey) -> bool {
+                let site = BondSite {
+                    space: self.space,
+                    bond,
+                };
+                if let Some(record) = self.prepared.bonds.0.get(&site) {
+                    !record.is_broken()
+                } else {
+                    self.prepared.bonds.1.contains(&site) || !self.state.is_broken(site)
+                }
+            }
+        }
+        Gate {
+            prepared: self,
+            state,
+            space,
+        }
+    }
+}
+
 /// Fixed-point scale: one whole unit is 1000.
 ///
 /// Deliberately not `engine_mechanics::Milli`. That type lives downstream of
@@ -1187,6 +1228,30 @@ impl FractureState {
         self.bonds.values().copied()
     }
 
+    /// Space is the leading ordered key. A fragment query never walks damage
+    /// belonging to the static world or another fragment.
+    pub fn cells_in(&self, space: DamageSpace) -> impl Iterator<Item = CellFracture> + '_ {
+        let start = DamageSite {
+            space,
+            cell: CellPos::new(i32::MIN, i32::MIN, i32::MIN),
+        };
+        self.cells
+            .range(start..)
+            .take_while(move |(site, _)| site.space == space)
+            .map(|(_, record)| *record)
+    }
+    pub fn bonds_in(&self, space: DamageSpace) -> impl Iterator<Item = BondFracture> + '_ {
+        let start = BondSite {
+            space,
+            bond: BondKey::along(CellPos::new(i32::MIN, i32::MIN, i32::MIN), Axis::X)
+                .expect("minimum cell has a positive neighbour"),
+        };
+        self.bonds
+            .range(start..)
+            .take_while(move |(site, _)| site.space == space)
+            .map(|(_, record)| *record)
+    }
+
     /// Forget everything about one cell, including every bond touching it.
     ///
     /// Call this when geometry disappears by a path fracture did not drive — a
@@ -1282,8 +1347,8 @@ impl FractureState {
         records: RegionFracture,
         limits: FractureLimits,
     ) -> Result<(), FractureRefusal> {
-        let mut staged_cells = self.cells.clone();
-        let mut staged_bonds = self.bonds.clone();
+        let mut staged_cells = MapDelta::new(&self.cells);
+        let mut staged_bonds = MapDelta::new(&self.bonds);
         for record in records.cells {
             if record.energy == DamageAmount::ZERO {
                 staged_cells.remove(&record.site);
@@ -1310,8 +1375,10 @@ impl FractureState {
                 limit: limits.max_bond_entries,
             });
         }
-        self.cells = staged_cells;
-        self.bonds = staged_bonds;
+        let cells = staged_cells.into_edits();
+        let bonds = staged_bonds.into_edits();
+        commit_edits(&mut self.cells, cells);
+        commit_edits(&mut self.bonds, bonds);
         self.revision.bump();
         Ok(())
     }
@@ -1473,28 +1540,19 @@ impl FractureState {
     /// Returns how many records survived the split.
     pub fn remap_fragment(&mut self, parent: FragmentId, children: &[Fragment]) -> usize {
         let parent_space = DamageSpace::FragmentLocal(parent);
-        let owners: Vec<(FragmentId, BTreeSet<CellPos>)> = children
+        let owners: BTreeMap<CellPos, FragmentId> = children
             .iter()
-            .map(|child| (child.id, child.occupied_cells().collect()))
+            .flat_map(|child| child.occupied_cells().map(move |cell| (cell, child.id)))
             .collect();
-        let owner_of = |cell: CellPos| {
-            owners
-                .iter()
-                .find(|(_, cells)| cells.contains(&cell))
-                .map(|(id, _)| *id)
-        };
+        let owner_of = |cell: CellPos| owners.get(&cell).copied();
 
         let cell_sites: Vec<DamageSite> = self
-            .cells
-            .keys()
-            .copied()
-            .filter(|site| site.space == parent_space)
+            .cells_in(parent_space)
+            .map(|record| record.site)
             .collect();
         let bond_sites: Vec<BondSite> = self
-            .bonds
-            .keys()
-            .copied()
-            .filter(|site| site.space == parent_space)
+            .bonds_in(parent_space)
+            .map(|record| record.site)
             .collect();
         let cells: Vec<CellFracture> = cell_sites
             .into_iter()
@@ -1535,18 +1593,8 @@ impl FractureState {
 
     /// Forget everything in one coordinate space, as when a fragment dies.
     pub fn forget_space(&mut self, space: DamageSpace) -> usize {
-        let cells: Vec<_> = self
-            .cells
-            .keys()
-            .copied()
-            .filter(|site| site.space == space)
-            .collect();
-        let bonds: Vec<_> = self
-            .bonds
-            .keys()
-            .copied()
-            .filter(|site| site.space == space)
-            .collect();
+        let cells: Vec<_> = self.cells_in(space).map(|record| record.site).collect();
+        let bonds: Vec<_> = self.bonds_in(space).map(|record| record.site).collect();
         let removed = cells.len() + bonds.len();
         for site in cells {
             self.cells.remove(&site);
@@ -1574,6 +1622,17 @@ impl FractureState {
         policy: &dyn FracturePolicy,
         limits: FractureLimits,
     ) -> Result<FractureOutcome, FractureRefusal> {
+        let prepared = self.prepare(load, scene, policy, limits)?;
+        self.commit_prepared(prepared)
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        load: &FractureLoad,
+        scene: FractureScene<'_>,
+        policy: &dyn FracturePolicy,
+        limits: FractureLimits,
+    ) -> Result<PreparedFracture, FractureRefusal> {
         if load.space != scene.space() {
             return Err(FractureRefusal::SpaceMismatch(FractureSpaceMismatch {
                 impact: load.space,
@@ -1755,19 +1814,35 @@ impl FractureState {
             .filter(|target| crushed.contains(&target.cell()))
             .count();
 
-        let cell_edits = staged_cells.into_edits();
-        let bond_edits = staged_bonds.into_edits();
-        commit_edits(&mut self.cells, cell_edits);
-        commit_edits(&mut self.bonds, bond_edits);
-        self.revision.bump();
-
-        Ok(FractureOutcome {
+        let outcome = FractureOutcome {
             broken,
             failed,
             crushed,
-            cell_entries: self.cells.len(),
-            bond_entries: self.bonds.len(),
+            cell_entries: staged_cells.len(),
+            bond_entries: staged_bonds.len(),
+        };
+        Ok(PreparedFracture {
+            revision: self.revision,
+            cells: staged_cells.into_edits(),
+            bonds: staged_bonds.into_edits(),
+            outcome,
         })
+    }
+
+    pub(crate) fn commit_prepared(
+        &mut self,
+        prepared: PreparedFracture,
+    ) -> Result<FractureOutcome, FractureRefusal> {
+        if prepared.revision != self.revision {
+            return Err(FractureRefusal::StaleEvaluation {
+                expected: prepared.revision,
+                found: self.revision,
+            });
+        }
+        commit_edits(&mut self.cells, prepared.cells);
+        commit_edits(&mut self.bonds, prepared.bonds);
+        self.revision.bump();
+        Ok(prepared.outcome)
     }
 }
 

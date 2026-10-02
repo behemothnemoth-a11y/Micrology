@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "contact_stress_18",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    {
+      "op": "pause"
+    },
+    {
+      "op": "launch_chunks",
+      "count": 9,
+      "speed_milli": 18000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "launch_chunks",
+      "count": 9,
+      "speed_milli": 22000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 360
+    },
+    {
+      "op": "dump",
+      "label": "stress_damage_on"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "stress_damage_off"
+    }
+  ]
+}

@@ -59,6 +59,10 @@ param(
 
     [switch]$KeepRaw,
 
+    # Initial size/position of the NEW sandbox window only. Other windows are
+    # never moved, resized, minimized or brought forward.
+    [switch]$Compact,
+
     [string]$ReplayScript = 'fixtures/destruction/replay-crack-separation.json',
 
     [switch]$CheckOnly
@@ -200,8 +204,10 @@ if (-not (Test-Path $exe)) { throw "Built binary not found at $exe" }
 $previous = [Environment]::GetEnvironmentVariable($envName)
 $previousScript = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT')
 $previousCapture = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE')
+$previousCompact = [Environment]::GetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT')
 [Environment]::SetEnvironmentVariable($envName, '1')
 try {
+    if ($Compact) { [Environment]::SetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT', '1') }
     if ($Demo -eq 'replay') {
         $scriptPath = if ([IO.Path]::IsPathRooted($ReplayScript)) { $ReplayScript } else { Join-Path $repo $ReplayScript }
         if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw "Replay script not found: $scriptPath" }
@@ -217,6 +223,7 @@ try {
     [Environment]::SetEnvironmentVariable($envName, $previous)
     [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT', $previousScript)
     [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', $previousCapture)
+    [Environment]::SetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT', $previousCompact)
 }
 
 try {

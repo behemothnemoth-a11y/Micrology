@@ -102,7 +102,13 @@ pub fn collect_fragment_impacts(
     collisions: Collisions,
     fragment_bodies: Query<&DynamicFragmentBody>,
     mut host: ResMut<ImpactHost>,
+    lab: Res<crate::sim_lab::SimulationLab>,
 ) {
+    // The one-material lab uses persistent bond fracture for contacts; mixing
+    // scalar failure into it would bypass both its model and atomic admission.
+    if lab.enabled {
+        return;
+    }
     let policy = impact_policy();
     let previous = std::mem::take(&mut host.active_contacts);
     let mut current = BTreeSet::new();

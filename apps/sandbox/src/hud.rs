@@ -71,10 +71,10 @@ pub fn apply_visibility(
     }
 }
 
-const CONTROLS: &str = "click grab · esc release · wasd+space/ctrl fly · shift fast\n\
-                        lmb carve · shift+lmb r2 · ctrl+lmb r4 · rmb place · f paint\n\
-                        f5 flush dirty regions · f9 drop and restream · g toggle mesher\n\
-                        q quit (flushes unsaved edits) · h hide this overlay";
+const CONTROLS: &str = "click grab | esc release | wasd+space/ctrl fly | shift fast\n\
+                        lmb carve | shift+lmb r2 | ctrl+lmb r4 | rmb place | f paint\n\
+                        f5 flush dirty regions | f9 drop and restream | g toggle mesher\n\
+                        q quit (flushes unsaved edits) | h hide this overlay";
 
 /// A crosshair at the exact centre of the viewport.
 ///
@@ -110,7 +110,7 @@ fn spawn_crosshair(commands: &mut Commands) {
         });
 }
 
-pub fn setup(mut commands: Commands) {
+pub fn setup(mut commands: Commands, lab: Res<crate::sim_lab::SimulationLab>) {
     spawn_crosshair(&mut commands);
 
     commands.spawn((
@@ -137,7 +137,9 @@ pub fn setup(mut commands: Commands) {
             left: Val::Px(12.0),
             ..default()
         },
-        Text::new(CONTROLS),
+        Text::new(if lab.enabled {
+            "click grab | esc release | wasd+space/ctrl fly | h hide overlay\nLMB strike | shift+LMB strong strike | R launch chunk | F9 contact damage\nF6 run/pause | F7 single step | F8 speed | F10 snapshot | F11 replay | Q quit"
+        } else { CONTROLS }),
         TextFont {
             font_size: FontSize::Px(12.0),
             ..default()
@@ -154,6 +156,8 @@ pub fn setup(mut commands: Commands) {
 /// rather than formatted inline.
 #[derive(SystemParam)]
 pub struct Diagnostics<'w> {
+    pub lab: Res<'w, crate::sim_lab::SimulationLab>,
+    pub contacts: Res<'w, crate::contact_fracture::ContactFractureHost>,
     pub world: Res<'w, WorldRes>,
     pub geometry: Res<'w, GeometryRes>,
     pub palette: Res<'w, Palette>,
@@ -178,6 +182,8 @@ pub fn update(
     text: Option<Single<&mut Text, With<StatsText>>>,
 ) {
     let Diagnostics {
+        lab,
+        contacts,
         world,
         geometry,
         palette,
@@ -205,6 +211,27 @@ pub fn update(
         .get(&FrameTimeDiagnosticsPlugin::FPS)
         .and_then(|fps| fps.smoothed())
         .unwrap_or(0.0);
+
+    if lab.enabled {
+        let debris = fragments.stats();
+        let c = contacts.stats;
+        **text.into_inner() = format!(
+            "Micrology | one-material destruction lab\n{fps:.0} FPS | {} static cells | {} fragments / {} cells\ncontact damage {} | {} processed | {} pending | {} refused / {} capped\nwall cells failed {} | debris cells failed {} | new fragments {}\n{}",
+            world_stats.occupied_cells,
+            debris.fragments,
+            debris.cells,
+            if lab.contact_fracture { "ON" } else { "OFF" },
+            c.processed,
+            contacts.pending(),
+            c.refused,
+            c.capped,
+            c.static_failed,
+            c.fragment_failed,
+            c.fragments_created,
+            status.0
+        );
+        return;
+    }
 
     let merge_ratio = if stats.quads == 0 {
         0.0
@@ -235,7 +262,7 @@ pub fn update(
     let destruction_stats = destruction.stats();
 
     **text.into_inner() = format!(
-        "Micrology · DROP 0004 · mesher: {mesher}\n\
+        "Micrology | mesher: {mesher}\n\
          camera {cx:.0} {cy:.0} {cz:.0}  region {rx} {ry} {rz}  origin {ox} {oy} {oz}\n\
          regions: wanted {wanted}  demand {region_demand}  resident {resident}  ready {ready}  dirty {dirty_regions}\n\
          io: loading {loading}  saving {saving}  tasks {loads}L/{saves}S/{meshing}M\n\

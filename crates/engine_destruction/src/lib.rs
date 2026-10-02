@@ -46,11 +46,13 @@
 
 pub mod collision;
 pub mod connectivity;
+pub mod contact_fracture;
 pub mod damage;
 pub mod derived_jobs;
 pub mod detach;
 pub mod fracture;
 pub mod fracture_connectivity;
+pub mod fracture_transaction;
 pub mod fragment;
 pub mod impact;
 pub mod jobs;
@@ -66,6 +68,7 @@ pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
     GreedyCollisionCompiler,
 };
+pub use contact_fracture::ContactFracturePolicy;
 
 pub use damage::{
     DamageAmount, DamageEvaluation, DamageEvaluationError, DamageEvaluationLimits, DamageEvent,
@@ -90,6 +93,10 @@ pub use fracture_connectivity::{
     classify_cracked_component, classify_cracked_from_roots, cracked_structure_result,
     fracture_state_leaving_with, fragment_parts_through_cracks, separation_from_cracks,
     separation_roots,
+};
+pub use fracture_transaction::{
+    FractureTransactionLimits, FractureTransactionRefusal, FragmentFractureCommit,
+    StaticFractureCommit, fracture_fragment_if, fracture_static_if,
 };
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
 pub use impact::{

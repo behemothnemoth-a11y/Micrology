@@ -1,5 +1,12 @@
 # Claude Code Handoff — Continue Micrology Core Destruction
 
+> **Latest authorization, 2026-10-02:** the user explicitly said to ignore the
+> section stopping points and make a large integrated drop. Earlier review gates
+> below are historical and superseded. Continue the one-material contact fracture
+> loop, atomic admission and performance work as one validated delivery.
+> That delivery is documented in `integrated-one-material-destruction.md`.
+> The dated notes below are historical: `chunk_into_wall` is now implemented.
+
 > **2026-10-02 follow-up:** 0006.1 acceptance was completed in `dc30b64`,
 > preserving Claude's 0006.1-0006.3 work. The user then requested deep research
 > and progress toward full Astra-style, one-material destruction with a focus

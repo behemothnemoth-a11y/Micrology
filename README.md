@@ -18,9 +18,11 @@ and residency, applied damage, progressive local damage, force coupling and
 bounded secondary destruction. DROP 0005 adds mechanical difference between
 materials and the first model of structural capacity. DROP 0006 then asks the
 question none of that answered — what happens *inside* one solid material when
-one impact hits it — and is through **0006.0**: sparse persistent fracture state,
-per-cell absorbed energy and per-bond integrity, so that material can be present
-and weakened rather than only intact or absent.
+one impact hits it. The current integrated one-material drop combines sparse
+persistent damage, broken-bond separation, damage ownership, destructible native
+fragments, and bounded contact fracture in the interactive destruction lab.
+See [the integrated drop and measurements](docs/integrated-one-material-destruction.md).
+The exact occupancy classifier remains an independent oracle.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -41,6 +43,42 @@ That is the whole setup. A fresh clone needs nothing but a stable Rust toolchain
 ```sh
 cargo run -p sandbox -- fixtures/worlds/drop0001_sample.json   # load a world instead
 ```
+
+### One-material destruction lab
+
+From PowerShell at the repository root:
+
+```powershell
+$env:MICROLOGY_DESTRUCTION_LAB = '1'
+cargo run --release -p sandbox
+```
+
+The shared benchmark wall starts paused. `F6` runs/pauses physics; `F7` advances
+one fixed step. Click to capture the camera, then use left click to strike and
+Shift + left click for a stronger strike. `R` launches a naturally fractured
+chunk toward the wall and enables contact damage. `F9` toggles contact damage;
+fragments continue moving with it off. `F8` changes simulation speed, `F10`
+saves a snapshot, and `F11` advances the loaded replay. The camera still moves
+while physics is paused. `H` hides the overlay, `Esc` releases the mouse, and
+`Q` quits. This disposable lab does not save over authored worlds.
+
+For automatic contact replay, set these before launching:
+
+```powershell
+$env:MICROLOGY_REPLAY_SCRIPT = 'fixtures/destruction/replay-contact-volley.json'
+$env:MICROLOGY_REPLAY_CAPTURE = '1' # pace the script; does not start a recorder
+$env:MICROLOGY_PROFILE_SECONDS = '45' # write frame timings and exit
+```
+
+`replay-contact-stress.json` launches eighteen chunks and advances 660 fixed
+steps. Use `tools/capture-demo.ps1 -Demo replay -Section my_contact_capture
+-ReplayScript fixtures/destruction/replay-contact-volley.json -Seconds 50`
+for non-invasive GPU video evidence. If desktop windows cover the scene, set
+`MICROLOGY_NATIVE_CAPTURE=1` to save a PNG directly from the renderer alongside
+each replay snapshot; these contain only the game. `MICROLOGY_CAPTURE_COMPACT=1`
+chooses a smaller initial capture window. Keep native capture off during timing
+runs. Remove the lab/profile/replay/capture environment
+variables to return to the regular sandbox.
 
 ### Sandbox controls
 

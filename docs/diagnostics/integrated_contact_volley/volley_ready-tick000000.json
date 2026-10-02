@@ -1,0 +1,106 @@
+{
+  "contact_fracture_enabled": true,
+  "contacts": null,
+  "fixed_ticks": 0,
+  "fracture": {
+    "bond_entries": 300,
+    "broken_bonds": 84,
+    "cell_entries": 180,
+    "checksum_fnv1a64": "a9b363fdd4e6a44d",
+    "revision": 1
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 60,
+      "id": "f0.0",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        -18.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        39.0,
+        0.5,
+        62.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 60,
+      "id": "f0.1",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        -18.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.5,
+        62.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 60,
+      "id": "f0.2",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        -18.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        57.0,
+        0.5,
+        62.0
+      ]
+    }
+  ],
+  "label": "volley_ready",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 14,
+    "cursor": 3,
+    "name": "contact_volley"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "d6bb8ac28d785a3a",
+    "fragment_cells": 180,
+    "fragments": 3,
+    "static_anchors": 252,
+    "static_cells": 3132
+  }
+}

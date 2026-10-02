@@ -14,14 +14,16 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::time::{Fixed, Virtual};
 use engine_destruction::{
-    AllResident, BaselineFracturePolicy, CrackedBonds, DamageAmount, DamageSequence, DamageSpace,
-    DestructionSequence, FractureEvaluation, FractureImpact, FractureLimits, FractureScene,
-    FractureSeparation, FractureState, Fragment, FragmentDamageResult, StructuralLimits,
-    cracked_structure_result, damage_fragment_store_with_parts, detach_if, evaluate_fracture,
-    fracture_hit_toward, fracture_hit_toward_in, fracture_state_leaving_with,
-    fragment_parts_through_cracks, reference_impact_direction, separation_from_cracks,
-    separation_roots, static_failure_batch,
+    AllResident, BaselineFracturePolicy, DamageAmount, DamageSequence, DamageSpace,
+    DestructionSequence, FractureImpact, FractureLimits, FractureState, Fragment, StructuralLimits,
+    fracture_hit_toward, fracture_hit_toward_in, reference_impact_direction,
 };
+#[cfg(test)]
+use engine_destruction::{
+    FractureSeparation, cracked_structure_result, detach_if, fracture_state_leaving_with,
+    separation_from_cracks,
+};
+
 use engine_stress::{
     DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall, case_stimulus,
     is_implemented, structural_state_digest, validate_replay, weak_repeat_replay,
@@ -56,15 +58,17 @@ struct ReplaySession {
 #[derive(Resource, Debug)]
 pub struct SimulationLab {
     pub enabled: bool,
+    pub contact_fracture: bool,
+    pub contact_stats: serde_json::Value,
     speed_milli: u32,
     pending_fixed_steps: u32,
     pub fixed_ticks: u64,
     replay: Option<ReplaySession>,
     fracture_sequence: DamageSequence,
-    fracture_state: FractureState,
+    pub(crate) fracture_state: FractureState,
     fracture_policy: BaselineFracturePolicy,
     last_separation: Option<LabSeparation>,
-    last_dump: Option<PathBuf>,
+    pub(crate) last_dump: Option<PathBuf>,
     capture_timer: Option<Timer>,
 }
 
@@ -72,6 +76,8 @@ impl Default for SimulationLab {
     fn default() -> Self {
         Self {
             enabled: false,
+            contact_fracture: false,
+            contact_stats: serde_json::Value::Null,
             speed_milli: 1000,
             pending_fixed_steps: 0,
             fixed_ticks: 0,
@@ -112,8 +118,170 @@ impl SimulationLab {
     }
 }
 
+pub fn requested() -> bool {
+    std::env::var_os("MICROLOGY_DESTRUCTION_LAB").is_some()
+        || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_some()
+}
+
 pub fn inactive(lab: Res<SimulationLab>) -> bool {
     !lab.enabled
+}
+
+#[derive(SystemParam)]
+pub struct StrikeResources<'w> {
+    mouse: Res<'w, ButtonInput<MouseButton>>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    lab: ResMut<'w, SimulationLab>,
+    world: ResMut<'w, WorldRes>,
+    fragments: ResMut<'w, DynamicFragments>,
+    destruction: ResMut<'w, DestructionHost>,
+    budget: Res<'w, FragmentBudgetRes>,
+    bodies: Res<'w, FragmentBodies>,
+    renders: Res<'w, FragmentEntities>,
+    status: ResMut<'w, StatusLine>,
+}
+
+/// Pick authoritative cells in the static world or a rotated native fragment.
+/// The mesh and backend collider are never the source of truth for a strike.
+pub fn strike(
+    cursor: Option<Single<&bevy::window::CursorOptions>>,
+    camera: Option<Single<(&Transform, &crate::camera::FlyCamera)>>,
+    resources: StrikeResources,
+) {
+    use avian3d::math::{Quaternion, Vector};
+    let StrikeResources {
+        mouse,
+        keys,
+        mut lab,
+        mut world,
+        mut fragments,
+        mut destruction,
+        budget,
+        bodies,
+        renders,
+        mut status,
+    } = resources;
+    if !lab.enabled {
+        return;
+    }
+    if keys.just_pressed(KeyCode::F9) {
+        lab.contact_fracture = !lab.contact_fracture;
+        status.0 = format!("contact damage {}", lab.contact_fracture);
+    }
+    let available = budget.0.hard_bytes.saturating_sub(
+        budget
+            .account(&fragments, &bodies, renders.mesh_bytes())
+            .footprint
+            .tracked_bytes(),
+    );
+    if keys.just_pressed(KeyCode::KeyR) {
+        status.0 = launch_chunks(
+            1,
+            18_000,
+            &mut lab,
+            &mut fragments,
+            &mut destruction,
+            available,
+        )
+        .unwrap_or_else(|e| e);
+    }
+    if !mouse.just_pressed(MouseButton::Left)
+        || !cursor.is_some_and(|c| crate::camera::cursor_grabbed(&c))
+    {
+        return;
+    }
+    let Some(camera) = camera else {
+        return;
+    };
+    let (transform, fly) = camera.into_inner();
+    let direction = transform.forward().to_array();
+    let mut selected = engine_world::raycast(&world.0, fly.global, direction, 96.)
+        .map(|hit| (hit, DamageSpace::StaticWorld, direction.map(f64::from)));
+    for (id, fragment) in fragments.iter() {
+        let q = Quaternion::from_array(fragment.pose.rotation.0);
+        if !q.is_finite() || q.length_squared() < 1e-12 {
+            continue;
+        }
+        let inverse = q.normalize().conjugate();
+        let t = fragment.pose.translation;
+        let from =
+            inverse * Vector::new(fly.global.x - t.x, fly.global.y - t.y, fly.global.z - t.z);
+        let dir = inverse * Vector::from_array(direction.map(f64::from));
+        if let Some(hit) = engine_world::raycast(
+            fragment,
+            engine_core::GlobalPos::new(from.x, from.y, from.z),
+            dir.to_array().map(|v| v as f32),
+            96.,
+        ) && selected
+            .as_ref()
+            .is_none_or(|(old, _, _)| hit.distance < old.distance)
+        {
+            selected = Some((hit, DamageSpace::FragmentLocal(id), dir.to_array()));
+        }
+    }
+    let Some((hit, space, direction)) = selected else {
+        status.0 = "no material in reach".into();
+        return;
+    };
+    let energy = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+        3600
+    } else {
+        1200
+    };
+    let event = fracture_hit_toward_in(
+        lab.fracture_sequence.next_root(),
+        space,
+        hit.cell,
+        direction.map(|v| (v * 1000.).round() as i32),
+        DamageAmount(energy),
+    );
+    let Ok(impact) = FractureImpact::from_event(&event, Some(direction)) else {
+        return;
+    };
+    let policy = lab.fracture_policy;
+    let limits = engine_destruction::FractureTransactionLimits::default();
+    let result = match space {
+        DamageSpace::StaticWorld => engine_destruction::fracture_static_if(
+            &mut world.0,
+            fragments.store_mut(),
+            &mut lab.fracture_state,
+            &mut destruction.sequence,
+            &impact,
+            &policy,
+            &AllResident,
+            limits,
+            |parts| fits_fragment_storage(parts, available),
+        )
+        .map(|commit| {
+            format!(
+                "strike: {} cracks, {} crushed/failed cells, {} fragments",
+                commit.fracture.broken.len(),
+                commit.fracture.failed.len(),
+                commit.fragments.len()
+            )
+        }),
+        DamageSpace::FragmentLocal(id) => {
+            let available =
+                available.saturating_add(fragments.get(id).map_or(0, Fragment::footprint_bytes));
+            engine_destruction::fracture_fragment_if(
+                fragments.store_mut(),
+                &mut lab.fracture_state,
+                &mut destruction.sequence,
+                &impact,
+                &policy,
+                limits,
+                |parts| fits_fragment_storage(parts, available),
+            )
+            .map(|commit| {
+                format!(
+                    "fragment strike: {} cracks, {} failed cells",
+                    commit.fracture.broken.len(),
+                    commit.fracture.failed.len()
+                )
+            })
+        }
+    };
+    status.0 = result.unwrap_or_else(|e| format!("strike held: {e:?}"));
 }
 fn replay_from_environment() -> Result<ReplayScript, String> {
     let script = if let Some(path) = std::env::var_os("MICROLOGY_REPLAY_SCRIPT") {
@@ -131,6 +299,8 @@ fn replay_from_environment() -> Result<ReplayScript, String> {
 
 #[derive(SystemParam)]
 pub struct LabSeedResources<'w> {
+    contacts: ResMut<'w, crate::contact_fracture::ContactFractureHost>,
+    palette: ResMut<'w, crate::edit::Palette>,
     world: ResMut<'w, WorldRes>,
     stream: ResMut<'w, StreamRes>,
     fragments: ResMut<'w, DynamicFragments>,
@@ -144,6 +314,8 @@ pub struct LabSeedResources<'w> {
 
 pub fn seed(resources: LabSeedResources) {
     let LabSeedResources {
+        mut contacts,
+        mut palette,
         mut world,
         mut stream,
         mut fragments,
@@ -154,9 +326,7 @@ pub fn seed(resources: LabSeedResources) {
         mut virtual_time,
         mut status,
     } = resources;
-    let requested = std::env::var_os("MICROLOGY_DESTRUCTION_LAB").is_some()
-        || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_some();
-    if !requested {
+    if !requested() {
         return;
     }
 
@@ -169,6 +339,12 @@ pub fn seed(resources: LabSeedResources) {
     };
 
     world.0 = baseline_wall();
+    contacts.clear();
+    palette.entries = vec![(
+        engine_destruction::REFERENCE_FRACTURE_MATERIAL,
+        "reference solid",
+    )];
+    palette.selected = 0;
     world.0.mark_all_dirty();
 
     // This is a disposable diagnostic world, never persistence state.
@@ -293,6 +469,8 @@ fn dump_state(
 
     let document = serde_json::json!({
         "label": label,
+        "contact_fracture_enabled": lab.contact_fracture,
+        "contacts": lab.contact_stats,
         "fixed_ticks": lab.fixed_ticks,
         "paused": virtual_time.is_paused(),
         "speed_milli": lab.speed_milli(),
@@ -338,11 +516,9 @@ fn advance_replay_cursor(lab: &mut SimulationLab) {
     }
 }
 
-/// Apply one benchmark case's stimulus, exactly as the headless runner does.
-///
-/// The stimulus comes from the committed pack rather than from this file, so the
-/// lab cannot drift away from what the benchmark measures — stepping through a
-/// case here and running it headless are the same hit.
+/// Direct strike cases share the headless stimulus. The contact case launches
+/// the same naturally liberated chunk; Avian supplies live contacts on later
+/// fixed steps instead of the headless runner's representative contact sample.
 fn apply_benchmark_case(
     case: DestructionBenchmarkCase,
     lab: &mut SimulationLab,
@@ -351,20 +527,62 @@ fn apply_benchmark_case(
     destruction: &mut DestructionHost,
     available_fragment_bytes: u64,
 ) -> Result<String, String> {
-    if !is_implemented(case) {
-        return Err(format!(
-            "{} is owned by a later section and has no stimulus runner yet",
-            case.name()
-        ));
+    let stage = case_stimulus(case).ok_or("benchmark case missing")?;
+    if case == DestructionBenchmarkCase::ChunkIntoWall {
+        return launch_chunks(
+            1,
+            18_000,
+            lab,
+            fragments,
+            destruction,
+            available_fragment_bytes,
+        );
     }
-    // The case's *own* stimulus, never its precondition. A replay script spells
-    // a precondition out as its own command so every hit is a visible step; the
-    // headless runner applies it itself because it always starts from a fresh
-    // wall.
-    let stage = case_stimulus(case)
-        .ok_or_else(|| format!("{} is not in the benchmark pack", case.name()))?;
+    let limits = engine_destruction::FractureTransactionLimits {
+        fracture: fracture_limits(),
+        structure: StructuralLimits::default(),
+    };
     if case == DestructionBenchmarkCase::DetachedChunkHit {
-        return hit_largest_chunk(case, stage, lab, fragments, destruction);
+        let chunk = fragments
+            .iter()
+            .max_by_key(|(id, f)| (f.cell_count(), std::cmp::Reverse(*id)))
+            .map(|(_, f)| f.clone())
+            .ok_or("detach a chunk before hitting it")?;
+        let event = fracture_hit_toward_in(
+            lab.fracture_sequence.next_root(),
+            DamageSpace::FragmentLocal(chunk.id),
+            chunk_centre_target(&chunk, stage.target),
+            stage.direction_milli,
+            DamageAmount(stage.energy),
+        );
+        let impact = FractureImpact::from_event(
+            &event,
+            Some(reference_impact_direction(stage.direction_milli)),
+        )
+        .map_err(|e| format!("impact: {e:?}"))?;
+        let available = available_fragment_bytes.saturating_add(chunk.footprint_bytes());
+        let commit = engine_destruction::fracture_fragment_if(
+            fragments.store_mut(),
+            &mut lab.fracture_state,
+            &mut destruction.sequence,
+            &impact,
+            &lab.fracture_policy,
+            limits,
+            |parts| fits_fragment_storage(parts, available),
+        )
+        .map_err(|e| format!("fragment transaction held: {e:?}"))?;
+        let result = match commit.result {
+            engine_destruction::FragmentDamageResult::Refractured(split) => {
+                format!("{} new pieces", split.fragments.len())
+            }
+            engine_destruction::FragmentDamageResult::Destroyed { .. } => "chunk destroyed".into(),
+            _ => "chunk updated".into(),
+        };
+        return Ok(format!(
+            "{}: {} failed cells; {result}",
+            case.name(),
+            commit.fracture.failed.len()
+        ));
     }
     let event = fracture_hit_toward(
         lab.fracture_sequence.next_root(),
@@ -372,216 +590,105 @@ fn apply_benchmark_case(
         stage.direction_milli,
         DamageAmount(stage.energy),
     );
-    let impact = FractureImpact::from_static_event(&event)
-        .map_err(|error| format!("fracture impact: {error:?}"))?;
-    let policy = lab.fracture_policy;
-    let scene = FractureScene::static_world(&world.0, &world.0, &AllResident);
-    let evaluation = evaluate_fracture(
+    let impact = FractureImpact::from_static_event(&event).map_err(|e| format!("impact: {e:?}"))?;
+    let commit = engine_destruction::fracture_static_if(
+        &mut world.0,
+        fragments.store_mut(),
+        &mut lab.fracture_state,
+        &mut destruction.sequence,
         &impact,
-        scene,
-        &policy,
-        &lab.fracture_state,
-        fracture_limits(),
-    )
-    .map_err(|error| format!("fracture evaluation: {error:?}"))?;
-
-    let load = match evaluation {
-        FractureEvaluation::Loaded(load) => load,
-        FractureEvaluation::Deferred { reason } => {
-            return Err(format!("fracture deferred: {reason:?}"));
-        }
-        FractureEvaluation::Indeterminate { required_regions } => {
-            return Err(format!(
-                "fracture indeterminate: {} region(s) required",
-                required_regions.len()
-            ));
-        }
-    };
-
-    let walked = load.measurement.cells_visited;
-    let bonds = load.measurement.bonds_considered;
-    let scene = FractureScene::static_world(&world.0, &world.0, &AllResident);
-    let outcome = lab
-        .fracture_state
-        .apply(&load, scene, &policy, fracture_limits())
-        .map_err(|error| format!("fracture commit refused: {error}"))?;
-
-    let removed = if outcome.failed.is_empty() {
-        0usize
-    } else {
-        let edit = world.0.apply(&static_failure_batch(&outcome.failed));
-        let removed = edit.removed_cells.len();
-        destruction.enqueue_edit(&edit);
-        removed
-    };
-
-    // Ask what the cracks separated, and act on it through the existing atomic
-    // transaction. Nothing here is a second detachment path.
-    let separation = separation_from_cracks(
-        &world.0,
-        &world.0,
+        &lab.fracture_policy,
         &AllResident,
-        &CrackedBonds::static_world(&lab.fracture_state),
-        separation_roots(&outcome),
-        StructuralLimits::default(),
-    );
-    let detached = detach_separated(
-        lab,
-        world,
-        fragments,
-        destruction,
-        &separation,
-        available_fragment_bytes,
-    );
-
+        limits,
+        |parts| fits_fragment_storage(parts, available_fragment_bytes),
+    )
+    .map_err(|e| format!("static transaction held: {e:?}"))?;
     lab.last_separation = Some(LabSeparation {
         case,
-        cells_freed_by_cracks: separation.cells_freed_by_cracks(),
-        components_freed_by_cracks: separation.freed_by_cracks().count() as u64,
-        cells_detached_by_occupancy: separation.cells_detached_by_occupancy(),
-        inconclusive_cross_checks: separation.inconclusive_cross_checks,
-        settled: separation.is_settled(),
-        fragments_created: detached,
+        cells_freed_by_cracks: commit.separation.cells_freed_by_cracks(),
+        components_freed_by_cracks: commit.separation.freed_by_cracks().count() as u64,
+        cells_detached_by_occupancy: commit.separation.cells_detached_by_occupancy(),
+        inconclusive_cross_checks: commit.separation.inconclusive_cross_checks,
+        settled: commit.separation.is_settled(),
+        fragments_created: commit.fragments.len() as u64,
     });
-    let stats = lab.fracture_state.stats();
-
     Ok(format!(
-        "{}: {} cracks opened, {removed} cells removed, {} cells freed by cracks in {} piece(s) \
-         -> {detached} fragment(s) | state {} cells / {} bonds / {} broken | walked {walked}, loaded {bonds}",
+        "{}: {} cracks, {} failed cells, {} native fragments",
         case.name(),
-        outcome.broken.len(),
-        separation.cells_freed_by_cracks(),
-        separation.freed_by_cracks().count(),
-        stats.cell_entries,
-        stats.bond_entries,
-        stats.broken_bonds,
+        commit.fracture.broken.len(),
+        commit.fracture.failed.len(),
+        commit.fragments.len()
     ))
 }
 
-/// Hit the largest live chunk with the same model the wall gets: DROP 0006.3.
-///
-/// The pack's target for a fragment case is an offset from the chunk's centre,
-/// because a fragment's local coordinates depend on where it broke off and are not
-/// knowable when the pack is written. Same reading as the headless runner, so
-/// stepping through the case and measuring it are the same hit.
-fn hit_largest_chunk(
-    case: DestructionBenchmarkCase,
-    stage: engine_stress::Stage,
+/// Diagnostic projectiles come from the canonical fractured wall. Admission of
+/// the complete volley precedes geometry, damage ownership and ID changes.
+fn launch_chunks(
+    count: u32,
+    speed_milli: u32,
     lab: &mut SimulationLab,
     fragments: &mut DynamicFragments,
     destruction: &mut DestructionHost,
+    available: u64,
 ) -> Result<String, String> {
-    let Some(chunk) = fragments
-        .iter()
-        .max_by_key(|(id, fragment)| (fragment.cell_count(), std::cmp::Reverse(*id)))
-        .map(|(_, fragment)| fragment.clone())
-    else {
-        return Err(format!(
-            "{} needs a detached chunk; break one loose first",
-            case.name()
-        ));
+    if count == 0 || count > 32 || speed_milli == 0 || speed_milli > 40_000 {
+        return Err("invalid projectile count/speed".into());
+    }
+    let (chunk, damage, _) = engine_stress::destruction_runner::canonical_fracture_chunk()
+        .ok_or("canonical chunk not liberated")?;
+    let sequence = destruction.sequence.peek();
+    let next = sequence
+        .checked_add(1)
+        .ok_or("fragment identity exhausted")?;
+    let mut candidates = Vec::new();
+    for i in 0..count {
+        let id = engine_destruction::FragmentId::new(sequence, i);
+        if fragments.get(id).is_some() {
+            return Err("projectile identity collision".into());
+        }
+        let cells = chunk.occupied_cells().collect();
+        let mut f = chunk
+            .subfragment_with_id(id, &cells)
+            .ok_or("empty canonical chunk")?;
+        let centre = f.local_centre();
+        let columns = count.min(3);
+        let x = 64.5 + (f64::from(i % columns) - f64::from(columns - 1) / 2.) * 9.;
+        let y = 11.0 + f64::from(i / columns) * 5.;
+        f.pose.translation =
+            engine_core::GlobalPos::new(x - centre[0], y - centre[1], 78. - centre[2]);
+        f.linear_velocity = [0., 0., -(speed_milli as f32 / 1000.)];
+        f.angular_velocity = [0.; 3];
+        candidates.push(f);
+    }
+    if !fits_fragment_storage(&candidates, available) {
+        return Err("projectile storage held by budget".into());
+    }
+    let mut records = engine_destruction::RegionFracture {
+        region: engine_core::RegionPos::ZERO,
+        cells: Vec::new(),
+        bonds: Vec::new(),
     };
-    let parent = chunk.id;
-    let before = chunk.cell_count();
-    let target = chunk_centre_target(&chunk, stage.target);
-
-    let event = fracture_hit_toward_in(
-        lab.fracture_sequence.next_root(),
-        DamageSpace::FragmentLocal(parent),
-        target,
-        stage.direction_milli,
-        DamageAmount(stage.energy),
-    );
-    // A fragment-local event carries no world-space impulse, so the direction is
-    // handed over explicitly rather than read out of a field that cannot hold it.
-    let impact = FractureImpact::from_event(
-        &event,
-        Some(reference_impact_direction(stage.direction_milli)),
-    )
-    .map_err(|error| format!("fracture impact: {error:?}"))?;
-    let policy = lab.fracture_policy;
-    let scene = FractureScene::of_fragment(&chunk);
-    let load = match evaluate_fracture(
-        &impact,
-        scene,
-        &policy,
-        &lab.fracture_state,
-        fracture_limits(),
-    )
-    .map_err(|error| format!("fracture evaluation: {error:?}"))?
-    {
-        FractureEvaluation::Loaded(load) => load,
-        FractureEvaluation::Deferred { reason } => {
-            return Err(format!("fracture deferred: {reason:?}"));
+    for f in &candidates {
+        for mut r in damage.cells_in(DamageSpace::FragmentLocal(chunk.id)) {
+            r.site.space = DamageSpace::FragmentLocal(f.id);
+            records.cells.push(r);
         }
-        FractureEvaluation::Indeterminate { .. } => {
-            return Err("fracture indeterminate inside a fragment".into());
+        for mut r in damage.bonds_in(DamageSpace::FragmentLocal(chunk.id)) {
+            r.site.space = DamageSpace::FragmentLocal(f.id);
+            records.bonds.push(r);
         }
-    };
-    let walked = load.measurement.cells_visited;
-
-    let scene = FractureScene::of_fragment(&chunk);
-    let outcome = lab
-        .fracture_state
-        .apply(&load, scene, &policy, fracture_limits())
-        .map_err(|error| format!("fracture commit refused: {error}"))?;
-    let failed = outcome.failed.len();
-
-    // The same reconcile transaction the scalar path uses, with cracks rather
-    // than occupancy deciding what one object means.
-    let state = &lab.fracture_state;
-    let split = |fragment: &Fragment| {
-        fragment_parts_through_cracks(fragment, state, StructuralLimits::default())
-    };
-    let result = damage_fragment_store_with_parts(
-        fragments.store_mut(),
-        &mut destruction.sequence,
-        parent,
-        &outcome.failed,
-        split,
-        |_| true,
-    );
-
-    let summary = match result {
-        Ok(FragmentDamageResult::Destroyed { parent }) => {
-            lab.fracture_state
-                .forget_space(DamageSpace::FragmentLocal(parent));
-            "destroyed outright".to_string()
-        }
-        Ok(FragmentDamageResult::Refractured(refracture)) => {
-            lab.fracture_state
-                .remap_fragment(refracture.parent, &refracture.fragments);
-            format!("broke into {} piece(s)", refracture.fragments.len())
-        }
-        Ok(FragmentDamageResult::Updated(updated)) => {
-            lab.fracture_state.forget_removed(
-                DamageSpace::FragmentLocal(parent),
-                outcome.failed.iter().map(|target| target.cell()),
-            );
-            format!("dented: {} cells left", updated.cell_count())
-        }
-        Ok(FragmentDamageResult::Unchanged) => "unchanged".to_string(),
-        Err(refusal) => format!("re-fracture refused: {refusal:?}"),
-    };
-
-    lab.last_separation = Some(LabSeparation {
-        case,
-        cells_freed_by_cracks: 0,
-        components_freed_by_cracks: 0,
-        cells_detached_by_occupancy: 0,
-        inconclusive_cross_checks: 0,
-        settled: true,
-        fragments_created: fragments.len() as u64,
-    });
-    let stats = lab.fracture_state.stats();
+    }
+    lab.fracture_state
+        .restore_region(records, fracture_limits())
+        .map_err(|e| format!("projectile damage state held: {e}"))?;
+    for f in candidates {
+        fragments.insert(f);
+    }
+    destruction.sequence = DestructionSequence::new(next);
+    lab.contact_fracture = true;
     Ok(format!(
-        "{}: chunk {parent} of {before} cells — {} cracks opened, {failed} cells failed, \
-         {summary} | state {} cells / {} bonds / {} broken | walked {walked}",
-        case.name(),
-        outcome.broken.len(),
-        stats.cell_entries,
-        stats.bond_entries,
-        stats.broken_bonds,
+        "launched {count} canonical chunks at {} cells/s",
+        speed_milli as f32 / 1000.
     ))
 }
 
@@ -608,6 +715,7 @@ fn chunk_centre_target(chunk: &Fragment, offset: engine_core::CellPos) -> engine
 ///
 /// Admission goes through `detach_if` so the fragment budget still has the final
 /// say; an unsettled separation detaches nothing at all.
+#[cfg(test)]
 fn detach_separated(
     lab: &mut SimulationLab,
     world: &mut WorldRes,
@@ -685,6 +793,23 @@ fn execute_next_replay_command(
     let index = replay.cursor;
 
     match command {
+        ReplayCommand::ContactFracture { enabled } => {
+            lab.contact_fracture = enabled;
+            advance_replay_cursor(lab);
+            Ok(format!("replay {index}: contact fracture {enabled}"))
+        }
+        ReplayCommand::LaunchChunks { count, speed_milli } => {
+            let result = launch_chunks(
+                count,
+                speed_milli,
+                lab,
+                fragments,
+                destruction,
+                available_fragment_bytes,
+            )?;
+            advance_replay_cursor(lab);
+            Ok(format!("replay {index}: {result}"))
+        }
         ReplayCommand::Pause => {
             virtual_time.pause();
             advance_replay_cursor(lab);
@@ -715,7 +840,7 @@ fn execute_next_replay_command(
             let path = dump_state(&label, lab, virtual_time, world, fragments)?;
             lab.last_dump = Some(path.clone());
             advance_replay_cursor(lab);
-            Ok(format!("replay {index}: dumped {}", path.display()))
+            Ok(format!("replay {index}: saved {label}"))
         }
         ReplayCommand::BenchmarkCase { case } => {
             if is_implemented(case) {
@@ -808,7 +933,7 @@ pub fn controls(
         match dump_state(&label, &lab, &virtual_time, &world, &fragments) {
             Ok(path) => {
                 lab.last_dump = Some(path.clone());
-                status.0 = format!("destruction lab dump: {}", path.display());
+                status.0 = format!("saved lab snapshot {label}");
             }
             Err(error) => status.0 = format!("destruction lab dump FAILED: {error}"),
         }

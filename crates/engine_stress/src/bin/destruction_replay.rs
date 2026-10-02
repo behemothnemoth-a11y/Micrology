@@ -122,6 +122,10 @@ fn print_plan(script: &ReplayScript) {
                 format!("apply benchmark case {}", case.name())
             }
             ReplayCommand::Dump { label } => format!("dump '{label}'"),
+            ReplayCommand::ContactFracture { enabled } => format!("contact fracture {enabled}"),
+            ReplayCommand::LaunchChunks { count, speed_milli } => {
+                format!("launch {count} chunks at {speed_milli} milli-cells/s")
+            }
         };
         println!("{index:>3}: {description}");
     }

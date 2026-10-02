@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "contact_volley",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    { "op": "pause" },
+    { "op": "dump", "label": "volley_intact" },
+    { "op": "launch_chunks", "count": 3, "speed_milli": 18000 },
+    { "op": "dump", "label": "volley_ready" },
+    { "op": "advance_fixed", "steps": 60 },
+    { "op": "dump", "label": "volley_first_contact" },
+    { "op": "advance_fixed", "steps": 60 },
+    { "op": "dump", "label": "volley_after_120" },
+    { "op": "launch_chunks", "count": 3, "speed_milli": 22000 },
+    { "op": "advance_fixed", "steps": 120 },
+    { "op": "dump", "label": "volley_second" },
+    { "op": "contact_fracture", "enabled": false },
+    { "op": "advance_fixed", "steps": 60 },
+    { "op": "dump", "label": "volley_damage_off" }
+  ]
+}

@@ -69,7 +69,7 @@ pub fn fly(
     cursor: Option<Single<&CursorOptions>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     keys: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
+    time: Res<Time<Real>>,
     camera: Option<Single<(&mut Transform, &mut FlyCamera)>>,
 ) {
     let Some(camera) = camera else {

@@ -189,6 +189,9 @@ pub struct SchedulerCounts {
     /// Dispatches held back because in-flight snapshots were already at the
     /// byte ceiling. Work was not lost; it stayed queued.
     pub dispatches_withheld_for_bytes: u64,
+    pub applied_mesh_bytes: u64,
+    pub applies_withheld_for_bytes: u64,
+    pub oversized_applies: u64,
 }
 
 /// Pending, in-flight and completed-but-unapplied geometry work.
@@ -419,22 +422,58 @@ impl MeshScheduler {
     /// beyond the limit stay in the inbox for the next tick, which is what keeps
     /// a burst of completions from spiking a frame.
     pub fn drain_ready(&mut self, world: &World, grid: SectionGrid) -> Vec<MeshJobResult> {
+        self.drain_ready_with_byte_budget(world, grid, u64::MAX)
+    }
+
+    /// Bound upload bytes as well as result count. One oversized first result
+    /// may progress alone; zero bytes pauses all uploads. This soft exception is
+    /// counted so a host can split oversized sections instead of starving them.
+    /// Validation work is also bounded during a burst of stale completions.
+    pub fn drain_ready_with_byte_budget(
+        &mut self,
+        world: &World,
+        grid: SectionGrid,
+        max_bytes: u64,
+    ) -> Vec<MeshJobResult> {
         let mut applied = Vec::new();
         let mut deferred = Vec::new();
+        let mut bytes = 0u64;
+        let mut inspected = 0usize;
 
         for result in std::mem::take(&mut self.inbox) {
-            if applied.len() >= self.limits.max_results_applied_per_tick {
+            if max_bytes == 0
+                || applied.len() >= self.limits.max_results_applied_per_tick
+                || inspected >= self.limits.max_results_applied_per_tick.saturating_mul(4)
+            {
+                deferred.push(result);
+                continue;
+            }
+            inspected += 1;
+            let size = result.mesh.cpu_bytes() as u64;
+            if self.active.contains_key(&result.section)
+                && SectionFingerprint::of(world, grid, result.section) == result.fingerprint
+                && !applied.is_empty()
+                && bytes.saturating_add(size) > max_bytes
+            {
+                self.counts.applies_withheld_for_bytes += 1;
                 deferred.push(result);
                 continue;
             }
             match self.judge(world, grid, &result) {
-                ResultDisposition::Applied => applied.push(result),
+                ResultDisposition::Applied => {
+                    if size > max_bytes {
+                        self.counts.oversized_applies += 1;
+                    }
+                    bytes = bytes.saturating_add(size);
+                    applied.push(result);
+                }
                 ResultDisposition::DiscardedStale | ResultDisposition::DiscardedUnwanted => {}
             }
         }
 
         self.inbox = deferred;
         self.counts.applied += applied.len() as u64;
+        self.counts.applied_mesh_bytes = self.counts.applied_mesh_bytes.saturating_add(bytes);
         applied
     }
 
