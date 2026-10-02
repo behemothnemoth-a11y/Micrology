@@ -12,7 +12,7 @@
 //! force-to-fragment coupling.
 
 use crate::FragmentId;
-use engine_core::{CellBounds, CellPos, GlobalPos, MaterialId};
+use engine_core::{CellBounds, CellPos, CellSource, GlobalPos, MaterialId};
 use std::fmt;
 
 /// Stable deterministic identity for one damage event.
@@ -325,6 +325,88 @@ pub trait DamagePolicy: Send + Sync {
     fn evaluate(&self, event: &DamageEvent, target: DamageTarget) -> Option<DamageWork>;
 }
 
+/// Explicit work ceiling for sampling one event over a CellSource.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DamageEvaluationLimits {
+    pub max_cells_considered: usize,
+}
+
+impl DamageEvaluationLimits {
+    pub const UNLIMITED: Self = Self {
+        max_cells_considered: usize::MAX,
+    };
+
+    pub const fn new(max_cells_considered: usize) -> Self {
+        Self {
+            max_cells_considered,
+        }
+    }
+}
+
+/// Deterministic result of sampling an event against occupied cells.
+///
+/// Work from a truncated result must not be partially applied. The caller may
+/// retry with a larger budget, split the gameplay event, or discard it.
+#[derive(Clone, PartialEq, Eq, Default, Debug)]
+pub struct DamageEvaluation {
+    pub work: Vec<DamageWork>,
+    pub cells_considered: u64,
+    pub truncated: bool,
+}
+
+impl DamageEvaluation {
+    pub fn may_apply(&self) -> bool {
+        !self.truncated
+    }
+}
+
+/// Evaluate one event against any CellSource in the event's own coordinate space.
+///
+/// A World supplies static world cells. A Fragment supplies fragment-local
+/// cells. The event's DamageSpace decides which DamageTarget variant is emitted.
+pub fn evaluate_damage_event(
+    event: &DamageEvent,
+    source: &dyn CellSource,
+    policy: &dyn DamagePolicy,
+    limits: DamageEvaluationLimits,
+) -> DamageEvaluation {
+    let Some(bounds) = event.affected_cell_bounds() else {
+        return DamageEvaluation::default();
+    };
+
+    let mut evaluation = DamageEvaluation::default();
+
+    'cells: for y in bounds.min.y..=bounds.max.y {
+        for z in bounds.min.z..=bounds.max.z {
+            for x in bounds.min.x..=bounds.max.x {
+                if evaluation.cells_considered as usize >= limits.max_cells_considered {
+                    evaluation.truncated = true;
+                    break 'cells;
+                }
+                evaluation.cells_considered = evaluation.cells_considered.saturating_add(1);
+
+                let cell = CellPos::new(x, y, z);
+                let Some(material) = source.material_at(cell) else {
+                    continue;
+                };
+                let target = match event.space {
+                    DamageSpace::StaticWorld => DamageTarget::StaticCell { cell, material },
+                    DamageSpace::FragmentLocal(fragment) => DamageTarget::FragmentCell {
+                        fragment,
+                        cell,
+                        material,
+                    },
+                };
+                if let Some(work) = policy.evaluate(event, target) {
+                    evaluation.work.push(work);
+                }
+            }
+        }
+    }
+
+    evaluation
+}
+
 /// Reference policy: material identity does not change resistance yet.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct UniformDamagePolicy;
@@ -468,6 +550,97 @@ mod tests {
             )
             .unwrap();
         assert_eq!(a.amount, b.amount);
+    }
+
+
+    #[test]
+    fn same_event_evaluator_works_for_world_and_fragment_sources() {
+        use crate::Fragment;
+        use engine_world::World;
+        use std::collections::BTreeSet;
+
+        let mut world = World::new();
+        world.fill_box(
+            CellPos::ZERO,
+            CellPos::new(1, 0, 0),
+            Some(MaterialId(1)),
+        );
+        world.take_dirty();
+
+        let static_event = DamageEvent::new(
+            DamageEventId::new(5, 0),
+            DamageSpace::StaticWorld,
+            None,
+            DamageVolume::Box(CellBounds::new(CellPos::ZERO, CellPos::new(1, 0, 0))),
+            DamageAmount(9),
+            None,
+        )
+        .unwrap();
+        let static_eval = evaluate_damage_event(
+            &static_event,
+            &world,
+            &UniformDamagePolicy,
+            DamageEvaluationLimits::UNLIMITED,
+        );
+        assert!(static_eval.may_apply());
+        assert_eq!(static_eval.work.len(), 2);
+
+        let members = BTreeSet::from([CellPos::ZERO, CellPos::new(1, 0, 0)]);
+        let fragment_id = FragmentId::new(50, 0);
+        let fragment = Fragment::from_cells(fragment_id, &world, &members).unwrap();
+        let local_event = DamageEvent::new(
+            DamageEventId::new(5, 1),
+            DamageSpace::FragmentLocal(fragment_id),
+            None,
+            DamageVolume::Box(CellBounds::new(CellPos::ZERO, CellPos::new(1, 0, 0))),
+            DamageAmount(9),
+            None,
+        )
+        .unwrap();
+        let fragment_eval = evaluate_damage_event(
+            &local_event,
+            &fragment,
+            &UniformDamagePolicy,
+            DamageEvaluationLimits::UNLIMITED,
+        );
+        assert!(fragment_eval.may_apply());
+        assert_eq!(fragment_eval.work.len(), 2);
+        assert!(fragment_eval
+            .work
+            .iter()
+            .all(|work| matches!(work.target, DamageTarget::FragmentCell { fragment, .. } if fragment == fragment_id)));
+    }
+
+    #[test]
+    fn truncated_event_evaluation_is_never_partially_actionable() {
+        use engine_world::World;
+
+        let mut world = World::new();
+        world.fill_box(
+            CellPos::ZERO,
+            CellPos::new(15, 0, 0),
+            Some(MaterialId(1)),
+        );
+        let event = DamageEvent::new(
+            DamageEventId::new(5, 2),
+            DamageSpace::StaticWorld,
+            None,
+            DamageVolume::Box(CellBounds::new(CellPos::ZERO, CellPos::new(15, 0, 0))),
+            DamageAmount(1),
+            None,
+        )
+        .unwrap();
+
+        let evaluation = evaluate_damage_event(
+            &event,
+            &world,
+            &UniformDamagePolicy,
+            DamageEvaluationLimits::new(4),
+        );
+        assert!(evaluation.truncated);
+        assert!(!evaluation.may_apply());
+        assert_eq!(evaluation.cells_considered, 4);
+        assert_eq!(evaluation.work.len(), 4);
     }
 
     #[test]
