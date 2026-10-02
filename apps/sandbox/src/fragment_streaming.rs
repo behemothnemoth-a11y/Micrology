@@ -404,6 +404,11 @@ pub fn flush_fragment_state(
     state.live_index.note_sequence(sequence);
     engine_io::save_fragment_index_state(dir, &state.persisted_index)
         .map_err(|error| error.to_string())?;
+    // Callers place a fragment-save durability barrier before this synchronous
+    // flush. With no payload write in flight, anything not referenced by the
+    // committed authoritative index is a true orphan and can be removed safely.
+    engine_io::prune_fragment_orphans(dir, &state.persisted_index)
+        .map_err(|error| error.to_string())?;
     Ok(state.persisted_index.fragment_count())
 }
 
