@@ -19,12 +19,19 @@
 //! — resident regions, queued and discarded mesh jobs — so that baselines stay
 //! comparable as the later passes of DROP 0002 fill them in.
 
+pub mod destruction_benchmark;
 pub mod granularity;
 pub mod report;
 pub mod rng;
 pub mod scenario;
 pub mod structural;
 
+pub use destruction_benchmark::{
+    BASELINE_MATERIAL, DESTRUCTION_BENCHMARK_PATH, DestructionBenchmarkCase,
+    DestructionBenchmarkPack, DestructionCaseResult, all_destruction_benchmark_cases,
+    baseline_wall, destruction_benchmark_pack, destruction_benchmark_to_json, result_template,
+    result_template_to_json,
+};
 pub use granularity::{AUDITED_GRIDS, GridAudit, GridTimings, audit};
 pub use report::{Counters, Report, Timings};
 pub use rng::Rng;
