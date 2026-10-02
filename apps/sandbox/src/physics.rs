@@ -496,9 +496,6 @@ impl FragmentBodies {
         self.pending_spawn_current
     }
 
-    pub fn stale_results(&self) -> u64 {
-        self.stale_results
-    }
 
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in std::mem::take(&mut self.entries) {
