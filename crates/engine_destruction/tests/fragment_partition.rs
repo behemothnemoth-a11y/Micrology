@@ -177,7 +177,11 @@ fn median_scale_is_not_pulled_up_by_one_large_tail_component() {
         mean.len() < median.len(),
         "mean should merge more aggressively when one large component pulls the scale upward"
     );
-    assert_eq!(median.len(), 4, "median should leave one-cell atoms at their own scale");
+    assert_eq!(
+        median.len(),
+        4,
+        "median should leave one-cell atoms at their own scale"
+    );
     assert_eq!(
         median.iter().map(BTreeSet::len).sum::<usize>(),
         23,
