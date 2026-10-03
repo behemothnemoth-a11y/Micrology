@@ -1,0 +1,32 @@
+   Compiling engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_stress)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.57s
+     Running tests\material_policy_worker.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\material_policy_worker-1dad9ced3a6e9523.exe)
+
+running 13 tests
+test duplicate_ids_refuse_and_unprofiled_materials_keep_model_fallback ... ok
+test work_bytes_and_unknown_region_refusals_do_not_become_destruction ... ok
+policy payload: profiles=4 bytes=184 homogeneous_bytes=24 (excludes Arc counters and allocator overhead)
+test snapshot_is_canonical_immutable_owned_and_send_sync ... ok
+fracture commit counters: direct=Revision(2) worker=Revision(1); exact cell/bond records equal
+fracture commit counters: direct=Revision(2) worker=Revision(1); exact cell/bond records equal
+fragment FragmentId { sequence: 801, index: 0 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test equal_policy_contents_from_a_new_allocation_are_not_stale ... fragment FragmentId { sequence: 801, index: 0 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+ok
+fragment FragmentId { sequence: 801, index: 1 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+fragment FragmentId { sequence: 801, index: 1 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test changed_tuning_or_model_rejects_before_admission_or_mutation ... ok
+fragment FragmentId { sequence: 801, index: 2 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test material_job_retains_current_motion_and_cannot_touch_another_fragment ... ok
+test threaded_mixed_static_job_matches_direct_policy_transaction ... ok
+fragment FragmentId { sequence: 801, index: 3 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test geometry_repaint_identity_residency_and_admission_guards_remain_atomic ... ok
+test empty_snapshots_preserve_both_legacy_worker_models_exactly ... ok
+fragment FragmentId { sequence: 801, index: 4 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test independent_repeated_worker_runs_produce_identical_material_results ... ok
+test profile_count_and_payload_caps_are_separate_and_exact_at_boundary ... ok
+test mixed_native_fragment_worker_matches_direct_refracture_and_keeps_material_ids ... ok
+fracture commit counters: direct=Revision(1) worker=Revision(1); exact cell/bond records equal
+fragment FragmentId { sequence: 800, index: 0 }: direct_rev=Revision(0) worker_rev=Revision(1) geometry_equal=true full_equal_after_motion_bridge=true
+test both_legacy_fragment_models_have_the_same_motion_bridge_as_owned_policies ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

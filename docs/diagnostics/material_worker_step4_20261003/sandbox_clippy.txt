@@ -1,0 +1,11 @@
+    Checking engine_core v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_core)
+    Checking engine_volume v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_volume)
+    Checking engine_geometry v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_geometry)
+    Checking engine_world v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_world)
+    Checking engine_destruction v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_destruction)
+    Checking engine_stream v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_stream)
+    Checking engine_mechanics v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_mechanics)
+    Checking engine_io v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_io)
+    Checking engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\crates\engine_stress)
+    Checking sandbox v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-material-worker-step4\apps\sandbox)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 30.09s

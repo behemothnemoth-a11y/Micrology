@@ -1,6 +1,7 @@
 //! Bounded owned fracture jobs. Workers analyze and build fragments; the host
 //! validates and admits a sparse result. Pending or stale work changes nothing.
 use crate::fracture::{FractureModel, FracturePatch};
+use crate::fracture_policy::OwnedFracturePolicy;
 use crate::*;
 use engine_core::{CellPos, FaceDir, RegionPos, Revision};
 use engine_world::{World, WorldEditBatch};
@@ -190,10 +191,31 @@ impl FractureJobInput {
             + self.state.bond_entries() * size_of::<crate::BondFracture>()
     }
 
+    /// Compatibility entry point: the accepted homogeneous models are unchanged.
     pub fn run(
-        mut self,
+        self,
         impact: FractureImpact,
         model: FractureModel,
+    ) -> Result<FractureJobResult, JobRefusal> {
+        self.run_using(impact, &model)
+    }
+
+    /// Moves an immutable, bounded policy into the worker. No live registry can
+    /// be observed during analysis. The result requires current policy equality
+    /// at commit, in addition to the existing geometry/history/admission guards.
+    pub fn run_with_policy(
+        self,
+        impact: FractureImpact,
+        policy: OwnedFracturePolicy,
+    ) -> Result<PolicyFractureJobResult, JobRefusal> {
+        let result = self.run_using(impact, &policy)?;
+        Ok(PolicyFractureJobResult { result, policy })
+    }
+
+    fn run_using(
+        mut self,
+        impact: FractureImpact,
+        policy: &dyn FracturePolicy,
     ) -> Result<FractureJobResult, JobRefusal> {
         let before = self.state.clone();
         let mut next = self.sequence;
@@ -206,7 +228,7 @@ impl FractureJobInput {
                     &mut self.state,
                     &mut next,
                     &impact,
-                    &model,
+                    policy,
                     &self.residency,
                     self.limits.transaction,
                     |_| true,
@@ -233,7 +255,7 @@ impl FractureJobInput {
                     &mut self.state,
                     &mut next,
                     &impact,
-                    &model,
+                    policy,
                     self.limits.transaction,
                     |_| true,
                 )
@@ -424,5 +446,38 @@ impl FractureJobResult {
         }
         *sequence = self.next;
         Ok(self.summary)
+    }
+}
+
+/// Policy-stamped result. The underlying result stays private so material jobs
+/// cannot accidentally call the legacy commit without checking current tuning.
+pub struct PolicyFractureJobResult {
+    result: FractureJobResult,
+    policy: OwnedFracturePolicy,
+}
+impl PolicyFractureJobResult {
+    pub fn summary(&self) -> &JobSummary {
+        &self.result.summary
+    }
+
+    /// Validate immutable policy contents and authoritative state in one call.
+    /// Same contents in a newly allocated snapshot are valid; a different model
+    /// or table refuses before admission or mutation. No hash collisions/epochs.
+    #[allow(clippy::too_many_arguments)] // Existing explicit commit boundary + policy guard.
+    pub fn commit(
+        self,
+        current_policy: &OwnedFracturePolicy,
+        world: &mut World,
+        store: &mut FragmentStore,
+        state: &mut FractureState,
+        sequence: &mut DestructionSequence,
+        resident: impl Fn(RegionPos) -> bool,
+        admit: impl FnOnce(&[Fragment]) -> bool,
+    ) -> Result<JobSummary, JobRefusal> {
+        if &self.policy != current_policy {
+            return Err(JobRefusal::Stale);
+        }
+        self.result
+            .commit(world, store, state, sequence, resident, admit)
     }
 }
