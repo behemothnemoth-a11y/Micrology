@@ -14,15 +14,14 @@ use engine_core::{
 use engine_destruction::{
     AllResident, DamageAmount, DamageEvaluationLimits, DamageEvent, DamageEventId, DamageFalloff,
     DamageImpulse, DamageSequence, DamageSource, DamageSpace, DamageTarget, DamageVolume,
-    DamageWork, DestructionSequence, DetachRefusal, Fragment, FragmentCollisionJobInput,
-    FragmentDamageResult, FragmentId, FragmentMeshJobInput, FragmentResidency,
-    FragmentResidencyAction, FragmentResidencyConfig, FragmentSaveOutcome, FragmentSpatialIndex,
-    FragmentStore, FractureJobInput, FractureJobLimits, FractureState, JobRefusal,
-    ProgressiveDamageLimits, ProgressiveDamageStore, REFERENCE_FRACTURE_MATERIAL, Residency,
-    ResultDisposition, SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue,
-    SecondaryDamageRefusal, SnapshotLimits, StructuralLimits, StructureJobInput,
-    UniformDamagePolicy, UniformFailurePolicy, damage_fragment_store_if, detach_if,
-    evaluate_damage_event,
+    DamageWork, DestructionSequence, DetachRefusal, FractureJobInput, FractureJobLimits,
+    FractureState, Fragment, FragmentCollisionJobInput, FragmentDamageResult, FragmentId,
+    FragmentMeshJobInput, FragmentResidency, FragmentResidencyAction, FragmentResidencyConfig,
+    FragmentSaveOutcome, FragmentSpatialIndex, FragmentStore, JobRefusal, ProgressiveDamageLimits,
+    ProgressiveDamageStore, REFERENCE_FRACTURE_MATERIAL, Residency, ResultDisposition,
+    SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
+    SnapshotLimits, StructuralLimits, StructureJobInput, UniformDamagePolicy, UniformFailurePolicy,
+    damage_fragment_store_if, detach_if, evaluate_damage_event,
 };
 use engine_mechanics::{
     CapacityDefer, CapacityLimits, CapacityVerdict, CollapseLimits, Held, Inconclusive,
@@ -1728,10 +1727,7 @@ fn drop5_fantasy_stress_disabled(cases: &mut Vec<Case>) {
     let registry = drop5_registry();
     let policy = drop5_structural_policy().with_scope(
         PolicyScope::Object,
-        ParticipationSet::new().with(
-            PhysicalSystem::StructuralCapacity,
-            Participation::Disable,
-        ),
+        ParticipationSet::new().with(PhysicalSystem::StructuralCapacity, Participation::Disable),
     );
 
     let root = CellPos::new(20, 40, 20);
