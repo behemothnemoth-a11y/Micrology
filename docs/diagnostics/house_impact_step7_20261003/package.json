@@ -1,0 +1,16 @@
+{
+  "filename": "Micrology_House_Window_Hit_Step7.zip",
+  "bytes": 205920,
+  "sha256": "1c48dca0b87ceb6ae17b7e98d3a51b3af74e4c4666fcafa5a5a3a978f17a374e",
+  "entries": [
+    "README.txt",
+    "report.json",
+    "before-surfaces.json",
+    "after-static-surfaces.json",
+    "window-impact-comparison.png",
+    "window-preview-provenance.json",
+    "checkpoint.md",
+    "verification.json"
+  ],
+  "zip_integrity_passed": true
+}

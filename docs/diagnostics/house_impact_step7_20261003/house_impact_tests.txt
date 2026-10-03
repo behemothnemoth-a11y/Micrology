@@ -1,0 +1,18 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.22s
+     Running tests\house_window_impact.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\house_window_impact-1eeca67cb9b7f7ce.exe)
+
+running 12 tests
+test unknown_house_region_is_not_air_or_permission_to_destroy ... ok
+test byte_and_analysis_budgets_are_independent_and_never_grant_destruction ... ok
+test default_volume_budget_refuses_the_house_without_mutating_any_authority ... ok
+test default_structure_budget_still_refuses_after_only_the_volume_cap_is_raised ... ok
+test rejected_fragment_admission_preserves_geometry_history_and_identity ... ok
+test repaint_while_the_worker_runs_makes_its_house_result_stale ... ok
+test actual_cells_close_accounting_and_fragment_sizes_are_not_render_estimates ... ok
+test result_export_cannot_overwrite_an_existing_world_or_directory ... ok
+test window_pulse_changes_only_glass_and_does_not_modify_the_intact_source ... ok
+test after_hit_surfaces_and_each_native_piece_match_the_independent_oracle ... ok
+test direct_transaction_and_worker_commit_match_in_the_full_house_context ... ok
+test independent_runs_match_exact_source_membership_and_the_measured_baseline ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.20s

@@ -1,0 +1,22 @@
+{
+  "source": "report.json",
+  "source_sha256": "38ae99b57a388ec52c4dec70c977b19483d3be27336c961dac3036749e126422",
+  "image": "window-impact-comparison.png",
+  "image_sha256": "87000fe2acf368421de7e33b50bf588e23d542a6463215b75a987936bd5a90d1",
+  "kind": "orthographic cell-record diagnostic; not sandbox/GPU capture",
+  "front_slice_cell_bounds": [
+    [
+      88,
+      21,
+      3
+    ],
+    [
+      110,
+      48,
+      8
+    ]
+  ],
+  "pixel_per_cell": 19,
+  "hidden_in_middle_panel": "native fragments only; they still exist in the report",
+  "right_panel": "exact admitted fragment memberships in original source positions; no physics time step"
+}

@@ -1,0 +1,22 @@
+{
+  "command": [
+    "cargo",
+    "run",
+    "--locked",
+    "-q",
+    "-p",
+    "engine_stress",
+    "--bin",
+    "house_window_bench",
+    "--",
+    "--export",
+    "C:\\Users\\behem\\.chatgpt-worktrees\\Micrology-house-impact-step7\\target\\house-window-impact-reverified"
+  ],
+  "exit_code": 0,
+  "files_compared_byte_exact": [
+    "report.json",
+    "before-surfaces.json",
+    "after-static-surfaces.json"
+  ],
+  "all_identical": true
+}
