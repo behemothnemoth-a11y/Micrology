@@ -36,6 +36,10 @@ jobs:
         run: cargo run -q -p engine_stress --bin destruction_replay -- --check
       - name: Fragment distribution baseline is unchanged
         run: cargo run -q -p engine_stress --bin fragment_distribution_bench -- --check
+      - name: Static fracture distribution probe
+        # Measurement-only: proves the unchanged static path is deterministic
+        # and prints its distribution before any policy is wired into it.
+        run: cargo run -q -p engine_stress --bin fragment_distribution_bench -- --probe-static
       - name: Fracture locality remains bounded
         run: cargo run -q -p engine_stress --bin fracture_locality_bench
       - name: Stress baseline is unchanged
