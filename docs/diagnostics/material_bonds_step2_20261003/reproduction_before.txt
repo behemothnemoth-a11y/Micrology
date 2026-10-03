@@ -1,0 +1,25 @@
+
+running 1 test
+cargo :
+At line:9 char:215
++ ... rget-msvc'; cargo test -q -p engine_destruction --test fracture_mater ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+thread 'swapping_endpoint_materials_preserves_bond_load_in_all_axes' (38012) panicked at
+crates\engine_destruction\tests\fracture_material_pairs.rs:67:13:
+assertion `left == right` failed: coordinate-only bias at CellPos { x: 0, y: 0, z: 0 }, X
+  left: DamageAmount(327)
+ right: DamageAmount(33)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+swapping_endpoint_materials_preserves_bond_load_in_all_axes --- FAILED
+
+failures:
+
+failures:
+    swapping_endpoint_materials_preserves_bond_load_in_all_axes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p engine_destruction --test fracture_material_pairs`

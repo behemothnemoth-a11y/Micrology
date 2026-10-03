@@ -86,11 +86,12 @@ pub use derived_jobs::{
 };
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fracture::{
-    BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondKey, BondLoad, BondMode, BondSite,
-    CellDeposit, CellFracture, FractureDefer, FractureDigest, FractureEvaluation, FractureImpact,
-    FractureImpactError, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
-    FracturePolicy, FractureProfile, FracturePrune, FractureRefusal, FractureScene,
-    FractureSpaceMismatch, FractureState, FractureStats, RegionFracture, evaluate_fracture,
+    BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondFractureProfile, BondKey, BondLoad,
+    BondMode, BondSite, CellDeposit, CellFracture, FractureDefer, FractureDigest,
+    FractureEvaluation, FractureImpact, FractureImpactError, FractureLimits, FractureLoad,
+    FractureMeasurement, FractureOutcome, FracturePolicy, FractureProfile, FracturePrune,
+    FractureRefusal, FractureScene, FractureSpaceMismatch, FractureState, FractureStats,
+    RegionFracture, evaluate_fracture,
 };
 pub use fracture_connectivity::{
     BondGate, CrackedBonds, FractureSeparation, IntactBonds, SeparatedComponent, SeparationCause,
