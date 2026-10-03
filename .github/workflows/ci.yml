@@ -62,8 +62,56 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 mesa-vulkan-drivers xvfb
       - name: Clippy
         run: cargo clippy -p sandbox --all-targets
       - name: Test
         run: cargo test -p sandbox
+      - name: Contact replay is fixed-step deterministic
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p sandbox
+          Xvfb :99 -screen 0 1280x720x24 >/tmp/micrology-xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          export DISPLAY=:99
+          export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)"
+          test -n "$VK_ICD_FILENAMES"
+          mkdir -p target/replay-determinism
+          for run in 1 2 3; do
+            rm -rf target/diagnostics/destruction_lab
+            MICROLOGY_REPLAY_SCRIPT="$PWD/fixtures/destruction/replay-contact-volley.json" \
+            MICROLOGY_REPLAY_CAPTURE=1 \
+              ./target/debug/sandbox >"/tmp/micrology-replay-$run.log" 2>&1 &
+            sandbox_pid=$!
+            complete=0
+            for _ in $(seq 1 900); do
+              if compgen -G 'target/diagnostics/destruction_lab/volley_damage_off-tick*.json' >/dev/null; then
+                complete=1
+                break
+              fi
+              if ! kill -0 "$sandbox_pid" 2>/dev/null; then
+                cat "/tmp/micrology-replay-$run.log"
+                echo "sandbox exited before replay completion" >&2
+                exit 1
+              fi
+              sleep 0.1
+            done
+            if [ "$complete" -ne 1 ]; then
+              cat "/tmp/micrology-replay-$run.log"
+              kill "$sandbox_pid" 2>/dev/null || true
+              wait "$sandbox_pid" 2>/dev/null || true
+              echo "contact replay did not complete within 90 seconds" >&2
+              exit 1
+            fi
+            mkdir -p "target/replay-determinism/run$run"
+            cp target/diagnostics/destruction_lab/*.json "target/replay-determinism/run$run/"
+            kill "$sandbox_pid" 2>/dev/null || true
+            wait "$sandbox_pid" 2>/dev/null || true
+          done
+          python3 tools/verify-contact-replay-determinism.py \
+            target/replay-determinism/run1 \
+            target/replay-determinism/run2 \
+            target/replay-determinism/run3
