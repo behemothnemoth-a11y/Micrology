@@ -14,15 +14,16 @@ use engine_core::{
 use engine_destruction::{
     AllResident, DamageAmount, DamageEvaluationLimits, DamageEvent, DamageEventId, DamageFalloff,
     DamageImpulse, DamageSequence, DamageSource, DamageSpace, DamageTarget, DamageVolume,
-    DamageWork, DestructionSequence, DetachRefusal, FractureJobInput, FractureJobLimits,
-    FractureState, Fragment, FragmentCollisionJobInput, FragmentDamageResult, FragmentId,
-    FragmentMeshJobInput, FragmentResidency, FragmentResidencyAction, FragmentResidencyConfig,
-    FragmentSaveOutcome, FragmentSpatialIndex, FragmentStore, JobRefusal, ProgressiveDamageLimits,
+    DamageWork, DestructionSequence, DetachRefusal, FractureState, Fragment,
+    FragmentCollisionJobInput, FragmentDamageResult, FragmentId, FragmentMeshJobInput,
+    FragmentResidency, FragmentResidencyAction, FragmentResidencyConfig, FragmentSaveOutcome,
+    FragmentSpatialIndex, FragmentStore, ProgressiveDamageLimits,
     ProgressiveDamageStore, REFERENCE_FRACTURE_MATERIAL, Residency, ResultDisposition,
     SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
     SnapshotLimits, StructuralLimits, StructureJobInput, UniformDamagePolicy, UniformFailurePolicy,
     damage_fragment_store_if, detach_if, evaluate_damage_event,
 };
+use engine_destruction::fracture_jobs::{FractureJobInput, FractureJobLimits, JobRefusal};
 use engine_mechanics::{
     CapacityDefer, CapacityLimits, CapacityVerdict, CollapseLimits, Held, Inconclusive,
     MechanicalFailures, MechanicalProfile, MechanicalRegistry, MechanicalSettings, Milli,
