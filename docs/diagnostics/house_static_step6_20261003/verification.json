@@ -1,0 +1,232 @@
+{
+  "base_commit": "70235dafdd8c2501d439d7e976181b5a2fb61796",
+  "started_utc": "2026-10-03T22:38:39.771713+00:00",
+  "platform": "win32",
+  "source_sha256_lf_normalized": {
+    "crates/engine_stress/src/lib.rs": "b536cb61c708b0f6397a824142c44a8b4894812fb06202810e2da42f9465540e",
+    "crates/engine_stress/src/reference_house.rs": "11a1897951cb264cf1846a23058db80fae01ab8d7e842332350824c2e3705a4b",
+    "crates/engine_stress/src/bin/reference_house_fixture.rs": "9a9f4657a4087f9b31a251265bab591b948e9123c2f164f5fa0fdf79b7410d49",
+    "crates/engine_stress/tests/reference_house.rs": "7d856eda6663490decfe6bd8f94685babfeb041e3f5bf22edecbe0215a285084",
+    "fixtures/destruction/reference-house-static-v1.json": "55dd009e08c4ec2d80b1544660d13e3fbc42c4afca21bbabb56f86539441ad42",
+    "tools/render-house-preview.py": "ca4c7f662358c2ed52b4eccfb3721f763c581478c79de353d83cafc523d7a696"
+  },
+  "checks": [
+    {
+      "name": "house_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "reference_house"
+      ],
+      "exit_code": 0,
+      "tests_passed": 10,
+      "elapsed_seconds": 8.109,
+      "log_sha256": "b030c2893443080cca9b466186c917354561f9fe4639be7e5c7d58b0312b4ecd"
+    },
+    {
+      "name": "specimen_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "material_specimen_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.559,
+      "log_sha256": "4f44d54bdea1ba30f8631ca70e19c3e89e9d850f04dc94a10f3c01b8a3577651"
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.613,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 845,
+      "elapsed_seconds": 32.735,
+      "log_sha256": "e09980dd4b97597dc2469af9d1ee58fc50515beae085980ca5ab5e7d4d969140"
+    },
+    {
+      "name": "engine_doctests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "tests_passed": 1,
+      "elapsed_seconds": 1.475,
+      "log_sha256": "2f12ddd11f5fb92b0da35a0cfb88c3d9a5c8c30e68bfc7c8f184e4f9a24cc2e5"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 2.124,
+      "log_sha256": "4a2040bd1214d7df6d409dfb066d489cb963b504d7b627e0611e6463d15f0dec"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.455,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.964,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.368,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 4.922,
+      "log_sha256": "fd55c8ed65c1d92ef07316c2a8eebbb5f7c18cd3f67c677847e2099af6ec5f07"
+    },
+    {
+      "name": "sandbox_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 9.76,
+      "log_sha256": "62d17bd4b613798247817e4144fb9b83aa20a718a0e6bc864ff04a32c00897c0"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.127,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "old_goldens_unchanged",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "70235dafdd8c2501d439d7e976181b5a2fb61796",
+        "--",
+        "fixtures",
+        ":(exclude)fixtures/destruction/reference-house-static-v1.json",
+        "docs/diagnostics"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.108,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_unchanged_during_run": true,
+  "all_ok": true,
+  "finished_utc": "2026-10-03T22:39:43.099716+00:00"
+}

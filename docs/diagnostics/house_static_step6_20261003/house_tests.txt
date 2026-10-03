@@ -1,0 +1,17 @@
+   Compiling engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-house-static-step6\crates\engine_stress)
+    Finished `test` profile [optimized + debuginfo] target(s) in 6.85s
+     Running tests\reference_house.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\reference_house-b4b5cf9a14c15251.exe)
+
+running 10 tests
+test doors_rooms_and_chimney_are_open_not_a_solid_house_shaped_block ... ok
+test glass_is_one_cell_thick_and_attached_to_a_timber_frame ... ok
+test support_is_explicit_only_on_the_occupied_concrete_underside ... ok
+test only_four_materials_are_authored_and_resolution_stays_bounded ... ok
+test cutaway_only_subtracts_from_a_clone_and_never_changes_the_intact_fixture ... ok
+test native_save_reload_preserves_cells_material_ids_and_authored_support ... ok
+test intact_geometry_is_one_face_connected_assembly_without_physics ... ok
+test repeated_builds_match_the_first_reviewed_static_layout_baseline ... ok
+test every_exported_surface_matches_the_independent_exact_oracle ... ok
+test exported_house_cannot_overwrite_an_existing_world ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s

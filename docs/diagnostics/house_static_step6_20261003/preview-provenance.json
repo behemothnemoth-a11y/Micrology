@@ -1,0 +1,22 @@
+[
+  {
+    "source": "intact-surfaces.json",
+    "source_sha256": "691304a2045d33b04ecadac4be257cfc0c00d7b96fd95ba67064e5f4ccfd3241",
+    "image": "intact-preview.png",
+    "image_sha256": "394fac79faf7700f38fb19258f23ed836f43b145fb429560f64c59c46adaea23",
+    "compiled_quads": 5935,
+    "visible_quads": 2650,
+    "projection": "orthographic, identical for intact and cutaway",
+    "kind": "software render of exported GreedyCompiler quads; not sandbox/GPU capture"
+  },
+  {
+    "source": "cutaway-surfaces.json",
+    "source_sha256": "e388310cc545e4f422781093fbbee1ca050c7ed645c8d770f89ebe8a60a82e11",
+    "image": "cutaway-preview.png",
+    "image_sha256": "b27cc97c43068042c2e187f7130282a41ca8224726dcdc90fff1015e50fde8cb",
+    "compiled_quads": 4026,
+    "visible_quads": 2160,
+    "projection": "orthographic, identical for intact and cutaway",
+    "kind": "software render of exported GreedyCompiler quads; not sandbox/GPU capture"
+  }
+]
