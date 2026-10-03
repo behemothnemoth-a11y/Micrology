@@ -878,16 +878,29 @@ fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos
 /// Creation/destruction happens in the ordinary host update. Physics then steps
 /// in Avian's fixed schedule, and `readback_fragment_bodies` copies the result
 /// back into the engine-owned fragment afterwards.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct FragmentBodySources<'w, 's> {
+    world: Res<'w, WorldRes>,
+    statics: Res<'w, StaticColliders>,
+    fragments: Res<'w, DynamicFragments>,
+    renders: Res<'w, crate::fragment_render::FragmentEntities>,
+    budget: Res<'w, FragmentBudgetRes>,
+    camera: Option<Single<'w, 's, &'static FlyCamera>>,
+}
+
 pub fn sync_fragment_bodies(
     mut commands: Commands,
-    world: Res<WorldRes>,
-    statics: Res<StaticColliders>,
-    fragments: Res<DynamicFragments>,
-    renders: Res<crate::fragment_render::FragmentEntities>,
-    budget: Res<FragmentBudgetRes>,
-    camera: Option<Single<&FlyCamera>>,
+    sources: FragmentBodySources,
     mut bodies: ResMut<FragmentBodies>,
 ) {
+    let FragmentBodySources {
+        world,
+        statics,
+        fragments,
+        renders,
+        budget,
+        camera,
+    } = sources;
     bodies.withheld_current = 0;
     bodies.pending_spawn_current = 0;
     let camera = camera.map(|camera| camera.global);
