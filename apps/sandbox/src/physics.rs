@@ -115,6 +115,29 @@ impl StaticColliders {
         self.stats
     }
 
+    /// Collision work that must settle before a scripted fixed step can be
+    /// authoritative. This is derived from live cells and collider
+    /// fingerprints, not from render state or from how many Update frames have
+    /// happened to retire.
+    pub(crate) fn pending_for_fixed_step(
+        &self,
+        world: &engine_world::World,
+        camera: engine_core::GlobalPos,
+    ) -> usize {
+        let camera_cell = camera.cell();
+        world
+            .volume_positions()
+            .filter(|volume| distance_to_bounds(camera_cell, volume_bounds(*volume)) <= PHYSICS_RADIUS_CELLS)
+            .filter(|volume| {
+                let fingerprint = StaticCollisionFingerprint::of(world, *volume);
+                !self
+                    .entries
+                    .get(volume)
+                    .is_some_and(|entry| entry.fingerprint == fingerprint)
+            })
+            .count()
+    }
+
     fn remove(&mut self, commands: &mut Commands, volume: VolumePos) {
         let Some(entry) = self.entries.remove(&volume) else {
             return;
@@ -522,6 +545,30 @@ impl FragmentBodies {
         self.pending_spawn_current
     }
 
+    /// Fragments inside physics residency that do not yet have current
+    /// collision. A budget-withheld fragment is a settled host-policy decision,
+    /// so it does not deadlock deterministic stepping; jobs/ready results do.
+    pub(crate) fn pending_for_fixed_step(
+        &self,
+        fragments: &DynamicFragments,
+        camera: Option<engine_core::GlobalPos>,
+    ) -> usize {
+        fragments
+            .iter()
+            .filter(|(id, fragment)| {
+                *id == SMOKE_FRAGMENT_ID
+                    || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+            })
+            .filter(|(id, fragment)| {
+                !self.blocked.contains(id)
+                    && !self
+                        .entries
+                        .get(id)
+                        .is_some_and(|entry| entry.fingerprint.matches(fragment))
+            })
+            .count()
+    }
+
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
@@ -748,10 +795,6 @@ pub fn sync_fragment_bodies(
         {
             continue;
         }
-        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
-            bodies.pending_spawn_current = bodies.pending_spawn_current.saturating_add(1);
-            continue;
-        }
         if bodies.jobs.len() >= MAX_ACTIVE_FRAGMENT_COLLISION_JOBS {
             bodies.pending_spawn_current = bodies.pending_spawn_current.saturating_add(1);
             continue;
@@ -789,10 +832,6 @@ pub fn sync_fragment_bodies(
             bodies.ready.remove(&id);
             continue;
         }
-        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
-            continue;
-        }
-
         let result = bodies.ready.remove(&id).expect("ready id came from map");
         if !result.is_current(fragment) {
             bodies.stale_results = bodies.stale_results.saturating_add(1);
@@ -867,6 +906,25 @@ pub fn sync_fragment_bodies(
         .filter(|id| wanted.contains(id))
         .count() as u64;
     bodies.last_capacity = Some(FragmentCapacity::remaining(budget.0, account));
+}
+
+/// Number of authoritative collision units that still have to settle before a
+/// scripted fixed step can run without observing render-frame progress.
+///
+/// Rendering is intentionally absent from this decision. Static collision is
+/// derived from live world cells; fragment collision is derived from native
+/// fragment cells. A replay may take more wall-clock time on a slow machine,
+/// but it must not take a different physics step merely because mesh uploads or
+/// rendered frames retired at a different rate.
+pub(crate) fn pending_fixed_step_collision_work(
+    world: &engine_world::World,
+    fragments: &DynamicFragments,
+    bodies: &FragmentBodies,
+    statics: &StaticColliders,
+    camera: Option<engine_core::GlobalPos>,
+) -> usize {
+    let static_pending = camera.map_or(0, |camera| statics.pending_for_fixed_step(world, camera));
+    static_pending.saturating_add(bodies.pending_for_fixed_step(fragments, camera))
 }
 
 /// Copy backend simulation state back into Micrology fragments.
