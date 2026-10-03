@@ -199,15 +199,16 @@ pub fn partition(
         if sizes.len() % 2 == 0 {
             // Average the two middle sizes without floating point. Multiplying
             // by 500 gives the exact median in the engine's milli convention.
-            sizes[middle - 1].saturating_add(sizes[middle]).saturating_mul(500)
+            sizes[middle - 1]
+                .saturating_add(sizes[middle])
+                .saturating_mul(500)
         } else {
             sizes[middle].saturating_mul(1000)
         }
     } else {
         total.saturating_mul(1000) / atoms.len() as u64
     };
-    let scale_milli =
-        base_milli.saturating_mul(u64::from(numerator)) / u64::from(denominator);
+    let scale_milli = base_milli.saturating_mul(u64::from(numerator)) / u64::from(denominator);
 
     // --- adjacency, read from the cells ------------------------------------
     // Which atom owns each cell, then which atoms touch. Face adjacency is the
