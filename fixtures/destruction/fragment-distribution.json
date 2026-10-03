@@ -902,6 +902,272 @@
     "fracture_checksum": "3f84f931d677b755"
   },
   {
+    "fixture": "chunk_contact_1200/coherent_median",
+    "cells_affected": 160,
+    "bonds_affected": 36,
+    "bonds_broken": 8,
+    "cells_failed": 0,
+    "detached_cells": 60,
+    "fragments": 16,
+    "sizes": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      6,
+      6,
+      6,
+      6
+    ],
+    "smallest": 3,
+    "largest": 6,
+    "mean_milli": 3750,
+    "median_milli": 3000,
+    "histogram": [
+      [
+        "singleton",
+        0
+      ],
+      [
+        "b2_3",
+        12
+      ],
+      [
+        "b4_7",
+        4
+      ],
+      [
+        "b8_15",
+        0
+      ],
+      [
+        "b16_31",
+        0
+      ],
+      [
+        "b32_63",
+        0
+      ],
+      [
+        "b64_plus",
+        0
+      ]
+    ],
+    "singletons": 0,
+    "share_largest_1_milli": 100,
+    "share_largest_3_milli": 300,
+    "share_largest_5_milli": 450,
+    "slivers": 0,
+    "shapes": [
+      {
+        "cells": 6,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 26,
+        "faces_per_cell_milli": 4333,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 6,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 26,
+        "faces_per_cell_milli": 4333,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 6,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 26,
+        "faces_per_cell_milli": 4333,
+        "parts": 1
+      },
+      {
+        "cells": 6,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 26,
+        "faces_per_cell_milli": 4333,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      }
+    ],
+    "multi_part_fragments": 0,
+    "occupancy_groups": 1,
+    "crossing_faces": 56,
+    "crossing_broken_bonds": 0,
+    "fragment_checksum": "889f43b48c3c46dd",
+    "fracture_checksum": "3f84f931d677b755"
+  },
+  {
     "fixture": "chunk_contact_1200/coherent_twice_mean",
     "cells_affected": 160,
     "bonds_affected": 36,
@@ -2187,6 +2453,272 @@
     "fracture_checksum": "90370d785a39f9d3"
   },
   {
+    "fixture": "chunk_contact_2500/coherent_median",
+    "cells_affected": 160,
+    "bonds_affected": 44,
+    "bonds_broken": 20,
+    "cells_failed": 0,
+    "detached_cells": 60,
+    "fragments": 16,
+    "sizes": [
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      6,
+      7,
+      11
+    ],
+    "smallest": 2,
+    "largest": 11,
+    "mean_milli": 3750,
+    "median_milli": 3000,
+    "histogram": [
+      [
+        "singleton",
+        0
+      ],
+      [
+        "b2_3",
+        12
+      ],
+      [
+        "b4_7",
+        3
+      ],
+      [
+        "b8_15",
+        1
+      ],
+      [
+        "b16_31",
+        0
+      ],
+      [
+        "b32_63",
+        0
+      ],
+      [
+        "b64_plus",
+        0
+      ]
+    ],
+    "singletons": 0,
+    "share_largest_1_milli": 183,
+    "share_largest_3_milli": 400,
+    "share_largest_5_milli": 516,
+    "slivers": 1,
+    "shapes": [
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 11,
+        "extent_sorted": [
+          2,
+          2,
+          5
+        ],
+        "aspect_milli": 2500,
+        "exposed_faces": 42,
+        "faces_per_cell_milli": 3818,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 7,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 28,
+        "faces_per_cell_milli": 4000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 6,
+        "extent_sorted": [
+          1,
+          2,
+          4
+        ],
+        "aspect_milli": 4000,
+        "exposed_faces": 24,
+        "faces_per_cell_milli": 4000,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 4,
+        "extent_sorted": [
+          1,
+          2,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 18,
+        "faces_per_cell_milli": 4500,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      }
+    ],
+    "multi_part_fragments": 0,
+    "occupancy_groups": 1,
+    "crossing_faces": 52,
+    "crossing_broken_bonds": 0,
+    "fragment_checksum": "ab38d42e1ae8da7d",
+    "fracture_checksum": "90370d785a39f9d3"
+  },
+  {
     "fixture": "chunk_contact_2500/coherent_twice_mean",
     "cells_affected": 160,
     "bonds_affected": 44,
@@ -3207,6 +3739,272 @@
   },
   {
     "fixture": "chunk_contact_6000/coherent_mean",
+    "cells_affected": 160,
+    "bonds_affected": 44,
+    "bonds_broken": 20,
+    "cells_failed": 0,
+    "detached_cells": 60,
+    "fragments": 16,
+    "sizes": [
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      6,
+      7,
+      11
+    ],
+    "smallest": 2,
+    "largest": 11,
+    "mean_milli": 3750,
+    "median_milli": 3000,
+    "histogram": [
+      [
+        "singleton",
+        0
+      ],
+      [
+        "b2_3",
+        12
+      ],
+      [
+        "b4_7",
+        3
+      ],
+      [
+        "b8_15",
+        1
+      ],
+      [
+        "b16_31",
+        0
+      ],
+      [
+        "b32_63",
+        0
+      ],
+      [
+        "b64_plus",
+        0
+      ]
+    ],
+    "singletons": 0,
+    "share_largest_1_milli": 183,
+    "share_largest_3_milli": 400,
+    "share_largest_5_milli": 516,
+    "slivers": 1,
+    "shapes": [
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 11,
+        "extent_sorted": [
+          2,
+          2,
+          5
+        ],
+        "aspect_milli": 2500,
+        "exposed_faces": 42,
+        "faces_per_cell_milli": 3818,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 7,
+        "extent_sorted": [
+          2,
+          2,
+          4
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 28,
+        "faces_per_cell_milli": 4000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 6,
+        "extent_sorted": [
+          1,
+          2,
+          4
+        ],
+        "aspect_milli": 4000,
+        "exposed_faces": 24,
+        "faces_per_cell_milli": 4000,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 3,
+        "extent_sorted": [
+          1,
+          1,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 14,
+        "faces_per_cell_milli": 4666,
+        "parts": 1
+      },
+      {
+        "cells": 4,
+        "extent_sorted": [
+          1,
+          2,
+          3
+        ],
+        "aspect_milli": 3000,
+        "exposed_faces": 18,
+        "faces_per_cell_milli": 4500,
+        "parts": 1
+      },
+      {
+        "cells": 2,
+        "extent_sorted": [
+          1,
+          1,
+          2
+        ],
+        "aspect_milli": 2000,
+        "exposed_faces": 10,
+        "faces_per_cell_milli": 5000,
+        "parts": 1
+      }
+    ],
+    "multi_part_fragments": 0,
+    "occupancy_groups": 1,
+    "crossing_faces": 52,
+    "crossing_broken_bonds": 0,
+    "fragment_checksum": "ab38d42e1ae8da7d",
+    "fracture_checksum": "7f1fe9b35ac276df"
+  },
+  {
+    "fixture": "chunk_contact_6000/coherent_median",
     "cells_affected": 160,
     "bonds_affected": 44,
     "bonds_broken": 20,
