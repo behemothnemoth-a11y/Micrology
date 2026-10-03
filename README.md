@@ -8,12 +8,21 @@ import/export format and a test ecosystem — never the foundation. No core crat
 depends on Minecraft, Fabric, NBT, block entities or a block registry, and none
 ever will; that belongs behind import/export adapters.
 
-The engine is in **DROP 0003 — Destruction Foundation**. The world kernel and
-scale foundation are complete: Micrology owns, streams, edits, saves and renders
-its own bounded-memory volumetric world. DROP 0003 is now through **0003.10**:
-support topology, structural connectivity, native fragments, exact/greedy
-collision compilation, streamed static-world physics, and the dynamic fragment
-physics adapter and fragment lifecycle/budgeting are implemented; fragment persistence and spatial indexing are next.
+The engine is in **DROP 0006 — Core Destruction: the Fracture Model**, with
+**DROP 0005 — Material Mechanics and Structural Capacity** still open beside it.
+The world kernel, scale foundation and destruction system are complete:
+Micrology owns, streams, edits, saves and renders its own bounded-memory
+volumetric world, and destroys it exactly — structural connectivity, native
+volumetric fragments, collision compiled from cell data, fragment persistence
+and residency, applied damage, progressive local damage, force coupling and
+bounded secondary destruction. DROP 0005 adds mechanical difference between
+materials and the first model of structural capacity. DROP 0006 then asks the
+question none of that answered — what happens *inside* one solid material when
+one impact hits it. The current integrated one-material drop combines sparse
+persistent damage, broken-bond separation, damage ownership, destructible native
+fragments, and bounded contact fracture in the interactive destruction lab.
+See [the integrated drop and measurements](docs/integrated-one-material-destruction.md).
+The exact occupancy classifier remains an independent oracle.
 
 ![The sandbox on its demo scene](docs/images/sandbox.png)
 
@@ -34,6 +43,42 @@ That is the whole setup. A fresh clone needs nothing but a stable Rust toolchain
 ```sh
 cargo run -p sandbox -- fixtures/worlds/drop0001_sample.json   # load a world instead
 ```
+
+### One-material destruction lab
+
+From PowerShell at the repository root:
+
+```powershell
+$env:MICROLOGY_DESTRUCTION_LAB = '1'
+cargo run --release -p sandbox
+```
+
+The shared benchmark wall starts paused. `F6` runs/pauses physics; `F7` advances
+one fixed step. Click to capture the camera, then use left click to strike and
+Shift + left click for a stronger strike. `R` launches a naturally fractured
+chunk toward the wall and enables contact damage. `F9` toggles contact damage;
+fragments continue moving with it off. `F8` changes simulation speed, `F10`
+saves a snapshot, and `F11` advances the loaded replay. The camera still moves
+while physics is paused. `H` hides the overlay, `Esc` releases the mouse, and
+`Q` quits. This disposable lab does not save over authored worlds.
+
+For automatic contact replay, set these before launching:
+
+```powershell
+$env:MICROLOGY_REPLAY_SCRIPT = 'fixtures/destruction/replay-contact-volley.json'
+$env:MICROLOGY_REPLAY_CAPTURE = '1' # pace the script; does not start a recorder
+$env:MICROLOGY_PROFILE_SECONDS = '45' # write frame timings and exit
+```
+
+`replay-contact-stress.json` launches eighteen chunks and advances 660 fixed
+steps. Use `tools/capture-demo.ps1 -Demo replay -Section my_contact_capture
+-ReplayScript fixtures/destruction/replay-contact-volley.json -Seconds 50`
+for non-invasive GPU video evidence. If desktop windows cover the scene, set
+`MICROLOGY_NATIVE_CAPTURE=1` to save a PNG directly from the renderer alongside
+each replay snapshot; these contain only the game. `MICROLOGY_CAPTURE_COMPACT=1`
+chooses a smaller initial capture window. Keep native capture off during timing
+runs. Remove the lab/profile/replay/capture environment
+variables to return to the regular sandbox.
 
 ### Sandbox controls
 
@@ -82,6 +127,19 @@ build; nothing reads them in normal use:
 | `MICROLOGY_FRAGMENT_HARD_MB` | fragment tracked-byte ceiling (default 64) |
 | `MICROLOGY_FRAGMENT_MAX_BODIES` | active fragment body cap (default 512) |
 | `MICROLOGY_FRAGMENT_MAX_BOXES` | active fragment collider-box cap (default 65,536) |
+
+### Diagnostic fixtures
+
+Each is opt-in, replaces the scene with a controlled experiment, runs itself and
+exits. They are diagnostics, not demos: the overlay is drawn from engine state.
+
+| variable | fixture |
+|---|---|
+| `MICROLOGY_DESTRUCTION_SMOKE` | live destruction smoke test |
+| `MICROLOGY_PROGRESSIVE_DAMAGE_DEMO` | DROP 0004.7: repeated weak hits accumulating to failure |
+| `MICROLOGY_IMPACT_DEMO` | DROP 0004.8: force coupling and fragment re-fracture |
+| `MICROLOGY_COLLAPSE_DEMO` | DROP 0005: identical towers, brick vs steel |
+| `MICROLOGY_FRACTURE_DEMO` | DROP 0006.0: the destruction wall under one repeated impact, with the live crack field drawn |
 
 ### Linux system dependencies
 
@@ -163,10 +221,24 @@ Litematica import/export, GIS ingestion, volume transforms, and any actual game.
 Static collision is live in the sandbox through Avian, but physics backend types
 remain outside all engine crates.
 
-DROP 0002 (scale: regions, streaming, async meshing, memory budget) is **complete**
-— see [the report](docs/drop-0002-report.md). DROP 0003 (structural destruction:
-connectivity, volumetric fragments, collision, physics) is in progress —
-[`docs/drop-0003.md`](docs/drop-0003.md) tracks it pass by pass.
+DROP 0002 (scale: regions, streaming, async meshing, memory budget) is
+**complete** — see [the report](docs/drop-0002-report.md). DROP 0003 (structural
+destruction: connectivity, volumetric fragments, collision, physics) and DROP
+0004 (destruction at scale, applied damage, force coupling, re-fracture, chaos)
+are **complete**. DROP 0005 (material mechanics and structural capacity) is in
+progress — [`docs/drop-0005.md`](docs/drop-0005.md) tracks it pass by pass — and
+DROP 0006 (the core destruction/fracture model) is in progress alongside it,
+tracked in [`docs/drop-0006.md`](docs/drop-0006.md).
+
+Occupancy connectivity remains the only topological oracle. Fracture records
+cracks as broken bonds; a broken bond is a crack, not a cut, and nothing in the
+fracture model detaches anything on its own.
+
+No physical system is mandatory for a valid world. A floating island or an
+impossible castle is valid authored data and does not need a fake
+infinite-strength material to stay up; gravity, anchoring, connectivity
+detachment, damage, fragment physics and mechanics are separable and
+individually optional.
 
 ## Documentation
 
@@ -181,6 +253,11 @@ connectivity, volumetric fragments, collision, physics) is in progress —
 | [`docs/drop-0002-report.md`](docs/drop-0002-report.md) | DROP 0002 report: what shipped, what it measures, what DROP 0003 inherits |
 | [`docs/drop-0003-scope.md`](docs/drop-0003-scope.md) | DROP 0003 scope: structural destruction and volumetric fragments |
 | [`docs/drop-0003.md`](docs/drop-0003.md) | DROP 0003 pass by pass |
+| [`docs/drop-0004-scope.md`](docs/drop-0004-scope.md) | DROP 0004 scope: destruction at scale and applied damage |
+| [`docs/drop-0004.md`](docs/drop-0004.md) | DROP 0004 pass by pass |
+| [`docs/drop-0005-scope.md`](docs/drop-0005-scope.md) | DROP 0005 scope: material mechanics and structural capacity |
+| [`docs/drop-0005.md`](docs/drop-0005.md) | DROP 0005 pass by pass |
+| [`docs/drop-0006.md`](docs/drop-0006.md) | DROP 0006 pass by pass: the core destruction/fracture model |
 | [`docs/vision/`](docs/vision/) | the original project brief, preserved verbatim |
 | [`CLAUDE.md`](CLAUDE.md) | guardrails for anyone — human or agent — changing this repo |
 

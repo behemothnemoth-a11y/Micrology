@@ -1,0 +1,91 @@
+{
+  "contact_fracture_enabled": false,
+  "contacts": null,
+  "fixed_ticks": 120,
+  "fracture": {
+    "bond_entries": 100,
+    "broken_bonds": 28,
+    "cell_entries": 60,
+    "checksum_fnv1a64": "bad1b41729546295",
+    "revision": 1
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        -0.42948177456855774,
+        5.257982166371691e-17,
+        1.6638016720010005e-16
+      ],
+      "cells": 60,
+      "id": "f0.0",
+      "linear_velocity": [
+        9.92862440792786e-17,
+        -0.03053850308060646,
+        0.02101963758468628
+      ],
+      "rotation_xyzw": [
+        -0.2597633868749352,
+        2.882415615034015e-16,
+        -8.807924654903661e-18,
+        0.9656722957811633
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        47.999999999999986,
+        -1.3835926176668103,
+        69.42647845451242
+      ],
+      "world_center": [
+        64.5,
+        15.726471819186806,
+        77.99944147593723
+      ]
+    }
+  ],
+  "interaction": {
+    "applied": 0,
+    "batch_ms": [],
+    "blasts": 0,
+    "broken_bonds": 0,
+    "capped": 0,
+    "failed_cells": 0,
+    "floor_added": true,
+    "fragments_created": 0,
+    "held": "f0.0",
+    "held_target": [
+      64.5,
+      16.0,
+      78.0
+    ],
+    "hold_steps": 120,
+    "holds": 1,
+    "kicks": 0,
+    "pending": 0,
+    "refused": 0,
+    "releases": 0,
+    "stale": 0,
+    "throws": 0
+  },
+  "label": "tools_lifted",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 22,
+    "cursor": 7,
+    "name": "blast_grab_throw"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "35009c942748b0e9",
+    "fragment_cells": 60,
+    "fragments": 1,
+    "static_anchors": 4348,
+    "static_cells": 7228
+  }
+}

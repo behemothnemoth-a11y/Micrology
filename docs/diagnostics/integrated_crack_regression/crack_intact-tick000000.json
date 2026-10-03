@@ -1,0 +1,30 @@
+{
+  "contact_fracture_enabled": false,
+  "contacts": null,
+  "fixed_ticks": 0,
+  "fracture": {
+    "bond_entries": 0,
+    "broken_bonds": 0,
+    "cell_entries": 0,
+    "checksum_fnv1a64": "cbf29ce484222325",
+    "revision": 0
+  },
+  "fragment_dynamics": [],
+  "label": "crack_intact",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 9,
+    "cursor": 1,
+    "name": "crack_separation"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "872796ff1aac9411",
+    "fragment_cells": 0,
+    "fragments": 0,
+    "static_anchors": 252,
+    "static_cells": 3132
+  }
+}

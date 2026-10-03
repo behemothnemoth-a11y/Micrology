@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "crack_separation",
+  "fixture_checksum_fnv1a64": "704df76eee29b211",
+  "commands": [
+    { "op": "pause" },
+    { "op": "dump", "label": "crack_intact" },
+    { "op": "benchmark_case", "case": "strong_center_hit" },
+    { "op": "advance_fixed", "steps": 1 },
+    { "op": "dump", "label": "crack_strong_1" },
+    { "op": "benchmark_case", "case": "strong_center_hit" },
+    { "op": "dump", "label": "crack_separated_paused" },
+    { "op": "advance_fixed", "steps": 120 },
+    { "op": "dump", "label": "crack_after_120_steps" }
+  ]
+}

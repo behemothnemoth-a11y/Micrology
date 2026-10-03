@@ -1,0 +1,236 @@
+# DROP 0006 — Destruction Benchmark Pack
+
+This document pins the acceptance target for Micrology's next destruction work.
+
+It is **not** the DROP 0006 implementation scope and it contains no fracture
+algorithm. Its job is simpler: keep the wall, stimulus order, measurements and
+visual questions stable while the destruction model changes underneath them.
+
+The immediate design rule is:
+
+> One material first. Make destruction convincing before teaching different
+> materials to destroy differently.
+
+DROP 0005's material-mechanics work remains valid, but these fixtures use one
+deliberately fictional baseline material so density, toughness and material
+identity cannot explain away a weak fracture model.
+
+## Permanent fixture — The Micrology Destruction Wall
+
+The canonical fixture is defined once in
+`engine_destruction::reference_fixture` and consumed by
+`engine_stress::destruction_benchmark::baseline_wall`.
+
+| property | value |
+| --- | --- |
+| material | `baseline_structural_test_material` |
+| material id | 9000 |
+| wall bounds | `(48,1,62)..=(79,18,66)` |
+| wall dimensions | 32 × 18 × 5 cells = 2,880 cells |
+| footing bounds | `(46,0,61)..=(81,0,67)` |
+| anchored footing | 36 × 1 × 7 cells = 252 cells |
+| total occupied cells | 3,132 |
+| storage volumes | 12 |
+| persistence regions | 1 |
+| deterministic fixture checksum | `704df76eee29b211` |
+
+The positive coordinates and one-region placement are intentional. The core
+fixture must measure fracture, not accidentally become a region-boundary or
+unknown-residency test. Those deserve separate fixtures later.
+
+The material name is intentionally not concrete, stone, steel or masonry. Any
+values assigned to it by DROP 0006 are tuning parameters for the destruction
+model, not claims about a real substance.
+
+## What every completed case records
+
+Fracture-aware code should eventually fill every applicable field in
+`DestructionCaseResult`:
+
+| metric | meaning |
+| --- | --- |
+| `cells_touched` | cells whose real destruction/fracture state was considered or changed |
+| `bonds_touched` | face/bond relationships considered or changed, if the model has them |
+| `persistent_fracture_sites` | sparse fracture entries still present after the event |
+| `persistent_fracture_bytes` | bounded persistent fracture-state memory |
+| `failed_cells` | cells that actually failed/left intact world geometry |
+| `fragments_created` | native volumetric fragments admitted |
+| `fragment_size_cells` | canonical ascending fragment-size distribution |
+| `work_budget_used` | deterministic work units consumed, never wall-clock time |
+| `deterministic_result_checksum` | checksum of canonical observable destruction result |
+| `visual_evidence` | path/name of current-build screenshot or video evidence |
+
+A value of `null` means **this result record has not measured the field yet**. It
+never means zero. The 0006.0 fracture implementation now exists and exposes real
+cell/bond state; the generic `--template` output remains deliberately empty until
+a case runner fills those measurements from an actual execution.
+
+Timings may be printed diagnostically but are not part of deterministic
+acceptance or committed equality checks.
+
+## Ordered cases
+
+Section ownership below is provisional until the final DROP 0006 scope is
+approved. The order is the important part.
+
+### 1. `weak_center_hit` — provisional 0006.0
+
+One weak normal impact into the center of a fresh wall.
+
+Required:
+
+- real sparse persistent fracture/damage state exists after the impact;
+- no cell fails;
+- no fragment is created;
+- the wall remains topologically whole.
+
+This is the first test of the new model. Decorative particles, decals or HUD-only
+"damage" do not satisfy persistent fracture.
+
+### 2. `repeated_center_hits` — provisional 0006.0
+
+Apply the exact same weak hit three times without resetting the wall.
+
+Required:
+
+- prior fracture state changes the later result;
+- persistent state grows/evolves rather than resetting;
+- the cumulative result is deterministic.
+
+Cell failure or fragment formation is allowed but not required in the first
+fracture section. The hard requirement is memory: hit two must know hit one
+happened.
+
+### 3. `strong_center_hit` — provisional 0006.1
+
+A stronger center impact into a fresh wall.
+
+Required:
+
+- persistent fracture state;
+- actual local cell failure;
+- the failed shape derives from fracture state rather than a perfect sphere,
+  cube or direct deletion mask.
+
+Fragment creation is allowed here because local failure may or may not isolate a
+piece depending on the model.
+
+### 4. `edge_hit` — provisional 0006.1
+
+Hit near a free wall edge with the same normal direction.
+
+Required:
+
+- real fracture response;
+- observable deterministic difference from the equivalent interior hit.
+
+The free surface is part of the geometry. A model that produces an identical
+pattern everywhere regardless of nearby free space has not solved this case.
+
+### 5. `angled_hit` — provisional 0006.1
+
+An oblique center impact.
+
+Required:
+
+- deterministic directional asymmetry;
+- the fracture distribution must carry evidence of incoming direction.
+
+A sphere centered on the hit point fails this case even if it removes a plausible
+number of cells.
+
+### 6. `previously_damaged_area` — provisional 0006.2
+
+Strike a region already weakened by the weak-center case.
+
+Required:
+
+- existing fracture state materially changes the result;
+- the result differs from applying the same follow-up energy to a fresh wall.
+
+This is where crack/weakness propagation starts becoming visible as a system
+rather than a one-event mask.
+
+### 7. `detached_chunk_hit` — provisional 0006.3
+
+Take the canonical detached chunk produced by the strong-hit progression and hit
+the fragment itself.
+
+Required:
+
+- the same destruction model operates on native fragment-local geometry;
+- real fragment cells can fail;
+- persistent fracture state can exist on the detached object.
+
+A detached fragment becoming an indestructible rigid prop fails this case.
+
+### 8. `chunk_into_wall` — provisional 0006.4
+
+Drive a canonical detached chunk into a fresh baseline wall.
+
+Required:
+
+- collision feeds bounded energy back into real destruction state;
+- secondary damage is genuine engine damage, not visual debris;
+- generation/work limits terminate the interaction deterministically.
+
+Both participants must be eligible to take damage even if a particular tuned run
+does not make both of them fail.
+
+## Visual acceptance
+
+Every implemented case needs current-build visual evidence, but visuals are not
+the source of truth. The frame/video must correspond to the real state reported
+by the deterministic counters.
+
+For comparison footage, preserve:
+
+1. the same wall dimensions and camera framing;
+2. a visible intact hold before the impact;
+3. the event itself;
+4. a long enough result hold to inspect the fracture/failure;
+5. the case name and deterministic checksum in diagnostics.
+
+The benchmark pack should eventually make before/after sheets automatically.
+Until then, do not substitute old footage from another algorithm or another
+fixture.
+
+## Runner
+
+From the repository root:
+
+```powershell
+cargo run -p engine_stress --bin destruction_bench
+cargo run -p engine_stress --bin destruction_bench -- --json
+cargo run -p engine_stress --bin destruction_bench -- --template
+cargo run -p engine_stress --bin destruction_bench -- --check
+```
+
+`--json` prints the canonical protocol. `--template` prints result records
+with fracture-specific fields explicitly unavailable. `--check` verifies that
+`fixtures/destruction/benchmark-pack.json` is byte-for-byte current.
+
+Regenerate the committed protocol only when a fixture change is deliberate and
+reviewed:
+
+```powershell
+cargo run -p engine_stress --bin destruction_bench -- --write
+```
+
+Changing the wall or protocol because a new algorithm performs poorly is not a
+benchmark improvement. It is moving the target.
+
+## What this branch deliberately does not implement
+
+- fracture bonds;
+- crack propagation;
+- impact-energy deposition;
+- material-specific destruction;
+- new fragment logic;
+- particles/debris;
+- rendering changes;
+- capture automation;
+- any DROP 0006 production mechanics.
+
+Claude's fracture branch can consume this pack once its API exists. This branch
+exists so those mechanics have a stable target waiting for them.

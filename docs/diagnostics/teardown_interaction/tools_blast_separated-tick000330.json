@@ -1,0 +1,751 @@
+{
+  "contact_fracture_enabled": true,
+  "contacts": {
+    "capped": 0,
+    "enqueued": 4,
+    "fragment_failed": 45,
+    "fragment_fragment_pairs": 0,
+    "fragments_created": 6,
+    "pending": 0,
+    "processed": 4,
+    "refused": 0,
+    "samples": 2,
+    "stale": 0,
+    "static_failed": 0,
+    "work": 3680
+  },
+  "fixed_ticks": 330,
+  "fracture": {
+    "bond_entries": 2282,
+    "broken_bonds": 271,
+    "cell_entries": 831,
+    "checksum_fnv1a64": "7f59f99989ab3ff8",
+    "revision": 108
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        -1.5700781345367432,
+        -0.14497743546962738,
+        0.6794995069503784
+      ],
+      "cells": 4,
+      "id": "f1.0",
+      "linear_velocity": [
+        -5.094175338745117,
+        -10.993019104003906,
+        0.4865154027938843
+      ],
+      "rotation_xyzw": [
+        -0.7928738388161486,
+        -0.2978744284253435,
+        0.27381352426387384,
+        -0.4556841609507792
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        44.939484498335794,
+        22.69770147364813,
+        84.70820110471692
+      ],
+      "world_center": [
+        58.22462197778246,
+        8.29525358240449,
+        72.27539704078134
+      ]
+    },
+    {
+      "angular_velocity": [
+        -0.7587308287620544,
+        -0.6844507455825806,
+        0.4948803186416626
+      ],
+      "cells": 3,
+      "id": "f1.1",
+      "linear_velocity": [
+        -3.3476455211639404,
+        -12.453937530517578,
+        1.2241772413253784
+      ],
+      "rotation_xyzw": [
+        -0.6443959561867524,
+        -0.7614457480705829,
+        -0.07002847407447878,
+        -0.007087821540615342
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        52.56796096487448,
+        -12.944273397576563,
+        83.38342098041255
+      ],
+      "world_center": [
+        61.870425245036735,
+        4.390382241589961,
+        71.39493182673613
+      ]
+    },
+    {
+      "angular_velocity": [
+        -1.3329288959503174,
+        -1.1189205646514893,
+        -0.09623177349567413
+      ],
+      "cells": 5,
+      "id": "f1.2",
+      "linear_velocity": [
+        -3.321237802505493,
+        -20.603395462036133,
+        4.464395999908447
+      ],
+      "rotation_xyzw": [
+        -0.7058731514297661,
+        -0.5421537667565387,
+        0.1580681171486944,
+        -0.42758257404082023
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        44.169258975499744,
+        7.19385311939114,
+        83.28664584547981
+      ],
+      "world_center": [
+        62.93400913834294,
+        4.195064861736545,
+        69.31734306002092
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f2.0",
+      "linear_velocity": [
+        -14.009801864624023,
+        0.0,
+        3.502450466156006
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        60.5,
+        10.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 1,
+      "id": "f2.1",
+      "linear_velocity": [
+        -12.139242172241211,
+        -8.092827796936035,
+        4.046413898468018
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        61.5,
+        8.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 5,
+      "id": "f2.2",
+      "linear_velocity": [
+        0.0,
+        -14.009801864624023,
+        3.502450466156006
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        64.5,
+        6.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 1,
+      "id": "f2.3",
+      "linear_velocity": [
+        -8.092827796936035,
+        -12.139242172241211,
+        4.046413898468018
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        62.5,
+        7.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 16,
+      "id": "f2.4",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        -16.5
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        64.5,
+        10.5,
+        62.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f2.5",
+      "linear_velocity": [
+        0.0,
+        14.009801864624023,
+        3.502450466156006
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        64.5,
+        14.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 3,
+      "id": "f2.6",
+      "linear_velocity": [
+        0.0,
+        12.406107902526855,
+        2.4812216758728027
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        48,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        48.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        64.5,
+        15.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 1,
+      "id": "f2.7",
+      "linear_velocity": [
+        8.092827796936035,
+        -12.139242172241211,
+        4.046413898468018
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        66.5,
+        7.5,
+        66.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 1,
+      "id": "f2.8",
+      "linear_velocity": [
+        11.0,
+        11.0,
+        -5.5
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        66.5,
+        12.5,
+        64.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 2,
+      "id": "f2.9",
+      "linear_velocity": [
+        6.36186408996582,
+        9.54279613494873,
+        -7.952330112457275
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        66.5,
+        13.5,
+        63.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 2,
+      "id": "f2.10",
+      "linear_velocity": [
+        8.421063423156738,
+        12.63159465789795,
+        -2.1052658557891846
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        66.5,
+        13.5,
+        65.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 18,
+      "id": "f2.11",
+      "linear_velocity": [
+        14.177397727966309,
+        0.0,
+        -7.088698863983154
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        67.5,
+        10.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 2,
+      "id": "f2.12",
+      "linear_velocity": [
+        7.90256929397583,
+        7.90256929397583,
+        -6.585474491119385
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        67.5,
+        13.5,
+        63.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 2,
+      "id": "f2.13",
+      "linear_velocity": [
+        9.949431419372559,
+        9.949431419372559,
+        -1.6582385301589966
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        64.0
+      ],
+      "world_center": [
+        67.5,
+        13.5,
+        65.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 4,
+      "id": "f2.14",
+      "linear_velocity": [
+        11.32262897491455,
+        -5.661314487457275,
+        -4.245985984802246
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        68.5,
+        8.5,
+        64.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 16,
+      "id": "f2.15",
+      "linear_velocity": [
+        13.126251220703125,
+        1.6407814025878906,
+        -4.922344207763672
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        64,
+        0,
+        48
+      ],
+      "state": "Dynamic",
+      "translation": [
+        64.0,
+        0.0,
+        48.0
+      ],
+      "world_center": [
+        68.5,
+        11.0,
+        64.0
+      ]
+    }
+  ],
+  "interaction": {
+    "applied": 4,
+    "batch_ms": [
+      12.356,
+      0.09780000000000001
+    ],
+    "blasts": 1,
+    "broken_bonds": 348,
+    "capped": 0,
+    "failed_cells": 122,
+    "floor_added": true,
+    "fragments_created": 16,
+    "held": null,
+    "held_target": null,
+    "hold_steps": 210,
+    "holds": 1,
+    "kicks": 18,
+    "pending": 0,
+    "refused": 0,
+    "releases": 1,
+    "stale": 0,
+    "throws": 1
+  },
+  "label": "tools_blast_separated",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 22,
+    "cursor": 16,
+    "name": "blast_grab_throw"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "8687c2933663d1d2",
+    "fragment_cells": 94,
+    "fragments": 19,
+    "static_anchors": 4348,
+    "static_cells": 7027
+  }
+}

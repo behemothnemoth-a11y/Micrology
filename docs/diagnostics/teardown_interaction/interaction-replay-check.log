@@ -1,0 +1,4 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+     Running `target\debug\destruction_replay.exe --check`
+fixtures/destruction/replay-weak-repeat.json is current and valid
+fixtures/destruction/replay-damaged-area.json is current and valid

@@ -23,12 +23,14 @@ use avian3d::prelude::{
     RigidBody, Rotation as PhysicsRotation, Sleeping,
 };
 use bevy::prelude::*;
-use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
+use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
+use engine_core::{CellBounds, CellPos, VOLUME_EDGE, VolumePos};
 use engine_destruction::{
-    CollisionCompiler, CollisionShape, Fragment, FragmentAccount, FragmentBudget,
-    FragmentDerivedFootprint, FragmentFootprint, FragmentId, FragmentPhysicsDescriptor,
-    FragmentPhysicsState, FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
-    Rotation as FragmentRotation,
+    CollisionShape, Fragment, FragmentAccount, FragmentBudget, FragmentCollisionJobInput,
+    FragmentCollisionJobResult, FragmentDerivedFootprint, FragmentFootprint,
+    FragmentGeometryFingerprint, FragmentId, FragmentPhysicsDescriptor, FragmentPhysicsState,
+    FragmentPose, FragmentPressure, FragmentStore, Rotation as FragmentRotation,
+    StaticCollisionFingerprint, StaticCollisionJobInput, StaticCollisionJobResult,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,36 +41,22 @@ use std::collections::{BTreeMap, BTreeSet};
 /// change the physical simulation radius.
 pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 
-/// Bound synchronous collider compilation work per rendered frame.
+/// Bound backend collider publication work per rendered frame.
 ///
-/// The current physics unit is one 16³ storage volume. That choice is private to
-/// this host adapter: renderer section sizing cannot silently change collision
-/// rebuild scope. If physics granularity is ever coarsened, measure it on its
-/// own terms first.
-const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
+/// CPU occupancy compilation runs on workers; Avian compound-collider creation
+/// still happens on the main thread and therefore remains explicitly bounded.
+const MAX_STATIC_COLLIDER_COMMITS_PER_FRAME: usize = 8;
+const MAX_ACTIVE_STATIC_COLLISION_JOBS: usize = 8;
 /// Bound fragment collider compilation / rigid-body creation per rendered frame.
 /// A fragment storm can otherwise turn one destruction result into hundreds of
 /// synchronous Avian compound-collider builds on the main thread.
 const MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME: usize = 8;
+const MAX_ACTIVE_FRAGMENT_COLLISION_JOBS: usize = 8;
 
 /// Avian stays a host dependency. Returning the plugin group from here keeps
 /// even the application root from needing to know its types.
 pub fn physics_plugins() -> PhysicsPlugins {
     PhysicsPlugins::default()
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct StaticCollisionFingerprint(Option<Revision>);
-
-impl StaticCollisionFingerprint {
-    /// Collision depends on this volume's cells only.
-    ///
-    /// Unlike surface geometry, a neighbouring volume cannot hide or reveal
-    /// collision inside this volume, so including neighbours would cause
-    /// needless collider rebuilds after unrelated seam edits.
-    fn of(world: &engine_world::World, volume: VolumePos) -> Self {
-        Self(world.volume_revision(volume))
-    }
 }
 
 #[derive(Debug)]
@@ -93,6 +81,14 @@ pub struct StaticColliderStats {
     pub rebuilt_total: u64,
     pub rebuilt_this_frame: u64,
     pub despawned_total: u64,
+    pub active_jobs: usize,
+    pub ready_results: usize,
+    pub jobs_started_total: u64,
+    pub superseded_jobs: u64,
+    pub stale_results: u64,
+    pub max_pending_volumes: usize,
+    pub max_active_jobs: usize,
+    pub max_ready_results: usize,
 }
 
 /// Static physics bodies keyed by the host's current collision unit.
@@ -104,12 +100,39 @@ pub struct StaticColliderStats {
 #[derive(Resource, Default)]
 pub struct StaticColliders {
     entries: BTreeMap<VolumePos, StaticColliderEntry>,
+    jobs: BTreeMap<VolumePos, (StaticCollisionFingerprint, Task<StaticCollisionJobResult>)>,
+    ready: BTreeMap<VolumePos, StaticCollisionJobResult>,
     stats: StaticColliderStats,
 }
 
 impl StaticColliders {
     pub fn stats(&self) -> StaticColliderStats {
         self.stats
+    }
+
+    /// Collision work that must settle before a scripted fixed step can be
+    /// authoritative. This is derived from live cells and collider
+    /// fingerprints, not from render state or from how many Update frames have
+    /// happened to retire.
+    pub(crate) fn pending_for_fixed_step(
+        &self,
+        world: &engine_world::World,
+        camera: engine_core::GlobalPos,
+    ) -> usize {
+        let camera_cell = camera.cell();
+        world
+            .volume_positions()
+            .filter(|volume| {
+                distance_to_bounds(camera_cell, volume_bounds(*volume)) <= PHYSICS_RADIUS_CELLS
+            })
+            .filter(|volume| {
+                let fingerprint = StaticCollisionFingerprint::of(world, *volume);
+                !self
+                    .entries
+                    .get(volume)
+                    .is_some_and(|entry| entry.fingerprint == fingerprint)
+            })
+            .count()
     }
 
     fn remove(&mut self, commands: &mut Commands, volume: VolumePos) {
@@ -146,7 +169,10 @@ impl StaticColliders {
                         f64::from(bounds.min.z),
                     ),
                     collider,
-                    StaticSectionCollider,
+                    StaticSectionCollider {
+                        volume,
+                        fingerprint,
+                    },
                 ))
                 .id()
         });
@@ -177,13 +203,21 @@ impl StaticColliders {
 
 /// Marker for invisible static collision entities.
 #[derive(Component)]
-struct StaticSectionCollider;
+pub(crate) struct StaticSectionCollider {
+    volume: VolumePos,
+    fingerprint: StaticCollisionFingerprint,
+}
+impl StaticSectionCollider {
+    pub(crate) fn is_current(&self, world: &engine_world::World) -> bool {
+        self.fingerprint == StaticCollisionFingerprint::of(world, self.volume)
+    }
+}
 
 /// Keep the static physics neighbourhood synchronized with the live world.
 ///
-/// Work is nearest-first and bounded. A stale collider is replaced from the
-/// current world directly, so there is no asynchronous stale-result rule to
-/// maintain in this pass; 0003.11's moving fragments get their own lifecycle.
+/// Requests are coalesced by volume, CPU collision compilation runs on bounded
+/// workers, and results are revision-checked before publication. The main
+/// schedule only creates a bounded number of Avian compound colliders.
 pub fn sync_static_colliders(
     mut commands: Commands,
     world: Res<WorldRes>,
@@ -191,7 +225,6 @@ pub fn sync_static_colliders(
     mut colliders: ResMut<StaticColliders>,
 ) {
     colliders.stats.rebuilt_this_frame = 0;
-    colliders.stats.pending_volumes = 0;
 
     let Some(camera) = camera else {
         return;
@@ -208,39 +241,153 @@ pub fn sync_static_colliders(
             desired.insert(volume, distance);
         }
     }
-
     let wanted: BTreeSet<_> = desired.keys().copied().collect();
-    let leaving: Vec<_> = colliders
+
+    // Residency removal cancels every representation of the volume.
+    let leaving: BTreeSet<_> = colliders
         .entries
         .keys()
+        .chain(colliders.jobs.keys())
+        .chain(colliders.ready.keys())
         .filter(|volume| !wanted.contains(volume))
         .copied()
         .collect();
     for volume in leaving {
         colliders.remove(&mut commands, volume);
+        colliders.jobs.remove(&volume);
+        colliders.ready.remove(&volume);
     }
 
-    // Rebuild changed or newly relevant collision volumes nearest-first.
-    let mut rebuilds = Vec::new();
-    for (volume, distance) in desired {
-        let fingerprint = StaticCollisionFingerprint::of(&world.0, volume);
-        let current = colliders
-            .entries
-            .get(&volume)
-            .is_some_and(|entry| entry.fingerprint == fingerprint);
-        if !current {
-            rebuilds.push((distance, volume, fingerprint));
+    // A newer edit supersedes an in-flight snapshot. Dropping the old task is
+    // conservative: no obsolete collider can publish, and the latest revision
+    // is re-requested below.
+    let superseded: Vec<_> = colliders
+        .jobs
+        .iter()
+        .filter_map(|(volume, (fingerprint, _))| {
+            (!fingerprint.matches(&world.0)).then_some(*volume)
+        })
+        .collect();
+    for volume in superseded {
+        colliders.jobs.remove(&volume);
+        colliders.stats.superseded_jobs = colliders.stats.superseded_jobs.saturating_add(1);
+    }
+    let stale_ready: Vec<_> = colliders
+        .ready
+        .iter()
+        .filter_map(|(volume, result)| (!result.is_current(&world.0)).then_some(*volume))
+        .collect();
+    for volume in stale_ready {
+        colliders.ready.remove(&volume);
+        colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
+    }
+
+    // Completion order never becomes publication order. Results first land in
+    // a BTreeMap, then the nearest current volumes publish deterministically.
+    let mut completed = Vec::new();
+    colliders
+        .jobs
+        .retain(|volume, (_, task)| match check_ready(task) {
+            Some(result) => {
+                completed.push((*volume, result));
+                false
+            }
+            None => true,
+        });
+    for (volume, result) in completed {
+        if wanted.contains(&volume) && result.is_current(&world.0) {
+            colliders.ready.insert(volume, result);
+        } else {
+            colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
         }
     }
-    rebuilds.sort_by_key(|(distance, volume, _)| (*distance, *volume));
-    colliders.stats.pending_volumes = rebuilds.len().saturating_sub(MAX_STATIC_REBUILDS_PER_FRAME);
 
-    for (_, volume, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
-        let bounds = volume_bounds(volume);
-        let shape = GreedyCollisionCompiler.compile(&world.0, bounds);
-        colliders.install(&mut commands, volume, fingerprint, bounds, shape);
+    // Dispatch only the latest missing/stale revision, nearest first. One
+    // volume can own at most one worker job and one ready result, so repeated
+    // edits coalesce rather than multiplying work.
+    let mut requests: Vec<_> = desired
+        .iter()
+        .filter_map(|(volume, distance)| {
+            let fingerprint = StaticCollisionFingerprint::of(&world.0, *volume);
+            let current = colliders
+                .entries
+                .get(volume)
+                .is_some_and(|entry| entry.fingerprint == fingerprint);
+            (!current
+                && !colliders.jobs.contains_key(volume)
+                && !colliders.ready.contains_key(volume))
+            .then_some((*distance, *volume))
+        })
+        .collect();
+    requests.sort_by_key(|(distance, volume)| (*distance, *volume));
+
+    let pool = AsyncComputeTaskPool::get();
+    for (_, volume) in requests {
+        if colliders.jobs.len() >= MAX_ACTIVE_STATIC_COLLISION_JOBS {
+            break;
+        }
+        let Some(input) = StaticCollisionJobInput::new(&world.0, volume) else {
+            continue;
+        };
+        let fingerprint = input.fingerprint();
+        colliders.jobs.insert(
+            volume,
+            (fingerprint, pool.spawn(async move { input.run() })),
+        );
+        colliders.stats.jobs_started_total = colliders.stats.jobs_started_total.saturating_add(1);
     }
 
+    let mut ready: Vec<_> = colliders
+        .ready
+        .keys()
+        .filter_map(|volume| desired.get(volume).map(|distance| (*distance, *volume)))
+        .collect();
+    ready.sort_by_key(|(distance, volume)| (*distance, *volume));
+    for (_, volume) in ready
+        .into_iter()
+        .take(MAX_STATIC_COLLIDER_COMMITS_PER_FRAME)
+    {
+        let Some(result) = colliders.ready.remove(&volume) else {
+            continue;
+        };
+        if !result.is_current(&world.0) {
+            colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
+            continue;
+        }
+        let bounds = volume_bounds(volume);
+        colliders.install(
+            &mut commands,
+            volume,
+            result.fingerprint,
+            bounds,
+            result.collider,
+        );
+    }
+
+    colliders.stats.pending_volumes = desired
+        .keys()
+        .filter(|volume| {
+            let fingerprint = StaticCollisionFingerprint::of(&world.0, **volume);
+            !colliders
+                .entries
+                .get(volume)
+                .is_some_and(|entry| entry.fingerprint == fingerprint)
+        })
+        .count();
+    colliders.stats.active_jobs = colliders.jobs.len();
+    colliders.stats.ready_results = colliders.ready.len();
+    colliders.stats.max_pending_volumes = colliders
+        .stats
+        .max_pending_volumes
+        .max(colliders.stats.pending_volumes);
+    colliders.stats.max_active_jobs = colliders
+        .stats
+        .max_active_jobs
+        .max(colliders.stats.active_jobs);
+    colliders.stats.max_ready_results = colliders
+        .stats
+        .max_ready_results
+        .max(colliders.stats.ready_results);
     colliders.refresh_live_stats();
 }
 
@@ -311,6 +458,53 @@ mod tests {
     }
 
     #[test]
+    fn fixed_step_readiness_comes_from_cells_not_render_progress() {
+        let mut world = engine_world::World::new();
+        let cell = CellPos::new(0, 0, 0);
+        world.set(cell, Some(engine_core::MaterialId(1)));
+        world.take_dirty();
+        let camera = engine_core::GlobalPos::new(0.5, 0.5, 0.5);
+        let volume = cell.volume();
+
+        let mut statics = StaticColliders::default();
+        assert_eq!(statics.pending_for_fixed_step(&world, camera), 1);
+        statics.entries.insert(
+            volume,
+            StaticColliderEntry {
+                entity: None,
+                fingerprint: StaticCollisionFingerprint::of(&world, volume),
+                boxes: 0,
+                bytes: 0,
+            },
+        );
+        assert_eq!(statics.pending_for_fixed_step(&world, camera), 0);
+
+        let id = FragmentId {
+            sequence: 7,
+            index: 0,
+        };
+        let cells = BTreeSet::from([cell]);
+        let mut fragment = Fragment::from_cells(id, &world, &cells).expect("one-cell fragment");
+        fragment.pose.translation = camera;
+
+        let mut fragments = DynamicFragments::default();
+        fragments.insert(fragment);
+        let mut bodies = FragmentBodies::default();
+
+        assert_eq!(
+            bodies.pending_for_fixed_step(&fragments, Some(camera)),
+            1,
+            "a native fragment with no current body must hold a scripted step"
+        );
+
+        // A hard-budget refusal is a settled host-policy result, not an async
+        // race. Treat it as ready so the replay cannot deadlock waiting for a
+        // body the configured budget explicitly forbids.
+        bodies.blocked.insert(id);
+        assert_eq!(bodies.pending_for_fixed_step(&fragments, Some(camera)), 0);
+    }
+
+    #[test]
     fn distance_math_does_not_overflow_at_world_extremes() {
         let bounds = CellBounds::new(
             CellPos::new(i32::MAX - 15, 0, 0),
@@ -367,10 +561,6 @@ impl DynamicFragments {
         self.store.insert(fragment)
     }
 
-    #[expect(
-        dead_code,
-        reason = "consumed by fragment lifecycle/streaming in 0003.13"
-    )]
     pub fn remove(&mut self, id: FragmentId) -> Option<Fragment> {
         self.store.remove(id)
     }
@@ -389,6 +579,19 @@ impl DynamicFragments {
 
     pub fn iter(&self) -> impl Iterator<Item = (FragmentId, &Fragment)> {
         self.store.iter()
+    }
+
+    pub fn store_ref(&self) -> &FragmentStore {
+        &self.store
+    }
+
+    /// The store itself, for a transaction that owns the whole reconcile.
+    ///
+    /// Handed out because `damage_fragment_store_with_parts` is the one atomic
+    /// path that replaces a parent with children, and reimplementing it here
+    /// would be a second thing to keep atomic.
+    pub fn store_mut(&mut self) -> &mut FragmentStore {
+        &mut self.store
     }
 
     pub fn replace_store(&mut self, store: FragmentStore) {
@@ -426,6 +629,7 @@ struct FragmentBodyEntry {
     entity: Entity,
     collision_boxes: u64,
     collision_bytes: u64,
+    fingerprint: FragmentGeometryFingerprint,
 }
 
 /// Backend entities corresponding to engine-owned fragments.
@@ -459,14 +663,32 @@ impl FragmentCapacity {
 #[derive(Resource, Default)]
 pub struct FragmentBodies {
     entries: BTreeMap<FragmentId, FragmentBodyEntry>,
+    jobs: BTreeMap<
+        FragmentId,
+        (
+            FragmentGeometryFingerprint,
+            Task<FragmentCollisionJobResult>,
+        ),
+    >,
+    ready: BTreeMap<FragmentId, FragmentCollisionJobResult>,
     blocked: BTreeSet<FragmentId>,
     last_capacity: Option<FragmentCapacity>,
     withheld_current: u64,
     withheld_total: u64,
     pending_spawn_current: u64,
+    stale_results: u64,
+    max_pending_spawn: u64,
+    max_active_collision_jobs: usize,
+    max_ready_collision_results: usize,
 }
 
 impl FragmentBodies {
+    pub(crate) fn is_current(&self, fragment: &Fragment) -> bool {
+        self.entries
+            .get(&fragment.id)
+            .is_some_and(|entry| entry.fingerprint.matches(fragment))
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -483,14 +705,59 @@ impl FragmentBodies {
         self.pending_spawn_current
     }
 
+    pub fn max_pending_spawn(&self) -> u64 {
+        self.max_pending_spawn
+    }
+
+    pub fn max_active_collision_jobs(&self) -> usize {
+        self.max_active_collision_jobs
+    }
+
+    pub fn max_ready_collision_results(&self) -> usize {
+        self.max_ready_collision_results
+    }
+
+    pub fn stale_collision_results(&self) -> u64 {
+        self.stale_results
+    }
+
+    /// Fragments inside physics residency that do not yet have current
+    /// collision. A budget-withheld fragment is a settled host-policy decision,
+    /// so it does not deadlock deterministic stepping; jobs/ready results do.
+    pub(crate) fn pending_for_fixed_step(
+        &self,
+        fragments: &DynamicFragments,
+        camera: Option<engine_core::GlobalPos>,
+    ) -> usize {
+        fragments
+            .iter()
+            .filter(|(id, fragment)| {
+                *id == SMOKE_FRAGMENT_ID
+                    || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+            })
+            .filter(|(id, fragment)| {
+                !self.blocked.contains(id)
+                    && !self
+                        .entries
+                        .get(id)
+                        .is_some_and(|entry| entry.fingerprint.matches(fragment))
+            })
+            .count()
+    }
+
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in std::mem::take(&mut self.entries) {
             commands.entity(entry.entity).despawn();
         }
+        self.jobs.clear();
+        self.ready.clear();
         self.blocked.clear();
         self.last_capacity = None;
         self.withheld_current = 0;
         self.pending_spawn_current = 0;
+        self.max_pending_spawn = 0;
+        self.max_active_collision_jobs = 0;
+        self.max_ready_collision_results = 0;
     }
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
@@ -566,6 +833,12 @@ fn env_u64(name: &str) -> Option<u64> {
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct DynamicFragmentBody(FragmentId);
 
+impl DynamicFragmentBody {
+    pub(crate) const fn id(self) -> FragmentId {
+        self.0
+    }
+}
+
 type FragmentBodyQuery<'w, 's> = Query<
     'w,
     's,
@@ -610,38 +883,99 @@ fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos
 /// Creation/destruction happens in the ordinary host update. Physics then steps
 /// in Avian's fixed schedule, and `readback_fragment_bodies` copies the result
 /// back into the engine-owned fragment afterwards.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct FragmentBodySources<'w, 's> {
+    world: Res<'w, WorldRes>,
+    statics: Res<'w, StaticColliders>,
+    fragments: Res<'w, DynamicFragments>,
+    renders: Res<'w, crate::fragment_render::FragmentEntities>,
+    budget: Res<'w, FragmentBudgetRes>,
+    camera: Option<Single<'w, 's, &'static FlyCamera>>,
+}
+
 pub fn sync_fragment_bodies(
     mut commands: Commands,
-    fragments: Res<DynamicFragments>,
-    renders: Res<crate::fragment_render::FragmentEntities>,
-    budget: Res<FragmentBudgetRes>,
-    camera: Option<Single<&FlyCamera>>,
+    sources: FragmentBodySources,
     mut bodies: ResMut<FragmentBodies>,
 ) {
+    let FragmentBodySources {
+        world,
+        statics,
+        fragments,
+        renders,
+        budget,
+        camera,
+    } = sources;
     bodies.withheld_current = 0;
     bodies.pending_spawn_current = 0;
     let camera = camera.map(|camera| camera.global);
+    let static_collision_ready =
+        camera.is_none_or(|camera| statics.pending_for_fixed_step(&world.0, camera) == 0);
     let wanted: BTreeSet<_> = fragments
         .iter()
         .filter(|(id, fragment)| {
             *id == SMOKE_FRAGMENT_ID
-                || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+                || (static_collision_ready
+                    && camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera)))
         })
         .map(|(id, _)| id)
         .collect();
 
-    let gone: Vec<_> = bodies
+    // A body may move indefinitely without changing its local collider. Only a
+    // geometry fingerprint change (or leaving physics residency) invalidates it.
+    //
+    // Static collision uncertainty is also a residency boundary: real fragment
+    // bodies temporarily leave the backend while nearby static colliders rebuild.
+    // Their pose and velocity were read back after the previous fixed step and
+    // remain engine-owned, so re-entry resumes motion instead of simulating
+    // through collision that is known to be incomplete.
+    let remove_bodies: Vec<_> = bodies
         .entries
-        .keys()
-        .filter(|id| !wanted.contains(id))
-        .copied()
+        .iter()
+        .filter_map(|(id, entry)| {
+            let current = fragments.get(*id);
+            let stale = current.is_some_and(|fragment| !entry.fingerprint.matches(fragment));
+            (!wanted.contains(id) || current.is_none() || stale).then_some(*id)
+        })
         .collect();
-    for id in gone {
+    for id in remove_bodies {
         if let Some(entry) = bodies.entries.remove(&id) {
             commands.entity(entry.entity).despawn();
         }
     }
+
+    bodies.jobs.retain(|id, (fingerprint, _)| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| fingerprint.matches(fragment))
+    });
+    bodies.ready.retain(|id, result| {
+        wanted.contains(id)
+            && fragments
+                .get(*id)
+                .is_some_and(|fragment| result.is_current(fragment))
+    });
     bodies.blocked.retain(|id| wanted.contains(id));
+
+    let mut completed = Vec::new();
+    bodies.jobs.retain(|id, (_, task)| match check_ready(task) {
+        Some(result) => {
+            completed.push((*id, result));
+            false
+        }
+        None => true,
+    });
+    for (id, result) in completed {
+        if fragments
+            .get(id)
+            .is_some_and(|fragment| wanted.contains(&id) && result.is_current(fragment))
+        {
+            bodies.ready.insert(id, result);
+        } else {
+            bodies.stale_results = bodies.stale_results.saturating_add(1);
+        }
+    }
 
     let mut account = budget.account(&fragments, &bodies, renders.mesh_bytes());
     let capacity = FragmentCapacity::remaining(budget.0, account);
@@ -649,49 +983,66 @@ pub fn sync_fragment_bodies(
         .last_capacity
         .is_some_and(|previous| capacity.increased_from(previous))
     {
-        // Only retry fragments rejected by the hard budget when capacity has
-        // actually increased. Otherwise a permanently-too-large fragment would
-        // rebuild the same greedy collider every rendered frame forever.
         bodies.blocked.clear();
     }
 
-    let mut spawned_this_frame = 0usize;
+    // Collider compilation is pure CPU work and runs on bounded workers. Avian
+    // entity creation remains on the main thread after stale/budget validation.
+    let pool = AsyncComputeTaskPool::get();
     for (id, fragment) in fragments.iter() {
-        if !wanted.contains(&id) {
+        if !wanted.contains(&id)
+            || bodies.entries.contains_key(&id)
+            || bodies.jobs.contains_key(&id)
+            || bodies.ready.contains_key(&id)
+            || bodies.blocked.contains(&id)
+        {
             continue;
         }
-        if bodies.entries.contains_key(&id) {
-            continue;
-        }
-        // In the sandbox, visible geometry is admitted first. Do not create an
-        // invisible simulated body for a fragment whose render mesh was held
-        // back by the shared fragment budget.
-        if id != SMOKE_FRAGMENT_ID && !renders.contains(id) {
-            bodies.pending_spawn_current += 1;
-            continue;
-        }
-        if bodies.blocked.contains(&id) {
-            bodies.withheld_current += 1;
-            continue;
-        }
-        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
-            bodies.pending_spawn_current += 1;
+        if bodies.jobs.len() >= MAX_ACTIVE_FRAGMENT_COLLISION_JOBS {
+            bodies.pending_spawn_current = bodies.pending_spawn_current.saturating_add(1);
             continue;
         }
 
-        // Cheap caps first: do not compile a collider merely to discover that
-        // no additional body or box can possibly be admitted.
+        // Cheap caps first. Exact collision size is checked when the worker
+        // returns, before any backend body is created.
         if account.footprint.physics_bodies >= budget.0.max_physics_bodies
             || account.footprint.collision_boxes >= budget.0.max_collision_boxes
             || account.footprint.tracked_bytes() >= budget.0.hard_bytes
         {
             bodies.blocked.insert(id);
-            bodies.withheld_current += 1;
-            bodies.withheld_total += 1;
+            bodies.withheld_total = bodies.withheld_total.saturating_add(1);
             continue;
         }
 
-        let descriptor = FragmentPhysicsDescriptor::from_fragment(fragment);
+        let input = FragmentCollisionJobInput::new(fragment);
+        let fingerprint = input.fingerprint();
+        bodies
+            .jobs
+            .insert(id, (fingerprint, pool.spawn(async move { input.run() })));
+    }
+
+    let ready_ids: Vec<_> = bodies.ready.keys().copied().collect();
+    let mut spawned_this_frame = 0usize;
+    for id in ready_ids {
+        if spawned_this_frame >= MAX_FRAGMENT_BODY_SPAWNS_PER_FRAME {
+            break;
+        }
+        let Some(fragment) = fragments.get(id) else {
+            bodies.ready.remove(&id);
+            continue;
+        };
+        if !wanted.contains(&id) {
+            bodies.ready.remove(&id);
+            continue;
+        }
+        let result = bodies.ready.remove(&id).expect("ready id came from map");
+        if !result.is_current(fragment) {
+            bodies.stale_results = bodies.stale_results.saturating_add(1);
+            continue;
+        }
+
+        let descriptor =
+            FragmentPhysicsDescriptor::from_fragment_with_collider(fragment, result.collider);
         let next = FragmentFootprint {
             collision_bytes: descriptor.collision_bytes(),
             collision_boxes: descriptor.collision_boxes() as u64,
@@ -700,8 +1051,7 @@ pub fn sync_fragment_bodies(
         };
         if budget.0.pressure_with(account, next) == FragmentPressure::OverHard {
             bodies.blocked.insert(id);
-            bodies.withheld_current += 1;
-            bodies.withheld_total += 1;
+            bodies.withheld_total = bodies.withheld_total.saturating_add(1);
             continue;
         }
 
@@ -742,12 +1092,45 @@ pub fn sync_fragment_bodies(
                 entity: entity.id(),
                 collision_boxes: descriptor.collision_boxes() as u64,
                 collision_bytes: descriptor.collision_bytes(),
+                fingerprint: result.fingerprint,
             },
         );
         spawned_this_frame += 1;
         account.footprint += next;
     }
+
+    bodies.pending_spawn_current = bodies
+        .pending_spawn_current
+        .saturating_add(bodies.jobs.len() as u64)
+        .saturating_add(bodies.ready.len() as u64);
+    bodies.max_pending_spawn = bodies.max_pending_spawn.max(bodies.pending_spawn_current);
+    bodies.max_active_collision_jobs = bodies.max_active_collision_jobs.max(bodies.jobs.len());
+    bodies.max_ready_collision_results = bodies.max_ready_collision_results.max(bodies.ready.len());
+    bodies.withheld_current = bodies
+        .blocked
+        .iter()
+        .filter(|id| wanted.contains(id))
+        .count() as u64;
     bodies.last_capacity = Some(FragmentCapacity::remaining(budget.0, account));
+}
+
+/// Number of authoritative collision units that still have to settle before a
+/// scripted fixed step can run without observing render-frame progress.
+///
+/// Rendering is intentionally absent from this decision. Static collision is
+/// derived from live world cells; fragment collision is derived from native
+/// fragment cells. A replay may take more wall-clock time on a slow machine,
+/// but it must not take a different physics step merely because mesh uploads or
+/// rendered frames retired at a different rate.
+pub(crate) fn pending_fixed_step_collision_work(
+    world: &engine_world::World,
+    fragments: &DynamicFragments,
+    bodies: &FragmentBodies,
+    statics: &StaticColliders,
+    camera: Option<engine_core::GlobalPos>,
+) -> usize {
+    let static_pending = camera.map_or(0, |camera| statics.pending_for_fixed_step(world, camera));
+    static_pending.saturating_add(bodies.pending_for_fixed_step(fragments, camera))
 }
 
 /// Copy backend simulation state back into Micrology fragments.

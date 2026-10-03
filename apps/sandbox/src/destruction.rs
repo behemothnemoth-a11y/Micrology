@@ -6,6 +6,10 @@
 //! the engine crates remain independent from Bevy.
 
 use crate::fragment_render::FragmentEntities;
+use crate::fragment_streaming::{
+    FragmentStreamRes, FragmentStreamTasks, finish_fragment_saves, flush_fragment_state,
+    reload_fragment_index,
+};
 use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
@@ -14,8 +18,9 @@ use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 use engine_core::{CellPos, RegionPos};
 use engine_destruction::{
-    DestructionSequence, DetachRefusal, ResultDisposition, SnapshotLimits, StructuralLimits,
-    StructureJobInput, StructureJobResult, detach_if,
+    DestructionSequence, DetachRefusal, ResultDisposition, SecondaryDamage, SnapshotLimits,
+    StructuralLimits, StructureJobInput, StructureJobResult, couple_damage_to_detachment,
+    detach_if,
 };
 use engine_world::{EditOutcome, WorldEditBatch};
 use std::collections::{BTreeSet, VecDeque};
@@ -27,6 +32,7 @@ const MAX_STRUCTURAL_DISPATCH_PER_FRAME: usize = 1;
 const DEFAULT_MAX_IN_FLIGHT_SNAPSHOT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_RETRIES: u8 = 4;
 const MAX_PENDING_DESTRUCTION_REQUESTS: usize = 64;
+const MAX_STRUCTURAL_DEMAND_REGIONS: usize = 64;
 
 fn snapshot_byte_cap() -> u64 {
     std::env::var("MICROLOGY_STRUCTURE_SNAPSHOT_MB")
@@ -43,6 +49,7 @@ struct DestructionRequest {
     snapshot_volumes: usize,
     retries: u8,
     waiting_for: BTreeSet<RegionPos>,
+    cause: Option<SecondaryDamage>,
 }
 
 struct StructuralTask {
@@ -69,6 +76,8 @@ pub struct DestructionStats {
     pub pending_requests: usize,
     pub active_jobs: usize,
     pub waiting_for_regions: usize,
+    pub demanded_regions: usize,
+    pub demand_withheld_regions: usize,
     pub in_flight_snapshot_bytes: u64,
     pub last_snapshot_bytes: u64,
 }
@@ -98,33 +107,50 @@ impl DestructionHost {
 
     /// Queue structural work produced by one already-applied world edit.
     pub fn enqueue_edit(&mut self, outcome: &EditOutcome) {
+        self.enqueue_edit_with_cause(outcome, None);
+    }
+
+    /// Queue a structural question caused by one damage event. If several
+    /// distinct causes are coalesced, the structural question is preserved but
+    /// its impulse is dropped rather than guessing which event owns it.
+    pub fn enqueue_damage_edit(&mut self, outcome: &EditOutcome, cause: SecondaryDamage) {
+        self.enqueue_edit_with_cause(outcome, Some(cause));
+    }
+
+    fn enqueue_edit_with_cause(&mut self, outcome: &EditOutcome, cause: Option<SecondaryDamage>) {
         if !outcome.may_detach() || outcome.structural_candidates.is_empty() {
             return;
         }
 
         let roots = outcome.structural_candidates.clone();
-        // Repeated carve events can expose the same surface before the first
-        // worker returns. Exact duplicate roots do not need duplicate jobs.
-        if self.requests.iter().any(|request| request.roots == roots)
-            || self.tasks.iter().any(|task| task.request.roots == roots)
+        if let Some(existing) = self
+            .requests
+            .iter_mut()
+            .find(|request| request.roots == roots)
         {
+            if existing.cause != cause {
+                existing.cause = None;
+            }
+            return;
+        }
+        if self.tasks.iter().any(|task| task.request.roots == roots) {
             return;
         }
 
-        if self.requests.len() >= MAX_PENDING_DESTRUCTION_REQUESTS {
-            // Preserve the question rather than dropping it: merge overflow
-            // roots into the newest queued request. The next classification can
-            // resolve several disconnected components in one pass.
-            if let Some(last) = self.requests.back_mut() {
-                last.roots.extend(roots);
-                last.waiting_for
-                    .extend(outcome.unresolved_regions.iter().copied());
-                last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
-                last.retries = 0;
-                self.stats.coalesced_requests += 1;
-                self.stats.requested += 1;
-                return;
+        if self.requests.len() >= MAX_PENDING_DESTRUCTION_REQUESTS
+            && let Some(last) = self.requests.back_mut()
+        {
+            last.roots.extend(roots);
+            last.waiting_for
+                .extend(outcome.unresolved_regions.iter().copied());
+            last.snapshot_volumes = last.snapshot_volumes.max(INITIAL_SNAPSHOT_VOLUMES);
+            last.retries = 0;
+            if last.cause != cause {
+                last.cause = None;
             }
+            self.stats.coalesced_requests += 1;
+            self.stats.requested += 1;
+            return;
         }
 
         self.requests.push_back(DestructionRequest {
@@ -132,6 +158,7 @@ impl DestructionHost {
             snapshot_volumes: INITIAL_SNAPSHOT_VOLUMES,
             retries: 0,
             waiting_for: outcome.unresolved_regions.clone(),
+            cause,
         });
         self.stats.requested += 1;
     }
@@ -274,19 +301,23 @@ pub fn load_fragment_state(
     stream: Res<StreamRes>,
     mut host: ResMut<DestructionHost>,
     mut fragments: ResMut<DynamicFragments>,
+    mut fragment_stream: ResMut<FragmentStreamRes>,
+    mut fragment_tasks: ResMut<FragmentStreamTasks>,
     mut status: ResMut<StatusLine>,
 ) {
-    match engine_io::load_fragment_store(&stream.dir) {
-        Ok((store, sequence, _spatial)) => {
-            let count = store.len();
-            fragments.replace_store(store);
-            host.sequence = sequence;
+    match engine_io::load_fragment_index(&stream.dir) {
+        Ok(index) => {
+            let count = index.fragment_count();
+            host.sequence = DestructionSequence::new(index.next_destruction_sequence);
+            fragments.replace_store(Default::default());
+            fragment_tasks.clear();
+            fragment_stream.reset(index);
             if count > 0 {
-                status.0 = format!("loaded {count} persisted fragment(s)");
+                status.0 = format!("indexed {count} persisted fragment(s) for streaming");
             }
         }
         Err(error) => {
-            status.0 = format!("fragment load failed: {error}");
+            status.0 = format!("fragment index load failed: {error}");
         }
     }
 }
@@ -295,32 +326,47 @@ pub fn save_fragment_state(
     stream: &StreamRes,
     host: &DestructionHost,
     fragments: &DynamicFragments,
-) -> Result<usize, engine_io::IoError> {
-    if let Some(store) = fragments.persistent_store_ref() {
-        let count = store.len();
-        engine_io::save_fragment_store(&stream.dir, store, host.sequence)?;
-        return Ok(count);
-    }
-
-    // Only the opt-in runtime smoke reaches this path; exclude its reserved ID.
-    let store = fragments.persistent_store();
-    let count = store.len();
-    engine_io::save_fragment_store(&stream.dir, &store, host.sequence)?;
-    Ok(count)
+    fragment_stream: &mut FragmentStreamRes,
+) -> Result<usize, String> {
+    flush_fragment_state(&stream.dir, host.sequence, fragments, fragment_stream)
 }
 
 pub fn reload_fragment_state(
     stream: &StreamRes,
     host: &mut DestructionHost,
     fragments: &mut DynamicFragments,
-) -> Result<usize, engine_io::IoError> {
-    let (store, sequence, _spatial) = engine_io::load_fragment_store(&stream.dir)?;
-    let count = store.len();
-    fragments.replace_store(store);
+    fragment_stream: &mut FragmentStreamRes,
+    fragment_tasks: &mut FragmentStreamTasks,
+) -> Result<usize, String> {
+    let (sequence, count) =
+        reload_fragment_index(&stream.dir, fragments, fragment_stream, fragment_tasks)?;
     host.sequence = sequence;
     host.requests.clear();
     host.tasks.clear();
     Ok(count)
+}
+
+/// Publish the bounded union of regions currently required by structural
+/// questions. The generic streamer owns actual I/O, memory pressure and pinning;
+/// destruction only states what data would make its exact answer conclusive.
+pub fn sync_structural_region_demand(
+    mut stream: ResMut<StreamRes>,
+    mut host: ResMut<DestructionHost>,
+) {
+    let all: BTreeSet<RegionPos> = host
+        .requests
+        .iter()
+        .flat_map(|request| request.waiting_for.iter().copied())
+        .collect();
+    let total = all.len();
+    let demanded: BTreeSet<RegionPos> = all
+        .into_iter()
+        .take(MAX_STRUCTURAL_DEMAND_REGIONS)
+        .collect();
+
+    host.stats.demanded_regions = demanded.len();
+    host.stats.demand_withheld_regions = total.saturating_sub(demanded.len());
+    stream.streamer.set_demanded_regions(demanded);
 }
 
 /// Dispatch at most one structural snapshot per rendered frame.
@@ -390,6 +436,7 @@ pub struct DestructionPollResources<'w> {
     world: ResMut<'w, WorldRes>,
     stream: ResMut<'w, StreamRes>,
     host: ResMut<'w, DestructionHost>,
+    impact: ResMut<'w, crate::impact::ImpactHost>,
     fragments: ResMut<'w, DynamicFragments>,
     bodies: Res<'w, FragmentBodies>,
     renders: Res<'w, FragmentEntities>,
@@ -403,6 +450,7 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
         mut world,
         mut stream,
         mut host,
+        mut impact,
         mut fragments,
         bodies,
         renders,
@@ -428,6 +476,12 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
             }
             ResultDisposition::Inconclusive => {
                 host.stats.inconclusive += 1;
+                info!(
+                    "destruction inconclusive: required={:?} bigger_job={} byte_limit={}",
+                    result.required_regions(),
+                    result.needs_a_bigger_job(),
+                    result.hit_byte_limit
+                );
 
                 // Only regions the world genuinely does not have belong on the
                 // streaming wait list. Snapshot truncation is a different
@@ -436,7 +490,7 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                 if !required.is_empty() {
                     request.waiting_for = required;
                     status.0 = format!(
-                        "destruction waiting for {} region(s); move closer to load them",
+                        "destruction requesting {} structural region(s)",
                         request.waiting_for.len()
                     );
                     host.requeue(request);
@@ -473,9 +527,20 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                         .sum();
                     current_bytes.saturating_add(new_storage) <= hard_bytes
                 }) {
-                    Ok(outcome) => {
+                    Ok(mut outcome) => {
+                        let cause = request.cause;
+                        let coupled = cause
+                            .map(|cause| couple_damage_to_detachment(&mut outcome, &cause.event))
+                            .unwrap_or(0);
+                        let generation = cause.map(|cause| cause.generation).unwrap_or(0);
                         let fragment_count = outcome.fragments.len();
                         let cell_count = outcome.cells_detached();
+                        let ids: Vec<_> = outcome
+                            .fragments
+                            .iter()
+                            .map(|fragment| fragment.id)
+                            .collect();
+                        impact.note_fragments(ids, generation);
                         for region in &outcome.edit.dirtied_regions {
                             stream.streamer.note_region_edited(*region);
                         }
@@ -485,9 +550,13 @@ pub fn poll_structural_jobs(resources: DestructionPollResources) {
                         host.stats.detached_transactions += 1;
                         host.stats.fragments_created += fragment_count as u64;
                         host.stats.cells_detached += cell_count;
-                        status.0 = format!(
-                            "detached {cell_count} cells into {fragment_count} fragment(s)"
-                        );
+                        status.0 = if coupled > 0 {
+                            format!(
+                                "detached {cell_count} cells into {fragment_count} fragment(s); coupled {coupled} impulse(s)"
+                            )
+                        } else {
+                            format!("detached {cell_count} cells into {fragment_count} fragment(s)")
+                        };
                     }
                     Err(DetachRefusal::NothingToDo) => {}
                     Err(DetachRefusal::Stale) => {
@@ -514,11 +583,21 @@ pub fn flush_fragments_on_exit(
     stream: Res<StreamRes>,
     host: Res<DestructionHost>,
     fragments: Res<DynamicFragments>,
+    mut fragment_stream: ResMut<FragmentStreamRes>,
+    mut fragment_tasks: ResMut<FragmentStreamTasks>,
+    mut status: ResMut<StatusLine>,
 ) {
     if exits.read().next().is_none() {
         return;
     }
-    match save_fragment_state(&stream, &host, &fragments) {
+    finish_fragment_saves(
+        &stream,
+        &mut fragment_stream,
+        &mut fragment_tasks,
+        &fragments,
+        &mut status,
+    );
+    match save_fragment_state(&stream, &host, &fragments, &mut fragment_stream) {
         Ok(count) => info!("flushed {count} fragment(s) on exit"),
         Err(error) => error!("fragment flush FAILED: {error}"),
     }

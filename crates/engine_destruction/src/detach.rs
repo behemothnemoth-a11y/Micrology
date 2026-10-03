@@ -80,7 +80,7 @@ impl DestructionSequence {
         self.0
     }
 
-    fn take(&mut self) -> u64 {
+    pub(crate) fn take(&mut self) -> u64 {
         let current = self.0;
         self.0 += 1;
         current

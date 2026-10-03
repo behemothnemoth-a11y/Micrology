@@ -1,0 +1,3 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.15s
+     Running `target\debug\destruction_bench.exe --check-results`
+fixtures/destruction/benchmark-results.json is current and every executed case accepts

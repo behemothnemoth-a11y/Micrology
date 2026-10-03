@@ -19,6 +19,10 @@ A fast test loop is the point; keep it that way.
 | `crates/engine_geometry/tests/surface.rs` | the scope's fixture cases, winding, mesh conversion |
 | `crates/engine_geometry/tests/oracle.rs` | greedy-vs-exact equivalence, determinism |
 | `crates/engine_geometry/tests/incremental.rs` | edit → dirty → local rebuild; volume/section separation |
+| `crates/engine_destruction/tests/fracture.rs` | the destruction wall under one repeated impact: sparse fracture state, bond canonicalisation, determinism, and every conservative path |
+| `crates/engine_destruction/tests/fracture_connectivity.rs` | fracture-aware connectivity against the occupancy oracle on seven shapes, and crack-driven separation through the existing detach transaction |
+| `crates/engine_destruction/tests/fracture_ownership.rs` | region ownership of fracture state, evict/restore checksum equality, and the two hygiene paths |
+| `crates/engine_destruction/tests/fracture_fragment.rs` | fragment-local fracture: adoption on detach, re-destruction, crack-driven re-fracture and record remapping |
 | `crates/engine_io/tests/persistence.rs` | round trips, byte determinism, version handling, format stability |
 | `crates/engine_stress/tests/baseline.rs` | stress-scenario counters against the committed baseline |
 
@@ -125,6 +129,25 @@ Scenarios exist to stop one friendly benchmark standing in for "performance".
 can achieve literally nothing; `material_stress` blocks merging without changing
 the shape; `boundary_storm` is the one that forces neighbouring sections to
 rebuild. When a change makes `dense_solid` faster, check what it did to `checker`.
+
+## DROP 0006 destruction benchmark pack
+
+The permanent homogeneous destruction wall and its ordered acceptance protocol
+live in `engine_stress::destruction_benchmark`, with the committed canonical spec
+at `fixtures/destruction/benchmark-pack.json`. This pack contains no fracture
+implementation; it exists so fracture algorithms are judged against a stable
+fixture rather than moving the wall every time behavior changes.
+
+```sh
+cargo run -p engine_stress --bin destruction_bench
+cargo run -p engine_stress --bin destruction_bench -- --check
+cargo run -p engine_stress --bin destruction_bench -- --template
+```
+
+Fracture-specific result fields use `null` until an implementation can actually
+measure them. Never rewrite missing data as zero. See
+`docs/drop-0006-destruction-benchmarks.md` for the eight ordered cases and their
+acceptance rules.
 
 ## The other harness tools
 

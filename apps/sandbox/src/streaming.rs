@@ -403,7 +403,9 @@ pub fn apply_mesh_results(
     }
 
     let grid = geometry.cache.grid();
-    let ready = stream.scheduler.drain_ready(&world.0, grid);
+    let ready = stream
+        .scheduler
+        .drain_ready_with_byte_budget(&world.0, grid, 2 * 1024 * 1024);
     if ready.is_empty() {
         return;
     }

@@ -306,14 +306,18 @@ pub fn classify_from_roots(
     let mut seen: BTreeSet<CellPos> = BTreeSet::new();
     let mut remaining = limits.max_cells_total;
 
-    for root in roots {
+    // Held as an iterator rather than consumed by a `for` loop so that stopping
+    // early can say *which* roots went unexamined. A bare `break` dropped them,
+    // and a dropped root is invisible to `is_settled`.
+    let mut pending = roots.iter().copied();
+    while let Some(root) = pending.next() {
         if seen.contains(&root) {
             set.roots_merged += 1;
             continue;
         }
         if set.components.len() >= limits.max_components {
             set.components.push(Component {
-                cells: BTreeSet::from([root]),
+                cells: unexamined(root, &mut pending, &seen),
                 classification: Classification::Deferred {
                     reason: DeferReason::TooManyComponents,
                 },
@@ -327,9 +331,29 @@ pub fn classify_from_roots(
         set.components.push(component);
 
         if remaining == 0 {
+            // Astra's WIP guarded this `break` on the last component having
+            // deferred, so that an empty or exactly-completed component could
+            // not hide unvisited roots. That intent is kept and widened: the
+            // guard alone let an isolated or unoccupied root close for free and
+            // the loop walk every remaining root on a spent budget, so the pass
+            // still ended up entirely conclusive — and did unbounded work doing
+            // it. Charging the root and naming the unexamined roots covers the
+            // same case without either hole.
             // The pass budget is spent. Anything not yet looked at is deferred
             // rather than assumed; a root nobody searched is not a root nobody
-            // needed.
+            // needed. Recording them as a deferred component is what keeps
+            // budget exhaustion distinguishable from a conclusive answer: the
+            // components already found may each be settled, and the pass as a
+            // whole still is not.
+            let rest = unexamined_rest(&mut pending, &seen);
+            if !rest.is_empty() {
+                set.components.push(Component {
+                    cells: rest,
+                    classification: Classification::Deferred {
+                        reason: DeferReason::PassBudgetSpent,
+                    },
+                });
+            }
             break;
         }
     }
@@ -339,6 +363,34 @@ pub fn classify_from_roots(
     // than from the order a worker happened to finish in.
     set.components.sort_by_key(|c| c.anchor_cell());
     set
+}
+
+/// The roots a stopped pass never looked at, `first` included.
+///
+/// Private to the occupancy classifier. The fracture-aware classifier keeps its
+/// own copy of this bookkeeping rather than calling in here: the two passes
+/// share the `Component`/`Classification` vocabulary and nothing else, so that
+/// their agreement stays something a test proves rather than something the code
+/// guarantees by construction.
+///
+/// Roots already absorbed into a component that *was* classified are not
+/// unexamined, which is why `seen` is consulted.
+fn unexamined(
+    first: CellPos,
+    pending: &mut impl Iterator<Item = CellPos>,
+    seen: &BTreeSet<CellPos>,
+) -> BTreeSet<CellPos> {
+    let mut rest = BTreeSet::from([first]);
+    rest.extend(unexamined_rest(pending, seen));
+    rest
+}
+
+/// The roots a stopped pass never looked at, excluding the current one.
+fn unexamined_rest(
+    pending: &mut impl Iterator<Item = CellPos>,
+    seen: &BTreeSet<CellPos>,
+) -> BTreeSet<CellPos> {
+    pending.filter(|root| !seen.contains(root)).collect()
 }
 
 /// The flood fill itself.
@@ -355,10 +407,31 @@ fn search(
     let mut required: BTreeSet<RegionPos> = BTreeSet::new();
     let mut anchored = false;
 
+    // The root is charged against the budget like any other cell, and charged
+    // *before* it is looked at. Charging only neighbours left `max_cells_total`
+    // no bound at all: a pass over N roots in N distinct components visited N
+    // cells for free, and a pass handed a budget of zero still came back
+    // `Detached` — the one outcome that removes things. A cell the search has
+    // not paid to visit is a cell it may not conclude anything about, so an
+    // exhausted budget defers here rather than at the first neighbour.
+    if *remaining == 0 || limits.max_cells_per_component == 0 {
+        let reason = if limits.max_cells_per_component == 0 {
+            DeferReason::ComponentTooLarge
+        } else {
+            DeferReason::PassBudgetSpent
+        };
+        return Component {
+            cells: BTreeSet::new(),
+            classification: Classification::Deferred { reason },
+        };
+    }
+
     // A root that is not occupied is not a component. This happens when a
     // caller hands over a stale root — one the world removed between gathering
     // and searching — and treating it as an empty detached component would
-    // conjure a fragment out of nothing.
+    // conjure a fragment out of nothing. It is checked after the budget gate so
+    // that a stale root cannot report a conclusive `Supported` for a component
+    // that does not exist while the pass was in fact out of budget.
     if !cells.is_occupied(root) {
         return Component {
             cells: BTreeSet::new(),
@@ -366,6 +439,7 @@ fn search(
         };
     }
 
+    *remaining = remaining.saturating_sub(1);
     queue.push_back(root);
     visited.insert(root);
 

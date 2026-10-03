@@ -10,7 +10,7 @@ use crate::v2::{FORMAT_VERSION_V3, write_atomic};
 use engine_core::{CellPos, MaterialId, RegionPos, Revision, VolumePos};
 use engine_destruction::{
     DestructionSequence, Fragment, FragmentId, FragmentPhysicsState, FragmentPose,
-    FragmentSpatialIndex, FragmentState, FragmentStore, Rotation,
+    FragmentSpatialError, FragmentSpatialIndex, FragmentState, FragmentStore, Rotation,
 };
 use engine_volume::{SlotRun, Volume};
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,48 @@ impl FragmentIndex {
 
     pub fn fragment_count(&self) -> usize {
         self.fragments.len()
+    }
+
+    /// Build the complete discovery index from a fully resident store.
+    ///
+    /// This remains useful for migration/recovery and full-store tests. Normal
+    /// DROP 0004 streaming keeps this index alive while fragment payloads move
+    /// in and out of memory.
+    pub fn from_store(
+        store: &FragmentStore,
+        sequence: DestructionSequence,
+    ) -> Result<Self, FragmentSpatialError> {
+        Ok(Self {
+            next_destruction_sequence: sequence.peek(),
+            spatial: FragmentSpatialIndex::from_store(store)?,
+            fragments: store.ids().collect(),
+        })
+    }
+
+    /// Update or insert one authoritative fragment without rebuilding the
+    /// index from the currently resident store.
+    pub fn upsert_fragment(&mut self, fragment: &Fragment) -> Result<(), FragmentSpatialError> {
+        self.spatial.update(fragment)?;
+        self.fragments.insert(fragment.id);
+        self.next_destruction_sequence = self
+            .next_destruction_sequence
+            .max(fragment.id.sequence.saturating_add(1));
+        Ok(())
+    }
+
+    /// Remove one fragment identity from discovery data.
+    ///
+    /// Unloading a fragment must never call this. This is only for an
+    /// authoritative deletion/discard.
+    pub fn remove_fragment(&mut self, id: FragmentId) -> bool {
+        self.spatial.remove(id);
+        self.fragments.remove(&id)
+    }
+
+    /// Keep the persisted sequence at least as new as the engine-owned
+    /// destruction sequence. It never moves backwards.
+    pub fn note_sequence(&mut self, sequence: DestructionSequence) {
+        self.next_destruction_sequence = self.next_destruction_sequence.max(sequence.peek());
     }
 }
 
@@ -321,6 +363,31 @@ pub fn fragment_index_to_json(
     Ok(json)
 }
 
+/// Serialize an already-authoritative discovery index.
+///
+/// Unlike fragment_index_to_json, this does not derive membership from a
+/// FragmentStore. That distinction is required once most persisted fragments
+/// may be intentionally non-resident.
+pub fn fragment_index_state_to_json(index: &FragmentIndex) -> Result<String, IoError> {
+    let file = FragmentIndexFile {
+        format: FRAGMENT_INDEX_TAG.to_string(),
+        version: FORMAT_VERSION_V3,
+        next_destruction_sequence: index.next_destruction_sequence,
+        fragments: index.fragment_ids().map(FragmentIdFile::from).collect(),
+        regions: index
+            .spatial
+            .regions()
+            .map(|(pos, ids)| RegionFragmentFile {
+                pos,
+                fragments: ids.iter().copied().map(FragmentIdFile::from).collect(),
+            })
+            .collect(),
+    };
+    let mut json = serde_json::to_string_pretty(&file)?;
+    json.push('\n');
+    Ok(json)
+}
+
 pub fn fragment_index_from_json(json: &str) -> Result<FragmentIndex, IoError> {
     let file: FragmentIndexFile = serde_json::from_str(json)?;
     if file.format != FRAGMENT_INDEX_TAG {
@@ -410,6 +477,81 @@ pub fn save_fragment_index(
     json.push('\n');
     write_atomic(&fragment_index_path(dir), &json)?;
     Ok(spatial)
+}
+
+/// Persist an authoritative discovery index without requiring all fragment
+/// payloads to be resident.
+pub fn save_fragment_index_state(
+    dir: impl AsRef<Path>,
+    index: &FragmentIndex,
+) -> Result<(), IoError> {
+    write_atomic(
+        &fragment_index_path(dir),
+        &fragment_index_state_to_json(index)?,
+    )
+}
+
+fn remove_fragment_payload_if_present(dir: &Path, id: FragmentId) -> Result<bool, IoError> {
+    let path = fragment_path(dir, id);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(true),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(IoError::File { path, source }),
+    }
+}
+
+/// Authoritatively delete one persisted fragment.
+///
+/// The ordering is the durability rule: first atomically commit an index that
+/// no longer references the fragment, then remove its payload. A crash between
+/// those steps can leave an unreferenced payload, which is harmless and can be
+/// pruned later. Reversing the order could leave the durable index pointing at
+/// a missing payload and make an otherwise valid world unloadable.
+///
+/// Ordinary storage eviction must never call this function.
+pub fn delete_persisted_fragment(
+    dir: impl AsRef<Path>,
+    index: &mut FragmentIndex,
+    id: FragmentId,
+) -> Result<bool, IoError> {
+    if !index.contains(id) {
+        return Ok(false);
+    }
+
+    let dir = dir.as_ref();
+    let mut candidate = index.clone();
+    candidate.remove_fragment(id);
+    save_fragment_index_state(dir, &candidate)?;
+
+    // Once the index commit succeeds, the deletion is authoritative even if
+    // payload cleanup itself fails. Keep the in-memory index aligned with disk;
+    // a later prune can retry the now-harmless orphan.
+    *index = candidate;
+    let _ = remove_fragment_payload_if_present(dir, id)?;
+    Ok(true)
+}
+
+/// Remove payload files that are not referenced by an authoritative index.
+///
+/// Call this only after all fragment payload writes are quiesced and the index
+/// has been durably committed. Running it while a new payload is between its
+/// payload-write and index-write steps could erase recoverable crash-window
+/// state.
+pub fn prune_fragment_orphans(
+    dir: impl AsRef<Path>,
+    index: &FragmentIndex,
+) -> Result<usize, IoError> {
+    let dir = dir.as_ref();
+    let mut removed = 0usize;
+    for id in scan_fragments(dir)? {
+        if index.contains(id) {
+            continue;
+        }
+        if remove_fragment_payload_if_present(dir, id)? {
+            removed = removed.saturating_add(1);
+        }
+    }
+    Ok(removed)
 }
 
 /// Save the complete fragment collection and remove stale payload files.
@@ -512,6 +654,16 @@ pub fn scan_fragments(dir: impl AsRef<Path>) -> Result<Vec<FragmentId>, IoError>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine_core::{CellPos, MaterialId};
+    use engine_world::World;
+
+    fn one_cell_fragment(id: FragmentId, x: i32) -> Fragment {
+        let mut world = World::new();
+        let cell = CellPos::new(x, 0, 0);
+        world.fill_box(cell, cell, Some(MaterialId(1)));
+        let cells = BTreeSet::from([cell]);
+        Fragment::from_cells(id, &world, &cells).expect("fragment")
+    }
 
     #[test]
     fn fragment_names_round_trip() {
@@ -525,5 +677,66 @@ mod tests {
         assert_eq!(parse_fragment_file_name("index.json"), None);
         assert_eq!(parse_fragment_file_name("f.1.json"), None);
         assert_eq!(parse_fragment_file_name("f.a.2.json"), None);
+    }
+
+    #[test]
+    fn authoritative_index_keeps_nonresident_fragment_ids() {
+        let first = one_cell_fragment(FragmentId::new(1, 0), 0);
+        let second = one_cell_fragment(FragmentId::new(2, 0), 256);
+        let mut full = FragmentStore::default();
+        full.insert(first.clone());
+        full.insert(second.clone());
+
+        let mut index =
+            FragmentIndex::from_store(&full, DestructionSequence::new(3)).expect("index");
+
+        let mut moved = first.clone();
+        moved.update_from_physics(
+            FragmentPose {
+                translation: engine_core::GlobalPos::new(512.0, 0.0, 0.0),
+                rotation: Rotation::default(),
+            },
+            [0.0; 3],
+            [0.0; 3],
+            false,
+        );
+        index.upsert_fragment(&moved).expect("move");
+
+        let json = fragment_index_state_to_json(&index).expect("json");
+        let round_trip = fragment_index_from_json(&json).expect("round trip");
+
+        assert!(round_trip.contains(first.id));
+        assert!(round_trip.contains(second.id));
+        assert_eq!(round_trip.fragment_count(), 2);
+        assert!(
+            round_trip
+                .fragments_in(RegionPos::new(4, 0, 0))
+                .any(|id| id == first.id)
+        );
+    }
+
+    #[test]
+    fn unloading_is_distinct_from_authoritative_deletion() {
+        let first = one_cell_fragment(FragmentId::new(10, 0), 0);
+        let second = one_cell_fragment(FragmentId::new(11, 0), 256);
+        let mut full = FragmentStore::default();
+        full.insert(first.clone());
+        full.insert(second.clone());
+
+        let mut index =
+            FragmentIndex::from_store(&full, DestructionSequence::new(12)).expect("index");
+
+        let mut resident = FragmentStore::default();
+        resident.insert(first.clone());
+
+        // A partial resident store does not alter discovery by itself.
+        assert_eq!(resident.len(), 1);
+        assert_eq!(index.fragment_count(), 2);
+        assert!(index.contains(second.id));
+
+        // Only an explicit authoritative deletion removes discovery.
+        assert!(index.remove_fragment(second.id));
+        assert!(!index.contains(second.id));
+        assert_eq!(index.fragment_count(), 1);
     }
 }

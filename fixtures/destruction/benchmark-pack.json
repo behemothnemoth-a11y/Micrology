@@ -1,0 +1,266 @@
+{
+  "version": 2,
+  "fixture": {
+    "material_id": 9000,
+    "material_name": "baseline_structural_test_material",
+    "wall_min": [
+      48,
+      1,
+      62
+    ],
+    "wall_max": [
+      79,
+      18,
+      66
+    ],
+    "footing_min": [
+      46,
+      0,
+      61
+    ],
+    "footing_max": [
+      81,
+      0,
+      67
+    ],
+    "occupied_cells": 3132,
+    "anchored_cells": 252,
+    "populated_volumes": 12,
+    "resident_regions": 1,
+    "checksum_fnv1a64": "704df76eee29b211"
+  },
+  "cases": [
+    {
+      "case": "weak_center_hit",
+      "section_owner": "0006.0",
+      "description": "One weak normal hit into a fresh homogeneous wall.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 900,
+        "repetitions": 1,
+        "precondition": "fresh baseline wall"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "forbidden",
+        "fragment_creation": "forbidden",
+        "cumulative_response": "allowed",
+        "directional_response": "allowed",
+        "secondary_damage": "forbidden",
+        "notes": "Wall stays whole. Real sparse fracture state must remain after the hit."
+      }
+    },
+    {
+      "case": "repeated_center_hits",
+      "section_owner": "0006.0",
+      "description": "Repeat the exact weak center hit against existing damage.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 900,
+        "repetitions": 3,
+        "precondition": "same wall state carried forward between repetitions"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "allowed",
+        "fragment_creation": "allowed",
+        "cumulative_response": "required",
+        "directional_response": "allowed",
+        "secondary_damage": "forbidden",
+        "notes": "Later hits must observe prior fracture state; resetting between hits fails."
+      }
+    },
+    {
+      "case": "strong_center_hit",
+      "section_owner": "0006.1",
+      "description": "One strong center impact must produce local irregular failure.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 3500,
+        "repetitions": 1,
+        "precondition": "fresh baseline wall"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "required",
+        "fragment_creation": "allowed",
+        "cumulative_response": "allowed",
+        "directional_response": "allowed",
+        "secondary_damage": "forbidden",
+        "notes": "Failure must derive from fracture state, not a perfect spherical deletion mask."
+      }
+    },
+    {
+      "case": "edge_hit",
+      "section_owner": "0006.1",
+      "description": "A hit near a free wall edge exercises local geometry response.",
+      "stimulus": {
+        "target": [
+          49,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 2500,
+        "repetitions": 1,
+        "precondition": "fresh baseline wall"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "allowed",
+        "fragment_creation": "allowed",
+        "cumulative_response": "allowed",
+        "directional_response": "required",
+        "secondary_damage": "forbidden",
+        "notes": "The response must differ from the equivalent center hit because free surfaces differ."
+      }
+    },
+    {
+      "case": "angled_hit",
+      "section_owner": "0006.1",
+      "description": "An oblique impact proves that incoming direction is observable.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          700,
+          0,
+          -700
+        ],
+        "relative_energy_milli": 2500,
+        "repetitions": 1,
+        "precondition": "fresh baseline wall"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "allowed",
+        "fragment_creation": "allowed",
+        "cumulative_response": "allowed",
+        "directional_response": "required",
+        "secondary_damage": "forbidden",
+        "notes": "Fracture distribution must be directionally asymmetric in a deterministic way."
+      }
+    },
+    {
+      "case": "previously_damaged_area",
+      "section_owner": "0006.2",
+      "description": "A follow-up hit targets a region weakened by an earlier impact.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 1800,
+        "repetitions": 1,
+        "precondition": "wall after weak_center_hit"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "allowed",
+        "fragment_creation": "allowed",
+        "cumulative_response": "required",
+        "directional_response": "allowed",
+        "secondary_damage": "forbidden",
+        "notes": "Outcome must differ from applying the same energy to a fresh wall."
+      }
+    },
+    {
+      "case": "detached_chunk_hit",
+      "section_owner": "0006.3",
+      "description": "Apply the same model to a canonical detached volumetric chunk.",
+      "stimulus": {
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 2500,
+        "repetitions": 1,
+        "precondition": "canonical chunk produced by the strong-center benchmark"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "required",
+        "fragment_creation": "allowed",
+        "cumulative_response": "allowed",
+        "directional_response": "allowed",
+        "secondary_damage": "forbidden",
+        "notes": "Detached fragments must not become indestructible special objects."
+      }
+    },
+    {
+      "case": "chunk_into_wall",
+      "section_owner": "0006.4",
+      "description": "A detached chunk impacts a fresh wall and feeds energy back into destruction.",
+      "stimulus": {
+        "target": [
+          64,
+          10,
+          66
+        ],
+        "direction_milli": [
+          0,
+          0,
+          -1000
+        ],
+        "relative_energy_milli": 3000,
+        "repetitions": 1,
+        "precondition": "canonical detached chunk colliding with fresh baseline wall"
+      },
+      "acceptance": {
+        "persistent_fracture": "required",
+        "cell_failure": "allowed",
+        "fragment_creation": "allowed",
+        "cumulative_response": "allowed",
+        "directional_response": "required",
+        "secondary_damage": "required",
+        "notes": "Collision must produce bounded real damage; decorative debris does not satisfy this."
+      }
+    }
+  ]
+}

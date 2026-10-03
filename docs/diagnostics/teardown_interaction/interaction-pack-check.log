@@ -1,0 +1,3 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.25s
+     Running `target\debug\destruction_bench.exe --check`
+fixtures/destruction/benchmark-pack.json is current

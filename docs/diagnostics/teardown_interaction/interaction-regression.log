@@ -1,0 +1,1140 @@
+   Compiling engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-fracture-integration\crates\engine_stress)
+    Finished `test` profile [optimized + debuginfo] target(s) in 6.48s
+     Running unittests src\lib.rs (target\debug\deps\engine_core-66733017b1485099.exe)
+
+running 31 tests
+test coords::tests::checked_step_refuses_to_wrap_at_address_limits ... ok
+test coords::tests::local_index_round_trips_and_is_dense ... ok
+test coords::tests::split_and_rejoin_round_trip ... ok
+test coords::tests::stepping_a_face_and_back_is_identity ... ok
+test coords::tests::local_position_rejects_out_of_range ... ok
+test origin::tests::a_cell_round_trips_through_render_space ... ok
+test coords::tests::from_axes_assigns_each_component ... ok
+test material::tests::registry_iterates_in_id_order ... ok
+test material::tests::linear_conversion_darkens_mid_tones_and_pins_the_ends ... ok
+test material::tests::unregistered_material_reports_missing_colour ... ok
+test origin::tests::far_from_the_global_origin_render_space_stays_small ... ok
+test material::tests::hex_round_trips ... ok
+test coords::tests::volume_split_is_euclidean_across_the_origin ... ok
+test origin::tests::a_rebase_preserves_every_relative_position ... ok
+test origin::tests::an_anchor_is_always_aligned_including_below_zero ... ok
+test origin::tests::rebasing_to_the_same_aligned_cell_is_a_no_op ... ok
+test origin::tests::editing_resolves_to_the_same_cell_before_and_after_a_rebase ... ok
+test coords::tests::face_basis_cross_product_equals_normal ... ok
+test origin::tests::a_camera_position_survives_a_long_walk_in_f64 ... ok
+test origin::tests::positions_round_trip_across_zero ... ok
+test origin::tests::the_origin_only_follows_once_the_camera_has_really_moved ... ok
+test revision::tests::bump_advances_monotonically ... ok
+test spatial::tests::a_grid_must_have_a_positive_edge ... ok
+test spatial::tests::a_grouped_grid_gathers_volumes_without_losing_any ... ok
+test spatial::tests::a_one_volume_grid_maps_sections_to_volumes_one_to_one ... ok
+test spatial::tests::cell_bounds_describe_a_volume ... ok
+test spatial::tests::cells_map_through_volumes_to_regions_consistently ... ok
+test spatial::tests::a_region_owns_exactly_its_volumes_once ... ok
+test spatial::tests::grouped_section_bounds_cover_every_member_volume ... ok
+test spatial::tests::region_distance_is_chebyshev ... ok
+test spatial::tests::volume_to_region_is_euclidean_across_the_origin ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_destruction-d68364ff7f518e8b.exe)
+
+running 57 tests
+test contact_fracture::tests::contact_energy_is_finite_capped_and_shared_not_doubled ... ok
+test contact_fracture::tests::target_direction_and_space_are_quantized_once ... ok
+test damage::tests::uniform_sphere_keeps_full_strength_inside_radius ... ok
+test damage::tests::linear_sphere_is_strongest_at_the_center_and_zero_at_the_edge ... ok
+test damage::tests::fragment_local_events_are_material_agnostic_in_drop_0004 ... ok
+test damage::tests::evaluator_rejects_the_wrong_fragment_source_identity ... ok
+test damage::tests::root_event_ids_are_deterministic_and_ordered ... ok
+test damage::tests::sphere_bounds_clip_safely_at_cell_address_edges ... ok
+test damage::tests::same_event_evaluator_works_for_world_and_fragment_sources ... ok
+test damage::tests::truncated_event_evaluation_is_never_partially_actionable ... ok
+test damage::tests::invalid_external_floats_are_rejected ... ok
+test derived_jobs::tests::job_inputs_and_results_can_cross_worker_threads ... ok
+test derived_jobs::tests::collision_job_is_owned_and_deterministic ... ok
+test damage::tests::target_space_prevents_world_event_from_accidentally_damaging_fragment_local_cells ... ok
+test derived_jobs::tests::physics_motion_does_not_stale_geometry_results ... ok
+test impact::tests::coupling_updates_a_completed_detachment_outcome ... ok
+test impact::tests::damage_impulse_changes_motion_not_geometry ... ok
+test impact::tests::impact_policy_quantizes_contact_impulse_into_damage ... ok
+test impact::tests::disconnected_fragment_refractures_atomically ... ok
+test impact::tests::fragment_damage_transaction_can_refracture_the_store ... ok
+test impact::tests::secondary_queue_bounds_pending_step_and_generation ... ok
+test derived_jobs::tests::mesh_job_is_owned_and_deterministic ... ok
+test interaction::tests::grab_is_damped_mass_limited_and_releases_instead_of_teleporting ... ok
+test impact::tests::refracture_policy_refusal_changes_nothing ... ok
+test interaction::tests::radial_kick_has_finite_center_falloff_and_zero_outside ... ok
+test progressive_damage::tests::destroying_every_fragment_cell_returns_none ... ok
+test progressive_damage::tests::entry_limit_refuses_the_whole_transaction ... ok
+test progressive_damage::tests::failure_output_is_canonical_by_site ... ok
+test progressive_damage::tests::partial_damage_can_leave_and_return_with_streamed_ownership ... ok
+test progressive_damage::tests::fragment_failures_change_geometry_without_mutating_original ... ok
+test progressive_damage::tests::repeated_subthreshold_hits_eventually_fail_once ... ok
+test progressive_damage::tests::static_failures_use_world_edit_batch ... ok
+test progressive_damage::tests::untouched_cells_allocate_nothing ... ok
+test reference_fixture::tests::a_fragment_local_stimulus_carries_no_world_space_geometry ... ok
+test reference_fixture::tests::an_oblique_direction_moves_the_origin_off_the_face_normal ... ok
+test reference_fixture::tests::a_zero_direction_falls_back_to_the_canonical_direction ... ok
+test reference_fixture::tests::direction_magnitude_does_not_change_the_hit ... ok
+test reference_fixture::tests::the_generic_builder_reproduces_the_canonical_weak_hit_exactly ... ok
+test residency::tests::clean_unwanted_fragment_can_drop_without_a_save ... ok
+test residency::tests::dirty_fragment_is_saved_before_it_can_drop ... ok
+test residency::tests::edit_during_save_keeps_newer_revision_dirty ... ok
+test residency::tests::stale_load_does_not_resurrect_an_unwanted_fragment ... ok
+test spatial::tests::nonfinite_motion_is_rejected_not_clamped ... ok
+test spatial::tests::negative_coordinates_use_floor_regions ... ok
+test residency::tests::overlapping_regions_request_one_fragment_load ... ok
+test residency::tests::fragment_stays_wanted_when_any_overlapped_region_is_wanted ... ok
+test spatial::tests::removing_last_fragment_cleans_region_entries ... ok
+test spatial::tests::moving_a_fragment_replaces_old_region_membership ... ok
+test support_witness::tests::closed_unanchored_component_never_claims_support ... ok
+test support_witness::tests::anchored_path_proves_support_without_finishing_the_component ... ok
+test support_witness::tests::successful_root_memo_can_answer_another_root_immediately ... ok
+test support_witness::tests::unknown_space_is_not_treated_as_empty_or_supported ... ok
+test support_witness::tests::witness_budget_exhaustion_falls_back_instead_of_guessing ... ok
+test fracture::reference_commit::staged_storage_depends_on_touched_keys_not_accumulated_history ... ok
+test spatial::tests::one_fragment_can_index_several_regions_without_duplication ... ok
+test fracture::reference_commit::sparse_commit_matches_full_copy_for_duplicate_loads_replacements_and_tombstones ... ok
+test fracture::reference_commit::sparse_commit_matches_full_copy_across_repeated_shared_impacts_and_refusals ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\collision.rs (target\debug\deps\collision-276b3efb2b98e02c.exe)
+
+running 14 tests
+test a_degenerate_bounds_compiles_to_nothing_rather_than_panicking ... ok
+test a_box_reports_a_centre_and_half_extents_a_backend_can_use ... ok
+test a_single_cell_is_a_single_box ... ok
+test merging_is_deterministic ... ok
+test cells_outside_the_bounds_are_not_compiled ... ok
+test a_checkerboard_cannot_be_merged_at_all ... ok
+test empty_space_compiles_to_nothing ... ok
+test a_fragment_compiles_a_collider_from_its_own_cells ... ok
+test material_does_not_block_a_collision_merge ... ok
+test an_l_shape_does_not_merge_into_its_bounding_box ... ok
+test shape_bytes_scale_with_box_count ... ok
+test a_hollow_shell_is_the_case_where_collision_and_rendering_disagree ... ok
+test a_solid_volume_becomes_one_box ... ok
+test merged_boxes_match_the_oracle_at_every_density ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\connectivity.rs (target\debug\deps\connectivity-37acb1da680c112b.exe)
+
+running 22 tests
+test connectivity_at_the_integer_world_edge_never_wraps_to_the_other_side ... ok
+test an_unloaded_neighbour_makes_the_answer_indeterminate_not_detached ... ok
+test classifying_one_component_agrees_with_classifying_from_roots ... ok
+test a_root_that_is_no_longer_occupied_produces_nothing ... ok
+test a_shared_face_is_support ... ok
+test a_component_identifies_itself_by_its_lowest_cell ... ok
+test corner_contact_is_not_support ... ok
+test components_come_out_in_the_same_order_however_the_roots_arrived ... ok
+test a_structure_spanning_volumes_is_still_one_component ... ok
+test one_edit_can_produce_several_independent_components ... ok
+test a_column_on_anchored_ground_is_supported ... ok
+test one_remaining_face_connection_is_enough ... ok
+test no_roots_means_no_work_and_no_components ... ok
+test edge_contact_is_not_support_either ... ok
+test reaching_an_anchor_beats_reaching_the_unknown ... ok
+test severing_a_column_detaches_what_is_above_the_cut ... ok
+test splitting_groups_a_cell_set_into_independent_objects ... ok
+test splitting_ignores_cells_that_are_not_there ... ok
+test the_same_structure_resolves_once_the_budget_allows_it ... ok
+test running_out_of_budget_defers_and_never_detaches ... ok
+test many_roots_in_one_component_are_searched_once ... ok
+test proving_support_costs_exactly_what_proving_detachment_costs ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\fracture.rs (target\debug\deps\fracture-463a45302e78bba8.exe)
+
+running 24 tests
+test an_anchored_cell_is_never_failed_by_losing_its_bonds ... ok
+test a_bond_is_named_the_same_way_from_either_of_its_two_cells ... ok
+test a_cell_that_loses_every_bond_fails_through_the_ordinary_edit_path ... ok
+test an_untouched_world_allocates_no_fracture_state ... ok
+test forgetting_a_cell_drops_every_bond_that_touched_it ... ok
+test the_baseline_policy_cannot_tell_two_materials_apart ... ok
+test a_fragment_local_impact_cannot_be_evaluated_against_the_static_world ... ok
+test energy_cannot_cross_a_void_to_damage_a_separate_slab ... ok
+test a_box_or_cell_event_is_as_valid_an_impact_as_a_sphere ... ok
+test an_impact_that_hits_nothing_is_conclusive_and_empty ... ok
+test an_exhausted_work_budget_defers_instead_of_breaking_anything ... ok
+test unknown_space_beyond_the_reach_does_not_defer_the_answer ... ok
+test unknown_space_within_reach_is_indeterminate_rather_than_empty ... ok
+test an_isotropic_event_with_no_impulse_still_loads_bonds_radially ... ok
+test a_cell_deposit_carries_the_distance_the_falloff_was_computed_from ... ok
+test one_weak_hit_damages_the_wall_without_removing_a_single_cell ... ok
+test the_struck_face_is_compressed_while_the_far_side_is_pulled_apart ... ok
+test the_first_hit_is_not_a_spherical_mask ... ok
+test an_evaluation_computed_against_stale_state_is_refused ... ok
+test an_exhausted_entry_budget_refuses_the_whole_transaction ... ok
+test the_cracks_reach_further_than_the_hole ... ok
+test repeating_the_same_hit_concentrates_damage_instead_of_resetting_it ... ok
+test the_same_impact_sequence_produces_identical_state_every_run ... ok
+test a_hit_below_the_fatigue_floor_never_breaks_anything_however_often_it_repeats ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\fracture_connectivity.rs (target\debug\deps\fracture_connectivity-c9b8e381b9a6fec1.exe)
+
+running 17 tests
+test a_broken_bond_cuts_support_without_removing_a_cell ... ok
+test a_cracked_classification_of_a_stale_root_conjures_nothing ... ok
+test a_stale_cracked_result_is_refused_by_the_existing_transaction ... ok
+test an_inconclusive_cracked_result_detaches_nothing ... ok
+test a_crack_freed_chunk_detaches_through_the_existing_atomic_transaction ... ok
+test separation_roots_cover_a_broken_bond_and_a_removed_cell_and_nothing_else ... ok
+test an_inconclusive_occupancy_cross_check_downgrades_the_component ... ok
+test a_detached_chunk_leaves_no_stale_fracture_state_behind ... ok
+test unknown_space_is_indeterminate_even_when_the_bond_across_it_is_broken ... ok
+test a_component_loose_because_material_left_is_reported_as_occupancy_not_cracks ... ok
+test an_exhausted_budget_defers_and_separates_nothing ... ok
+test the_two_classifiers_agree_under_an_exhausted_budget ... ok
+test separation_roots_are_bounded_by_the_damage_rather_than_by_the_world ... ok
+test a_strong_hit_frees_a_chunk_without_deleting_a_shell_to_free_it ... ok
+test with_no_bond_broken_the_fracture_classifier_reproduces_the_occupancy_oracle ... ok
+test the_same_damage_frees_the_same_chunks_every_run ... ok
+test the_two_classifiers_agree_about_unknown_space_too ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s
+
+     Running tests\fracture_fragment.rs (target\debug\deps\fracture_fragment-7005217ef44af987.exe)
+
+running 12 tests
+test a_bond_across_the_separation_is_not_carried_into_the_fragment ... ok
+test a_cracked_chunk_comes_apart_without_a_cell_being_deleted ... ok
+test a_fragment_has_no_anchors_so_nothing_in_it_is_exempt_from_failing ... ok
+test a_bond_whose_cells_land_in_different_children_is_dropped ... ok
+test a_detached_chunk_takes_damage_in_its_own_coordinate_space ... ok
+test a_destroyed_chunk_leaves_no_records_behind ... ok
+test a_fragments_damage_is_not_the_static_worlds_damage ... ok
+test re_fracture_through_cracks_goes_through_the_existing_atomic_transaction ... ok
+test a_detached_plug_takes_its_cracks_into_the_fragment_it_becomes ... ok
+test occupancy_is_still_the_default_rule_for_splitting_a_fragment ... ok
+test hitting_a_detached_chunk_continues_its_existing_damage ... ok
+test the_same_damage_to_the_same_chunk_gives_the_same_state_every_run ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fracture_ownership.rs (target\debug\deps\fracture_ownership-1b8b296671a22d42.exe)
+
+running 15 tests
+test a_fragment_s_cracks_are_never_owned_by_a_static_region ... ok
+test an_undamaged_world_owns_no_regions ... ok
+test a_bond_is_rebuilt_from_its_lower_cell_and_axis ... ok
+test restoring_an_undamaged_record_stores_nothing ... ok
+test a_sweep_leaves_another_space_alone ... ok
+test a_sweep_drops_a_bond_whose_far_cell_has_gone ... ok
+test a_repaint_drops_the_damage_recorded_against_what_used_to_be_there ... ok
+test forgetting_removed_cells_drops_their_records_and_nothing_else ... ok
+test a_sweep_over_unchanged_geometry_drops_nothing_and_does_not_advance_the_revision ... ok
+test taking_a_region_with_no_damage_changes_nothing ... ok
+test every_record_is_owned_by_exactly_one_region ... ok
+test taking_one_region_leaves_the_others_untouched ... ok
+test evicting_and_restoring_a_region_reproduces_the_same_checksum ... ok
+test restoring_in_a_different_order_reproduces_the_same_checksum ... ok
+test a_restore_that_does_not_fit_is_refused_whole ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\fracture_transaction.rs (target\debug\deps\fracture_transaction-62e4c764b1024c3e.exe)
+
+running 10 tests
+test space_ranges_include_negative_extremes_without_leaking_adjacent_owners ... ok
+test radial_pressure_crosses_air_and_unknown_outer_space_preserves_everything ... ok
+test unknown_residency_never_changes_the_transaction ... ok
+test inconclusive_topology_refuses_even_the_proposed_crushed_cells ... ok
+test radial_blast_preserves_cells_on_admission_and_work_budget_refusal ... ok
+test exhausted_identity_refuses_static_separation_without_a_partial_commit ... ok
+test radial_blast_replays_with_conserved_survivors_and_independent_oracle ... ok
+test fragment_refusal_rolls_back_damage_and_preserves_motion_and_parent ... ok
+test refused_static_split_preserves_damage_geometry_and_identity_together ... ok
+test complete_transactions_replay_identically ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\fragments.rs (target\debug\deps\fragments-dc2f354d18b1d039.exe)
+
+running 17 tests
+test the_local_origin_is_snapped_to_the_volume_grid ... ok
+test a_fragment_of_cells_that_are_all_gone_is_not_a_fragment ... ok
+test a_result_that_detaches_nothing_is_refused_rather_than_returning_an_empty_outcome ... ok
+test a_fragment_knows_when_it_is_no_longer_one_connected_object ... ok
+test an_inconclusive_result_detaches_nothing ... ok
+test a_fragment_renumbers_its_cells_into_local_space ... ok
+test several_components_become_several_fragments_in_canonical_order ... ok
+test a_stale_result_detaches_nothing_at_all ... ok
+test detaching_removes_the_component_and_returns_it_as_one_fragment ... ok
+test host_policy_can_refuse_a_detachment_without_spending_an_id_or_cells ... ok
+test a_fragment_starts_where_it_was_and_at_rest ... ok
+test physics_reports_are_recorded_and_bump_the_revision ... ok
+test a_fragments_materials_survive_detachment_exactly ... ok
+test world_bounds_are_rotation_invariant ... ok
+test the_sequence_advances_once_per_transaction_and_only_on_success ... ok
+test a_fragment_meshes_through_the_same_compiler_as_the_static_world ... ok
+test identity_is_reproducible_across_runs ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\jobs.rs (target\debug\deps\jobs-1ccb6570a2dce44c.exe)
+
+running 15 tests
+test a_job_reports_what_it_owns ... ok
+test a_byte_bounded_snapshot_never_clones_past_the_ceiling ... ok
+test a_job_holds_no_reference_to_the_world ... ok
+test an_inconclusive_result_is_current_but_not_actionable ... ok
+test a_job_is_send_and_its_result_is_deterministic ... ok
+test a_snapshot_tells_empty_from_unknown ... ok
+test a_job_reaches_the_same_answer_as_analysing_the_world_directly ... ok
+test a_result_computed_before_an_edit_is_discarded ... ok
+test a_support_change_alone_invalidates_a_result ... ok
+test needing_more_world_is_told_apart_from_needing_a_bigger_job ... ok
+test unknown_reads_as_absent_through_cellsource_and_the_classifier_never_asks ... ok
+test an_unrelated_edit_in_the_same_region_does_not_invalidate_a_result ... ok
+test a_volume_appearing_where_there_was_none_invalidates_a_result ... ok
+test a_bigger_budget_resolves_the_same_structure ... ok
+test a_budget_that_cannot_hold_the_structure_yields_indeterminate_not_detached ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\lifecycle.rs (target\debug\deps\lifecycle-11c53f93b50f3468.exe)
+
+running 7 tests
+test pressure_with_is_pure_admission_accounting ... ok
+test account_keeps_bytes_and_work_units_separate ... ok
+test soft_and_hard_pressure_are_distinct ... ok
+test removing_a_fragment_removes_its_lifecycle_state_with_it ... ok
+test fragment_count_is_not_the_budget_unit ... ok
+test work_caps_can_trigger_hard_pressure_before_bytes ... ok
+test store_is_deterministic_and_tracks_sleeping_separately ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\physics.rs (target\debug\deps\physics-6b54c498e120cf00.exe)
+
+running 3 tests
+test backend_state_round_trips_without_backend_types ... ok
+test descriptor_keeps_engine_state_and_compiles_local_collision ... ok
+test descriptor_preserves_sleeping_state ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_geometry-8871afe458432db6.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\incremental.rs (target\debug\deps\incremental-31a88b128c055347.exe)
+
+running 16 tests
+test a_rebuild_of_an_already_empty_section_reports_nothing ... ok
+test emptying_a_volume_removes_its_section_mesh ... ok
+test a_no_op_edit_rebuilds_nothing ... ok
+test vertex_positions_are_section_local_not_global ... ok
+test a_section_places_correctly_under_a_render_origin ... ok
+test the_exact_compiler_can_drive_the_cache_too ... ok
+test identical_geometry_far_from_the_origin_is_bit_identical_to_geometry_at_it ... ok
+test the_first_build_meshes_every_occupied_section ... ok
+test an_interior_edit_rebuilds_exactly_one_section ... ok
+test a_seam_edit_rebuilds_both_sides ... ok
+test an_incremental_rebuild_matches_a_full_rebuild ... ok
+test one_dirty_volume_rebuilds_its_whole_section_and_no_other ... ok
+test a_grouped_grid_draws_many_volumes_as_one_section ... ok
+test grouping_concatenates_and_never_merges_across_volumes ... ok
+test several_dirty_volumes_in_one_section_collapse_to_one_rebuild ... ok
+test rebuilding_is_cheap_relative_to_the_whole_world ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\indices.rs (target\debug\deps\indices-d4581ca3023926d5.exe)
+
+running 6 tests
+test an_empty_mesh_is_narrow_and_costs_nothing ... ok
+test the_narrow_side_of_the_boundary_uses_u16 ... ok
+test the_wide_side_of_the_boundary_uses_u32 ... ok
+test a_real_section_at_the_shipped_granularity_always_fits_in_u16 ... ok
+test the_byte_count_follows_the_width ... ok
+test every_index_addresses_a_real_vertex_on_both_sides ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\oracle.rs (target\debug\deps\oracle-11883e4583391bbd.exe)
+
+running 7 tests
+test edit_order_does_not_change_the_compiled_surface ... ok
+test a_rebuilt_chunk_matches_a_freshly_built_one ... ok
+test merging_actually_merges_on_realistic_terrain ... ok
+test greedy_matches_the_oracle_with_many_materials ... ok
+test compilation_is_deterministic ... ok
+test greedy_matches_the_oracle_around_negative_coordinates ... ok
+test greedy_matches_the_oracle_across_densities ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests\surface.rs (target\debug\deps\surface-f5c236d68f279af4.exe)
+
+running 16 tests
+test an_empty_quad_set_makes_an_empty_mesh ... ok
+test quad_corners_lie_on_the_face_plane ... ok
+test an_empty_volume_compiles_to_nothing ... ok
+test an_object_spanning_a_volume_boundary_has_a_continuous_surface ... ok
+test an_unregistered_material_renders_as_the_missing_colour ... ok
+test mesh_colours_come_from_the_material_registry ... ok
+test a_single_cell_emits_six_faces ... ok
+test triangles_wind_counter_clockwise_about_the_outward_normal ... ok
+test a_material_boundary_blocks_merging_but_not_occlusion ... ok
+test a_same_material_plane_merges_into_one_quad_per_side ... ok
+test two_adjacent_cells_drop_their_shared_faces ... ok
+test a_cell_added_across_a_seam_exposes_the_neighbours_face ... ok
+test a_solid_volume_emits_no_internal_faces ... ok
+test a_hollow_cavity_is_surfaced_from_the_inside ... ok
+test quads_never_overlap ... ok
+test neighbouring_volumes_hide_each_others_seam_faces ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_io-d38c75362c0db700.exe)
+
+running 10 tests
+test fracture::tests::a_file_claiming_another_format_is_refused ... ok
+test fracture::tests::a_region_round_trips_through_json_unchanged ... ok
+test fracture::tests::a_bond_that_cannot_name_a_real_face_is_dropped_rather_than_trusted ... ok
+test fracture::tests::the_same_cracks_always_serialise_to_the_same_bytes ... ok
+test fracture::tests::a_sidecar_loaded_as_the_wrong_region_is_refused ... ok
+test fragments::tests::fragment_names_round_trip ... ok
+test fragments::tests::unloading_is_distinct_from_authoritative_deletion ... ok
+test fragments::tests::authoritative_index_keeps_nonresident_fragment_ids ... ok
+test fracture::tests::a_world_with_no_sidecar_has_no_cracks_and_no_error ... ok
+test fracture::tests::saving_an_empty_region_removes_its_sidecar_rather_than_writing_nothing ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fragments.rs (target\debug\deps\fragments-5ee0eeab2c018e5a.exe)
+
+running 11 tests
+test index_accepts_sequence_strictly_after_all_existing_fragments ... ok
+test index_rejects_next_sequence_that_can_reuse_an_existing_id ... ok
+test index_json_is_canonical_regardless_of_insertion_order ... ok
+test missing_index_is_backward_compatible_empty_fragment_state ... ok
+test missing_index_with_payloads_recovers_instead_of_erasing_them ... ok
+test saving_store_removes_orphaned_fragment_payloads ... ok
+test stale_spatial_index_is_recovered_on_full_load ... ok
+test streamed_authoritative_deletion_updates_index_before_removing_payload ... ok
+test committed_index_can_prune_a_payload_left_by_the_delete_crash_window ... ok
+test fragment_store_round_trips_dynamic_state_and_sequence ... ok
+test index_discovers_region_fragments_without_loading_payloads ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\persistence.rs (target\debug\deps\persistence-572437303ee1847a.exe)
+
+running 26 tests
+test a_foreign_format_is_rejected ... ok
+test an_empty_world_round_trips ... ok
+test a_single_cell_round_trips ... ok
+test a_future_version_is_rejected_cleanly ... ok
+test a_missing_file_reports_its_path ... ok
+test a_loaded_world_is_entirely_dirty ... ok
+test emptied_chunks_are_not_written ... ok
+test a_world_with_materials_but_no_cells_keeps_its_materials ... ok
+test errors_are_displayable_and_chained ... ok
+test inconsistent_cell_data_names_the_offending_chunk ... ok
+test malformed_json_is_a_parse_error ... ok
+test edit_history_does_not_affect_the_bytes ... ok
+test the_committed_empty_fixture_still_loads ... ok
+test save_and_reload_are_exactly_equal ... ok
+test serialization_is_byte_identical_across_a_round_trip ... ok
+test unknown_fields_are_tolerated ... ok
+test the_committed_fixture_still_loads ... ok
+test a_file_round_trips_through_the_filesystem ... ok
+test geometry_is_unchanged_by_a_save_and_reload ... ok
+test overwriting_an_existing_save_works ... ok
+test a_world_saved_before_the_sidecar_existed_loads_with_no_damage_and_no_error ... ok
+test repairing_a_region_removes_its_sidecar_rather_than_leaving_stale_cracks ... ok
+test evicting_one_region_and_loading_it_back_restores_exactly_that_region ... ok
+test a_reload_that_does_not_fit_the_entry_budget_is_a_budget_error_not_a_parse_error ... ok
+test the_same_cracks_always_write_the_same_bytes ... ok
+test cracks_survive_a_disk_round_trip_with_the_same_checksum ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests\persistence_v2.rs (target\debug\deps\persistence_v2-fc4dda77fb8bbcf5.exe)
+
+running 23 tests
+test a_directory_without_a_manifest_is_not_a_world ... ok
+test region_file_names_round_trip_including_negatives ... ok
+test an_empty_world_round_trips ... ok
+test a_single_region_can_be_loaded_without_the_rest ... ok
+test the_committed_v2_fixture_still_loads ... ok
+test a_world_round_trips_through_a_directory ... ok
+test a_missing_region_shard_is_reported_by_position ... ok
+test the_committed_v3_fixture_round_trips_and_is_canonical ... ok
+test a_shard_claiming_the_wrong_region_is_rejected ... ok
+test loading_regions_in_any_order_gives_the_same_world ... ok
+test the_committed_v1_fixture_migrates ... ok
+test a_volume_outside_its_region_is_rejected ... ok
+test a_future_version_is_refused ... ok
+test an_edit_survives_eviction_and_reload ... ok
+test a_v1_file_migrates_to_a_v2_directory ... ok
+test scanning_finds_the_shards_on_disk ... ok
+test a_malformed_region_shard_is_rejected_cleanly ... ok
+test only_dirty_regions_are_rewritten ... ok
+test a_manifest_failure_never_marks_dirty_regions_clean ... ok
+test the_manifest_names_the_world ... ok
+test output_is_canonical_across_a_round_trip ... ok
+test edit_history_does_not_affect_the_bytes ... ok
+test unknown_manifest_and_shard_keys_are_tolerated ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_mechanics-ef064634e765e797.exe)
+
+running 6 tests
+test units::tests::arithmetic_saturates_rather_than_wrapping ... ok
+test units::tests::debug_shows_thousandths ... ok
+test units::tests::division_by_zero_saturates_by_sign ... ok
+test units::tests::whole_and_raw_round_trip ... ok
+test units::tests::multiply_does_not_wrap_through_the_intermediate ... ok
+test units::tests::ordering_is_total_so_traversal_can_be_canonical ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\capacity.rs (target\debug\deps\capacity-0037bfccf4cad27e.exe)
+
+running 12 tests
+test load_mode_follows_geometry ... ok
+test the_same_joint_in_compression_carries_fine ... ok
+test unprofiled_material_carries_nothing_and_is_not_in_the_network ... ok
+test unknown_space_is_not_empty ... ok
+test a_spent_memory_budget_defers_rather_than_deciding ... ok
+test root_order_does_not_change_the_answer ... ok
+test steel_hanging_from_masonry_overloads_the_tensile_connection ... ok
+test an_empty_registry_owes_nothing_and_costs_nothing ... ok
+test an_unanchored_structure_cannot_shed_its_weight ... ok
+test a_supported_column_is_satisfied ... ok
+test a_spent_work_budget_defers_rather_than_deciding ... ok
+test repeated_solves_are_identical ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\collapse.rs (target\debug\deps\collapse-ff0eaee24e283e0d.exe)
+
+running 11 tests
+test a_sound_structure_sheds_nothing ... ok
+test a_spent_budget_holds_rather_than_collapsing ... ok
+test a_capacity_tie_sheds_the_load_not_the_support ... ok
+test a_floating_island_is_not_mechanics_business ... ok
+test an_object_override_protects_one_structure_from_a_mechanical_world ... ok
+test an_overloaded_wall_collapses_progressively_and_terminates ... ok
+test with_mechanics_disabled_the_same_wall_stands_forever ... ok
+test mechanics_never_fails_an_anchored_cell ... ok
+test failures_are_ordinary_static_cells_on_the_existing_path ... ok
+test the_generation_ceiling_holds ... ok
+test the_same_structure_collapses_identically_every_run ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\mass.rs (target\debug\deps\mass-5fbe62a6374d7e29.exe)
+
+running 7 tests
+test a_weightless_material_stays_inert_rather_than_launching ... ok
+test an_empty_registry_reproduces_the_drop_0004_approximation ... ok
+test an_event_without_an_impulse_couples_nothing ... ok
+test steel_and_wood_of_identical_geometry_move_differently ... ok
+test mass_aggregates_from_density ... ok
+test unprofiled_material_aggregates_to_the_cell_count ... ok
+test mass_is_order_independent_and_repeatable ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\material_damage.rs (target\debug\deps\material_damage-cabf684a794bb2c3.exe)
+
+running 7 tests
+test an_empty_registry_reproduces_drop_0004_behaviour ... ok
+test an_unprofiled_material_matches_the_uniform_reference_exactly ... ok
+test delivery_follows_failure_character ... ok
+test a_mixed_material_structure_fails_deterministically ... ok
+test glass_fails_to_a_light_hit_that_barely_marks_steel ... ok
+test work_amounts_are_material_specific_for_one_event ... ok
+test materials_order_by_how_many_hits_they_take ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\policy.rs (target\debug\deps\policy-8332c2090a2c6d3c.exe)
+
+running 13 tests
+test a_silent_policy_participates_in_nothing ... ok
+test a_specific_scope_can_disable_what_a_broader_one_enabled ... ok
+test registry_iterates_in_material_id_order ... ok
+test an_absent_profile_is_not_a_defaulted_one ... ok
+test systems_resolve_independently ... ok
+test most_specific_scope_wins ... ok
+test a_world_with_no_sidecar_is_exactly_a_drop_0004_world ... ok
+test resolution_order_is_canonical ... ok
+test setting_a_silent_scope_stores_nothing ... ok
+test gameplay_override_beats_every_other_scope ... ok
+test inert_settings_are_recognisably_inert ... ok
+test settings_round_trip_through_json ... ok
+test unknown_systems_and_scopes_are_ignored_not_rejected ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\profiles.rs (target\debug\deps\profiles-594a77acdf2c92c3.exe)
+
+running 12 tests
+test a_caller_can_override_a_reference_profile ... ok
+test an_inert_profile_exists_but_carries_nothing ... ok
+test capacity_selects_by_load_mode ... ok
+test an_unknown_profile_field_is_ignored_not_rejected ... ok
+test an_older_profile_loads_without_inventing_values ... ok
+test density_ordering_is_physically_recognisable ... ok
+test every_reference_material_carries_load ... ok
+test glass_is_strong_but_not_tough ... ok
+test masonry_is_far_weaker_in_tension_than_compression ... ok
+test profiles_round_trip_through_persistence ... ok
+test reference_names_round_trip ... ok
+test reference_registry_is_ordered_and_deterministic ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\verdict.rs (target\debug\deps\verdict-cae5a33531db4349.exe)
+
+running 8 tests
+test an_object_override_can_disable_what_the_world_enabled ... ok
+test a_one_cell_neck_is_connected_but_overloaded ... ok
+test a_full_width_neck_carries_the_same_tower ... ok
+test an_unsupported_structure_is_distinguished_from_a_weak_one ... ok
+test a_spent_budget_is_inconclusive_not_insufficient ... ok
+test connectivity_is_unchanged_by_the_capacity_question ... ok
+test disabled_participation_is_not_evaluated_rather_than_sufficient ... ok
+test verdicts_are_repeatable ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\witness.rs (target\debug\deps\witness-825bbb7ad546853b.exe)
+
+running 7 tests
+test missing_regions_defer_to_exact ... ok
+test the_witness_is_incomplete_on_purpose ... ok
+test a_connection_the_sweep_cannot_use_defers_rather_than_failing ... ok
+test disabled_participation_runs_no_sweep ... ok
+test the_witness_never_declares_failure ... ok
+test the_witness_is_repeatable ... ok
+test the_witness_never_contradicts_the_exact_solver ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_stream-a5b418cd4e650ee0.exe)
+
+running 5 tests
+test memory::tests::a_ceiling_implies_a_soft_target_below_it ... ok
+test memory::tests::categories_add_up_and_stay_distinguishable ... ok
+test memory::tests::in_flight_work_alone_can_exceed_the_budget ... ok
+test memory::tests::pressure_has_three_steps ... ok
+test memory::tests::pressure_gates_the_right_work ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\mesh_jobs.rs (target\debug\deps\mesh_jobs-9e813255bcf12c5d.exe)
+
+running 18 tests
+test a_fingerprint_covers_the_section_and_its_neighbours ... ok
+test a_fingerprint_reaches_across_a_region_boundary ... ok
+test a_region_evicted_mid_job_does_not_resurrect_its_cells ... ok
+test an_edit_in_a_neighbouring_volume_makes_a_result_stale ... ok
+test a_neighbour_appearing_or_vanishing_makes_a_result_stale ... ok
+test a_grouped_grid_fingerprints_every_member_and_its_shell ... ok
+test a_hundred_edits_before_the_mesher_runs_produce_one_job ... ok
+test a_result_for_a_cancelled_section_is_dropped ... ok
+test a_fresh_result_is_applied ... ok
+test a_result_arriving_twice_is_dropped_the_second_time ... ok
+test an_edit_during_a_job_makes_its_result_stale ... ok
+test clearing_abandons_everything_in_flight ... ok
+test a_job_is_independent_enough_to_compile_on_another_thread ... ok
+test the_same_region_reloaded_at_a_newer_revision_invalidates_an_old_job ... ok
+test work_in_flight_is_bounded ... ok
+test jobs_completing_out_of_order_are_each_judged_on_their_own ... ok
+test several_edits_before_the_first_result_still_leave_one_pending_job ... ok
+test a_snapshot_compiles_to_the_same_geometry_as_the_live_world ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\residency.rs (target\debug\deps\residency-a226434bab81f27d.exe)
+
+running 18 tests
+test a_clean_region_evicts_without_a_save ... ok
+test a_dirty_region_is_never_safe_to_evict ... ok
+test abandoning_a_mesh_for_a_departing_region_is_harmless ... ok
+test a_second_request_does_not_start_a_second_load ... ok
+test an_edit_makes_geometry_stale_and_work_unsaved ... ok
+test a_failed_load_leaves_no_trace ... ok
+test eviction_candidates_are_least_recently_needed_first ... ok
+test eviction_saves_before_dropping ... ok
+test a_reloaded_region_starts_clean_and_unmeshed ... ok
+test clearing_forgets_everything ... ok
+test counts_describe_the_whole_table ... ok
+test editing_a_region_mid_eviction_cancels_it ... ok
+test eviction_candidates_exclude_everything_unsafe ... ok
+test abandoning_a_mesh_returns_the_region_for_rescheduling ... ok
+test illegal_transitions_are_refused_by_name ... ok
+test an_untracked_region_reads_as_unloaded ... ok
+test the_happy_path_runs_to_ready ... ok
+test wanting_a_region_again_cancels_its_eviction ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\scheduler.rs (target\debug\deps\scheduler-bf1af118ad332f3c.exe)
+
+running 30 tests
+test cancelling_prefetch_keeps_required_work ... ok
+test dispatch_is_bounded_by_snapshot_bytes_as_well_as_job_count ... ok
+test a_queued_request_owns_no_cell_data ... ok
+test cancelling_an_in_flight_section_releases_its_snapshot_bytes ... ok
+test a_less_urgent_repeat_does_not_downgrade_pending_work ... ok
+test dispatch_is_bounded_by_active_jobs ... ok
+test dispatch_order_is_reproducible_across_runs ... ok
+test a_discarded_result_releases_its_snapshot_bytes_too ... ok
+test equal_priority_ties_break_on_section_id_and_are_stable ... ok
+test every_class_orders_as_declared ... ok
+test a_job_snapshots_the_world_as_it_is_at_dispatch ... ok
+test promotion_cannot_pass_the_top_class ... ok
+test nearer_work_goes_first_within_a_class ... ok
+test re_requesting_does_not_reset_a_sections_age ... ok
+test one_job_always_gets_through_however_large_its_snapshot ... ok
+test a_stale_result_requeues_its_section ... ok
+test repeated_requests_deduplicate_and_sharpen_urgency ... ok
+test required_work_goes_before_prefetch_however_close_the_prefetch_is ... ok
+test snapshot_byte_backpressure_does_not_reorder_work ... ok
+test cancelling_a_section_clears_it_from_every_stage ... ok
+test the_pending_queue_has_an_upper_bound ... ok
+test waiting_long_enough_promotes_work_past_nearer_newcomers ... ok
+test clearing_abandons_everything ... ok
+test a_byte_deferred_mesh_is_revalidated_after_later_edits ... ok
+test finishing_a_job_releases_its_snapshot_bytes ... ok
+test an_edit_invalidates_its_neighbours_jobs_too ... ok
+test counters_describe_the_whole_pipeline ... ok
+test stale_results_do_not_consume_the_apply_budget ... ok
+test upload_byte_budget_defers_without_losing_or_starving_geometry ... ok
+test applying_results_is_bounded_per_tick ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\streamer.rs (target\debug\deps\streamer-d918c40cd866f979.exe)
+
+running 28 tests
+test duplicate_external_demands_are_deduplicated ... ok
+test an_absent_shard_is_empty_terrain_not_a_failure ... ok
+test an_invalid_config_is_caught_in_debug ... ok
+test clearing_forgets_every_in_flight_request ... ok
+test a_failed_load_can_be_retried ... ok
+test a_dirty_region_is_never_dropped_without_a_save ... ok
+test external_demand_is_withheld_past_the_hard_memory_ceiling ... ok
+test a_withheld_region_is_still_wanted_and_arrives_once_there_is_room ... ok
+test an_edit_during_a_save_leaves_the_region_dirty ... ok
+test a_save_with_no_intervening_edit_marks_the_region_clean ... ok
+test a_failed_save_leaves_the_region_dirty_and_resident ... ok
+test a_superseded_load_cannot_overwrite_a_newer_one ... ok
+test a_load_returning_after_the_camera_left_is_discarded ... ok
+test a_region_wanted_again_mid_eviction_is_kept ... ok
+test loads_in_flight_are_bounded ... ok
+test eviction_candidates_prefer_unwanted_then_distant_then_stale ... ok
+test nearer_regions_load_first ... ok
+test external_demand_loads_and_pins_a_far_region ... ok
+test memory_pressure_shrinks_how_far_the_engine_reaches ... ok
+test hysteresis_stops_a_region_churning_at_the_boundary ... ok
+test rapid_direction_changes_do_not_corrupt_residency ... ok
+test pressure_evicts_sooner_than_distance_alone_would ... ok
+test unsaved_work_is_never_dropped_to_satisfy_a_budget ... ok
+test releasing_demand_makes_an_in_flight_far_load_stale ... ok
+test travelling_loads_ahead_and_evicts_behind ... ok
+test an_edit_survives_save_eviction_and_reload ... ok
+test memory_stays_bounded_while_travelling_under_a_tight_budget ... ok
+test a_teleport_does_not_load_the_route ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\torture.rs (target\debug\deps\torture-194b2667f5223e72.exe)
+
+running 20 tests
+test a_flush_on_a_clean_world_does_nothing ... ok
+test a_flush_captures_the_current_revision_not_one_in_flight ... ok
+test a_missing_shard_is_empty_terrain_and_not_a_failure ... ok
+test a_save_ticket_for_a_region_that_is_gone_is_harmless ... ok
+test an_edit_on_a_region_seam_dirties_both_sides ... ok
+test a_failed_save_keeps_the_region_dirty_and_resident ... ok
+test a_failed_load_does_not_strand_the_region_or_spin ... ok
+test a_budget_that_cannot_be_met_still_makes_progress ... ok
+test negative_coordinates_round_the_same_way_as_positive_ones ... ok
+test an_edit_made_while_its_region_is_saving_is_not_lost ... ok
+test a_shutdown_flush_writes_every_dirty_region_however_far_away ... ok
+test a_flush_ignores_the_concurrent_save_bound ... ok
+test streaming_works_a_long_way_from_the_origin ... ok
+test a_region_edited_evicted_and_reloaded_comes_back_edited ... ok
+test an_edit_during_save_still_reaches_disk_before_the_region_is_dropped ... ok
+test an_edit_is_never_evicted_for_budget_without_being_saved ... ok
+test a_teleport_storm_does_not_grow_residency ... ok
+test travel_past_the_budget_bounds_memory_without_stalling ... ok
+test mesh_results_arriving_in_any_order_converge_on_the_same_geometry ... ok
+test an_edit_storm_with_scrambled_completion_never_applies_stale_geometry ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_stress-71c541e8bbb099ca.exe)
+
+running 29 tests
+test destruction_replay::tests::the_damaged_area_replay_measures_its_control_on_an_untouched_wall ... ok
+test destruction_replay::tests::committed_replay_is_canonical_current_output ... ok
+test destruction_benchmark::tests::benchmark_cases_are_fixed_unique_and_complete ... ok
+test destruction_benchmark::tests::committed_benchmark_pack_is_canonical_current_output ... ok
+test destruction_benchmark::tests::baseline_wall_is_the_shared_one_material_one_region_fixture ... ok
+test destruction_benchmark::tests::missing_fracture_metrics_are_not_fake_zeroes ... ok
+test destruction_replay::tests::structural_digest_is_stable_for_the_same_state ... ok
+test destruction_replay::tests::canonical_replay_is_valid_and_pinned_to_the_benchmark_wall ... ok
+test destruction_benchmark::tests::fixture_checksum_is_stable_across_rebuilds ... ok
+test destruction_replay::tests::invalid_unbounded_commands_are_rejected ... ok
+test report::tests::a_baseline_round_trips ... ok
+test report::tests::byte_formatting_is_readable ... ok
+test report::tests::ratios_do_not_divide_by_zero ... ok
+test rng::tests::bounds_are_respected ... ok
+test rng::tests::the_same_seed_replays_exactly ... ok
+test destruction_replay::tests::interaction_replay_validates_limits_and_round_trips ... ok
+test destruction_replay::tests::the_damaged_area_replay_is_valid_and_pinned_to_the_same_wall ... ok
+test destruction_replay::tests::volley_replay_and_launch_limits_are_validated ... ok
+test destruction_runner::tests::the_weak_center_hit_still_measures_what_drop_0006_0_measured ... ok
+test destruction_runner::tests::a_precondition_matches_what_its_spec_says_in_words ... ok
+test destruction_runner::tests::the_strong_center_hit_frees_material_along_cracks ... ok
+test destruction_runner::tests::a_detached_chunk_is_destructible_rather_than_indestructible_debris ... ok
+test destruction_runner::tests::hitting_a_damaged_area_differs_from_hitting_a_fresh_wall ... ok
+test destruction_runner::tests::repeated_hits_differ_from_a_single_hit ... ok
+test destruction_runner::tests::the_directional_cases_differ_from_their_controls ... ok
+test destruction_runner::tests::every_executed_case_satisfies_its_committed_acceptance_spec ... ok
+test destruction_runner::tests::committed_results_are_canonical_current_output ... ok
+test destruction_runner::tests::every_case_now_runs_including_bounded_secondary_contact_damage ... ok
+test destruction_runner::tests::running_a_case_twice_measures_the_same_thing ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+     Running unittests src\bin\capacity.rs (target\debug\deps\capacity-4deb7094cd426df9.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\chaos.rs (target\debug\deps\chaos-2a84c2de36f87249.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\chaos4.rs (target\debug\deps\chaos4-0af8a5a42bbe0caa.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\destruction_bench.rs (target\debug\deps\destruction_bench-264806ce460c7dad.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\destruction_replay.rs (target\debug\deps\destruction_replay-5bbbb2fbe1c85618.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\fracture_perf.rs (target\debug\deps\fracture_perf-4682c92c866747c4.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\granularity.rs (target\debug\deps\granularity-2cdfebb9ea18d51a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\interaction_bench.rs (target\debug\deps\interaction_bench-f5345708e1fd0b2b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\regionio.rs (target\debug\deps\regionio-d09daf443829eeb9.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\stress.rs (target\debug\deps\stress-061e2c2b426efe8b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\structural.rs (target\debug\deps\structural-da0e7c9a2847a233.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\worldgen.rs (target\debug\deps\worldgen-57f510a8b3909733.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\baseline.rs (target\debug\deps\baseline-392bcf05db514d39.exe)
+
+running 5 tests
+test edit_scenarios_actually_edit ... ok
+test every_scenario_has_a_distinct_name_and_description ... ok
+test counters_match_the_committed_baseline ... ok
+test each_scenario_pressures_what_it_claims_to ... ok
+test scenarios_are_reproducible_within_a_run ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+
+     Running tests\granularity.rs (target\debug\deps\granularity-0602a86413d75cf9.exe)
+
+running 7 tests
+test the_shipped_default_is_the_finest_audited_grid ... ok
+test coarser_sections_mean_fewer_render_units ... ok
+test an_audit_is_reproducible ... ok
+test the_surface_is_identical_at_every_granularity ... ok
+test coarser_sections_cost_more_per_section_and_per_job ... ok
+test coarsening_costs_memory_only_where_it_widens_an_index ... ok
+test an_edit_never_touches_more_sections_as_sections_get_coarser ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.02s
+
+     Running tests\structural.rs (target\debug\deps\structural-971336bf0669a674.exe)
+
+running 21 tests
+test every_scenario_has_a_distinct_name_and_a_stated_expectation ... ok
+test damage_is_canonically_ordered ... ok
+test ratios_do_not_divide_by_zero ... ok
+test redundancy_is_not_the_same_as_support ... ok
+test the_control_scenario_leaves_its_anchors_alone ... ok
+test anchors_are_always_occupied_cells ... ok
+test every_scenario_is_damaged_and_every_edit_lands ... ok
+test the_world_records_the_same_support_the_scenario_declares ... ok
+test large_supported_structure_witness_does_less_work_than_exact ... ok
+test support_witness_never_hides_an_exact_detachment ... ok
+test proving_support_is_the_expensive_case ... ok
+test collision_and_rendering_are_different_problems ... ok
+test every_scenario_detaches_exactly_what_it_says_it_will ... ok
+test each_scenario_pressures_what_it_claims_to ... ok
+test every_scenario_discovers_somewhere_to_start_searching ... ok
+test one_fragment_is_extracted_per_detached_component ... ok
+test collision_merging_beats_one_box_per_cell_everywhere_it_can ... ok
+test counters_match_the_committed_baseline ... ok
+test support_storage_stays_proportional_to_the_volumes_it_touches ... ok
+test fragment_memory_tracks_fragment_count_not_fragment_size ... ok
+test scenarios_are_reproducible_within_a_run ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_volume-ef8024bdaef070d0.exe)
+
+running 25 tests
+test anchor::tests::a_dense_field_is_exactly_512_bytes ... ok
+test anchor::tests::anchored_cells_come_back_in_canonical_order ... ok
+test anchor::tests::promoting_from_all_keeps_every_other_cell_anchored ... ok
+test anchor::tests::a_ground_layer_encodes_as_two_runs ... ok
+test anchor::tests::compaction_collapses_a_field_that_became_uniform_again ... ok
+test anchor::tests::dense_bits_round_trip_and_compact_on_the_way_back ... ok
+test anchor::tests::setting_a_bit_promotes_only_when_the_volume_is_really_mixed ... ok
+test anchor::tests::runs_round_trip_and_compact_on_the_way_back ... ok
+test anchor::tests::runs_that_do_not_cover_the_volume_are_rejected ... ok
+test anchor::tests::every_cell_addresses_its_own_bit ... ok
+test anchor::tests::uniform_fields_encode_as_a_single_run ... ok
+test anchor::tests::uniform_fields_cost_nothing ... ok
+test tests::a_new_volume_is_empty ... ok
+test tests::compact_drops_dead_palette_entries_and_sorts ... ok
+test tests::duplicate_palette_entries_are_merged_on_load ... ok
+test tests::editing_a_uniform_volume_promotes_to_dense_and_back ... ok
+test tests::empty_and_full_volumes_round_trip_through_runs ... ok
+test tests::fill_makes_a_full_volume_without_allocating_cells ... ok
+test tests::equality_ignores_internal_representation ... ok
+test tests::malformed_run_data_is_rejected ... ok
+test tests::materials_lists_distinct_ids_in_order ... ok
+test tests::palette_order_is_canonical_regardless_of_edit_order ... ok
+test tests::setting_and_clearing_one_cell_tracks_occupancy ... ok
+test tests::run_encoding_round_trips ... ok
+test tests::storage_tiers_report_their_real_cost ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\engine_world-6f46a011aeb6f09f.exe)
+
+running 22 tests
+test region::tests::a_new_region_is_empty_and_clean ... ok
+test region::tests::marking_clean_and_dirty_round_trips ... ok
+test region::tests::compaction_reports_what_it_dropped ... ok
+test region::tests::footprint_tracks_the_storage_tiers ... ok
+test region::tests::inserting_a_volume_marks_the_region_unsaved ... ok
+test region::tests::loading_from_disk_produces_a_clean_region ... ok
+test region::tests::empty_volumes_are_not_stored ... ok
+test region::tests::equality_ignores_the_save_state ... ok
+test tests::a_boundary_edit_ignores_absent_neighbours ... ok
+test tests::a_corner_edit_dirties_up_to_three_neighbours ... ok
+test tests::an_empty_world_has_no_chunks ... ok
+test tests::a_no_op_write_dirties_nothing ... ok
+test tests::clearing_an_unloaded_cell_allocates_nothing ... ok
+test tests::compact_frees_emptied_storage_and_keeps_it_dirty ... ok
+test tests::equality_ignores_empty_chunks_and_edit_history ... ok
+test tests::negative_coordinates_land_in_negative_chunks ... ok
+test tests::fill_box_spans_chunks_and_counts_changes ... ok
+test tests::setting_a_cell_creates_exactly_one_chunk ... ok
+test tests::world_reads_as_a_cell_source ... ok
+test tests::worlds_with_different_materials_are_not_equal ... ok
+test tests::a_boundary_edit_dirties_the_touching_neighbour ... ok
+test tests::an_interior_edit_dirties_only_its_own_chunk ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\batching.rs (target\debug\deps\batching-95e65099a93798ae.exe)
+
+running 19 tests
+test a_batch_is_canonical_whatever_order_it_was_built_in ... ok
+test a_carve_spanning_volumes_groups_by_volume ... ok
+test a_sphere_at_the_integer_world_edge_clips_instead_of_wrapping ... ok
+test a_zero_radius_carve_removes_exactly_one_cell ... ok
+test a_carved_sphere_is_a_sphere_and_is_identical_every_time ... ok
+test an_unloaded_neighbour_is_unresolved_and_never_assumed_empty ... ok
+test clearing_cells_in_empty_space_allocates_nothing ... ok
+test a_region_with_no_record_at_all_is_unknown ... ok
+test a_batch_dirties_each_volume_once_however_many_cells_it_touches ... ok
+test a_batch_on_a_volume_seam_dirties_the_neighbour_once ... ok
+test diagonal_neighbours_are_not_candidates ... ok
+test a_removed_cell_is_never_its_own_neighbours_candidate ... ok
+test writes_to_the_same_cell_resolve_last_write_wins ... ok
+test a_batch_that_only_adds_can_never_detach ... ok
+test a_resident_but_empty_neighbour_is_not_unresolved ... ok
+test candidates_are_the_surviving_cells_next_to_a_hole ... ok
+test a_no_op_batch_dirties_nothing ... ok
+test removals_additions_and_repaints_are_reported_apart ... ok
+test a_batch_is_indistinguishable_from_the_same_edits_applied_one_at_a_time ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\picking.rs (target\debug\deps\picking-c59226cd8c778262.exe)
+
+running 14 tests
+test a_ray_crosses_volume_and_region_seams_without_a_gap ... ok
+test a_ray_crossing_zero_does_not_skip_a_cell ... ok
+test a_diagonal_ray_visits_every_cell_it_crosses ... ok
+test a_ray_reports_the_nearest_of_many_candidates ... ok
+test a_ray_starting_exactly_on_a_boundary_is_handled ... ok
+test a_ray_that_hits_nothing_returns_nothing ... ok
+test an_axis_aligned_ray_hits_the_first_cell_and_names_the_face ... ok
+test an_unloaded_region_reads_as_empty_rather_than_blocking ... ok
+test every_axis_direction_reports_the_face_it_entered ... ok
+test negative_coordinates_pick_correctly ... ok
+test picking_is_unaffected_by_a_render_origin_rebase ... ok
+test a_degenerate_ray_is_rejected_rather_than_looping ... ok
+test starting_inside_solid_material_hits_immediately ... ok
+test picking_stays_exact_a_million_cells_from_the_origin ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\regions.rs (target\debug\deps\regions-02c1d3550bd2da60.exe)
+
+running 13 tests
+test cells_on_a_region_boundary_do_not_leak_across_it ... ok
+test evicting_a_region_marks_the_neighbours_it_was_hiding_against ... ok
+test a_region_can_be_removed_and_reinstalled_exactly ... ok
+test an_edit_still_only_dirties_what_it_must_across_a_region_seam ... ok
+test iteration_is_deterministic_and_ascending ... ok
+test loading_a_region_marks_its_volumes_and_its_new_neighbours_dirty ... ok
+test negative_coordinates_get_their_own_regions ... ok
+test regions_track_whether_they_need_saving ... ok
+test removing_an_absent_region_is_harmless ... ok
+test residency_accounting_adds_up ... ok
+test a_cell_lands_in_the_region_that_owns_its_volume ... ok
+test regions_tile_the_world_without_gaps_or_overlap ... ok
+test world_contents_do_not_depend_on_region_load_order ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\support.rs (target\debug\deps\support-21236b8fd2a6fdea.exe)
+
+running 13 tests
+test a_fresh_world_anchors_nothing ... ok
+test a_whole_volume_can_be_anchored_in_one_move ... ok
+test an_unloaded_region_reports_unanchored_and_unoccupied_and_not_resident ... ok
+test support_answers_through_the_trait_as_well_as_the_world ... ok
+test clearing_an_anchor_that_was_never_set_allocates_nothing ... ok
+test a_mixed_volume_costs_exactly_512_bytes ... ok
+test anchoring_survives_the_cell_being_destroyed ... ok
+test a_volume_that_stops_being_mixed_gives_its_bytes_back ... ok
+test material_says_nothing_about_support ... ok
+test anchors_are_part_of_what_a_region_is ... ok
+test anchoring_empty_space_is_allowed_and_harmless ... ok
+test setting_support_marks_the_region_unsaved ... ok
+test a_uniformly_anchored_volume_costs_no_heap_at_all ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_destruction
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_geometry
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_io
+
+running 1 test
+test crates\engine_io\src\lib.rs - (line 19) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.59s; merged doctests compilation took 0.46s
+   Doc-tests engine_mechanics
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_stream
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_stress
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_volume
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests engine_world
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

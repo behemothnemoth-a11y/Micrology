@@ -3,19 +3,30 @@
 ## The shape of it
 
 ```text
-engine_core ──┬── engine_volume ──── engine_world ──┐
-              │                                     ├── engine_io
-              └── engine_geometry ──────────────────┤
-                                                    └── apps/sandbox (Bevy)
+engine_core          ← serde only
+engine_volume        ← engine_core
+engine_geometry      ← engine_core
+engine_world         ← engine_core, engine_volume
+engine_destruction   ← engine_core, engine_geometry, engine_volume, engine_world
+engine_stream        ← engine_core, engine_geometry, engine_volume, engine_world
+engine_io            ← engine_core, engine_volume, engine_world, engine_destruction
+engine_mechanics     ← engine_core, engine_destruction
+engine_stress        ← engine_core, engine_geometry, engine_volume, engine_world,
+                       engine_stream, engine_destruction, engine_io
+apps/sandbox         ← engine_core, engine_geometry, engine_volume, engine_world,
+                       engine_stream, engine_destruction, engine_io, Bevy, Avian
 ```
 
-Five small library crates and one app. The dependency arrows only ever point left,
-and two of them are load-bearing:
+Nine library crates and one app, listed in topological order: every crate's
+dependencies appear above it, so the dependency arrows only ever point left and
+never back down the list. Two facts about that graph are load-bearing:
 
 **`engine_geometry` depends only on `engine_core`.** It never learns how cells are
 stored. It asks a `CellSource` "what material is at this global cell address?" and
 that is the entire interface. Swapping the dense volume for an octree, or meshing
 a procedurally generated region that has no storage at all, changes nothing here.
+(`engine_volume` and `engine_world` appear in its `[dev-dependencies]`, as fixtures
+the tests build worlds out of; the library itself never sees them.)
 
 **Bevy appears only in `apps/sandbox`,** and almost entirely in one file
 (`src/render.rs`). Engine data, editing and geometry are plain Rust that compiles
@@ -135,6 +146,29 @@ share a section. It does not depend on `engine_world` — it takes a `CellSource
 and a list of dirty volumes — which is what lets the incremental rebuild path be
 tested without a window.
 
+### `engine_destruction`
+
+Answers one narrow question exactly — after some cells were removed, which of the
+remaining cells are no longer connected to anything that holds them up — and
+builds fragments, collision and bounded async analysis on top of it. Face
+connectivity only; edge and corner contact are not support. Three outcomes other
+than *detached* exist on purpose: unknown space is never treated as empty, and a
+spent budget is never treated as detachment.
+
+`fracture` adds the state that sits between *intact* and *absent*: sparse
+per-cell absorbed energy and sparse per-bond remaining integrity, so material can
+be present and weakened. It consumes `DamageEvent` directly, beside the scalar
+`DamageWork` path, because the event is the only representation that still carries
+the impact geometry the model needs — position, direction and distance. A bond is
+keyed by its lower cell plus an axis so that one face has exactly one name.
+
+**Occupancy connectivity stays the permanent topological oracle.** A broken bond
+is a crack, not a cut; nothing in `fracture` detaches anything, and fracture-aware
+connectivity will go *beside* the exact classifier and be tested against it, the
+way `GreedyCompiler` is tested against `ExactCompiler`. Failed cells leave through
+the ordinary `WorldEditBatch` path, so nothing downstream learns a new concept.
+See [`drop-0006.md`](drop-0006.md).
+
 ### `engine_io`
 
 Transparent, versioned JSON with run-length encoded cells. Readable, diffable,
@@ -148,6 +182,16 @@ the format was written; those field names are frozen.
 Deterministic stress scenarios and the measurement harness over them. Counters
 are reproducible and asserted in CI; timings are diagnostic and never committed.
 See [`testing.md`](testing.md).
+
+### `engine_mechanics`
+
+Optional material mechanics and structural capacity, downstream of
+`engine_destruction` so that material-aware damage can be new implementations of
+the existing policy traits rather than a changed contract. Mechanical properties
+live in a side table keyed by `MaterialId` rather than on `Material`, and an
+empty table is a valid permanent state. Every quantity is fixed-point integer;
+no floating point enters the capacity path. Nothing participates unless a host
+opts in. See [`drop-0005-scope.md`](drop-0005-scope.md).
 
 ### `apps/sandbox`
 

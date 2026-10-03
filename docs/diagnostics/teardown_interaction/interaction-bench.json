@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "max_ms": 6.9521,
+      "median_ms": 4.9338999999999995,
+      "p95_ms": 6.7185,
+      "result": {
+        "broken_bonds": 192,
+        "created": 21,
+        "energy": 10000,
+        "failed_cells": 35,
+        "fracture_checksum": "002889bcd71adebb",
+        "radius": 4,
+        "structural": {
+          "checksum_fnv1a64": "9ff1bfce22bb388d",
+          "fragment_cells": 62,
+          "fragments": 21,
+          "static_anchors": 252,
+          "static_cells": 3035
+        },
+        "work": {
+          "bonds": 624,
+          "cells": 301,
+          "concentration_lookups": 6240
+        }
+      },
+      "samples": 31
+    },
+    {
+      "max_ms": 7.0765,
+      "median_ms": 5.8199000000000005,
+      "p95_ms": 6.9137,
+      "result": {
+        "broken_bonds": 184,
+        "created": 13,
+        "energy": 10000,
+        "failed_cells": 89,
+        "fracture_checksum": "0d37f614e35ae470",
+        "radius": 6,
+        "structural": {
+          "checksum_fnv1a64": "63b7adf3f6c4fe84",
+          "fragment_cells": 44,
+          "fragments": 13,
+          "static_anchors": 252,
+          "static_cells": 2999
+        },
+        "work": {
+          "bonds": 1560,
+          "cells": 685,
+          "concentration_lookups": 15600
+        }
+      },
+      "samples": 31
+    },
+    {
+      "max_ms": 9.2427,
+      "median_ms": 8.1989,
+      "p95_ms": 9.2357,
+      "result": {
+        "broken_bonds": 452,
+        "created": 16,
+        "energy": 16000,
+        "failed_cells": 449,
+        "fracture_checksum": "109bf34506a31afd",
+        "radius": 8,
+        "structural": {
+          "checksum_fnv1a64": "44da48600a908174",
+          "fragment_cells": 56,
+          "fragments": 16,
+          "static_anchors": 252,
+          "static_cells": 2627
+        },
+        "work": {
+          "bonds": 2804,
+          "cells": 1173,
+          "concentration_lookups": 28040
+        }
+      },
+      "samples": 31
+    },
+    {
+      "max_ms": 17.3932,
+      "median_ms": 9.4931,
+      "p95_ms": 14.9946,
+      "result": {
+        "broken_bonds": 472,
+        "created": 40,
+        "energy": 24000,
+        "failed_cells": 597,
+        "fracture_checksum": "eb3e4b21068d3f25",
+        "radius": 8,
+        "structural": {
+          "checksum_fnv1a64": "5f95d0b5f40248fc",
+          "fragment_cells": 176,
+          "fragments": 40,
+          "static_anchors": 252,
+          "static_cells": 2359
+        },
+        "work": {
+          "bonds": 2804,
+          "cells": 1173,
+          "concentration_lookups": 28040
+        }
+      },
+      "samples": 31
+    }
+  ],
+  "samples": 31,
+  "schema": 1,
+  "scope": "CPU transaction only, includes topology and native fragment creation; excludes backend physics and rendering",
+  "warmups": 3
+}

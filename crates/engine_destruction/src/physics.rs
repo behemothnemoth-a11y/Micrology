@@ -28,13 +28,24 @@ impl FragmentPhysicsDescriptor {
     /// Describe a fragment using the shipped greedy collision compiler.
     pub fn from_fragment(fragment: &Fragment) -> Self {
         let bounds = CellBounds::new(fragment.bounds.min, fragment.bounds.max);
+        let collider = GreedyCollisionCompiler.compile(fragment, bounds);
+        Self::from_fragment_with_collider(fragment, collider)
+    }
+
+    /// Describe the fragment using collision geometry compiled elsewhere.
+    ///
+    /// DROP 0004 uses this after a worker finishes a pure collision job. Pose,
+    /// velocity and sleep state are sampled from the *current* engine fragment
+    /// at apply time, so a body can move while its local collider is compiling
+    /// without reusing stale motion state.
+    pub fn from_fragment_with_collider(fragment: &Fragment, collider: CollisionShape) -> Self {
         Self {
             id: fragment.id,
             pose: fragment.pose,
             linear_velocity: fragment.linear_velocity,
             angular_velocity: fragment.angular_velocity,
             sleeping: fragment.is_sleeping(),
-            collider: GreedyCollisionCompiler.compile(fragment, bounds),
+            collider,
         }
     }
 

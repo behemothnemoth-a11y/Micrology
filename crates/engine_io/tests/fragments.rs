@@ -3,9 +3,9 @@ use engine_destruction::{
     DestructionSequence, Fragment, FragmentId, FragmentPhysicsState, FragmentStore,
 };
 use engine_io::{
-    FragmentIndex, fragment_index_from_json, fragment_index_to_json, fragment_path,
-    load_fragment_index, load_fragment_store, load_fragments_for_region, save_fragment,
-    save_fragment_store,
+    FragmentIndex, delete_persisted_fragment, fragment_index_from_json, fragment_index_to_json,
+    fragment_path, load_fragment_index, load_fragment_store, load_fragments_for_region,
+    prune_fragment_orphans, save_fragment, save_fragment_index_state, save_fragment_store,
 };
 use engine_world::World;
 use std::collections::BTreeSet;
@@ -240,4 +240,58 @@ fn index_accepts_sequence_strictly_after_all_existing_fragments() {
     let json = fragment_index_to_json(&store, DestructionSequence::new(13)).unwrap();
     let index = fragment_index_from_json(&json).unwrap();
     assert_eq!(index.next_destruction_sequence, 13);
+}
+
+#[test]
+fn streamed_authoritative_deletion_updates_index_before_removing_payload() {
+    let dir = temp_dir("streamed-delete");
+    let id = FragmentId::new(30, 0);
+    let f = fragment(id, CellPos::ZERO, CellPos::new(3, 3, 3));
+    let mut store = FragmentStore::default();
+    store.insert(f);
+    save_fragment_store(&dir, &store, DestructionSequence::new(31)).unwrap();
+
+    let mut index = load_fragment_index(&dir).unwrap();
+    assert!(index.contains(id));
+    assert!(fragment_path(&dir, id).exists());
+
+    assert!(delete_persisted_fragment(&dir, &mut index, id).unwrap());
+    assert!(!index.contains(id));
+    assert!(!fragment_path(&dir, id).exists());
+
+    let reloaded = load_fragment_index(&dir).unwrap();
+    assert!(!reloaded.contains(id));
+    assert!(!delete_persisted_fragment(&dir, &mut index, id).unwrap());
+
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn committed_index_can_prune_a_payload_left_by_the_delete_crash_window() {
+    let dir = temp_dir("delete-crash-orphan");
+    let keep_id = FragmentId::new(40, 0);
+    let delete_id = FragmentId::new(40, 1);
+    let keep = fragment(keep_id, CellPos::ZERO, CellPos::new(1, 1, 1));
+    let delete = fragment(delete_id, CellPos::new(256, 0, 0), CellPos::new(257, 1, 1));
+    let mut store = FragmentStore::default();
+    store.insert(keep);
+    store.insert(delete);
+    save_fragment_store(&dir, &store, DestructionSequence::new(41)).unwrap();
+
+    // Simulate the only safe delete crash window: the authoritative index was
+    // committed first, then the process died before the payload could be
+    // removed. The leftover file is now an orphan, not a broken reference.
+    let mut index = load_fragment_index(&dir).unwrap();
+    assert!(index.remove_fragment(delete_id));
+    save_fragment_index_state(&dir, &index).unwrap();
+
+    assert!(fragment_path(&dir, keep_id).exists());
+    assert!(fragment_path(&dir, delete_id).exists());
+
+    assert_eq!(prune_fragment_orphans(&dir, &index).unwrap(), 1);
+    assert!(fragment_path(&dir, keep_id).exists());
+    assert!(!fragment_path(&dir, delete_id).exists());
+    assert_eq!(prune_fragment_orphans(&dir, &index).unwrap(), 0);
+
+    std::fs::remove_dir_all(dir).unwrap();
 }

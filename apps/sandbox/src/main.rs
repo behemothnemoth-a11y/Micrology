@@ -22,17 +22,29 @@
 //! meshes; Bevy types do not appear anywhere below `apps/`.
 
 mod camera;
+mod collapse_demo;
+mod contact_fracture;
 mod destruction;
 mod edit;
+mod fracture_demo;
+mod fracture_worker;
 mod fragment_render;
+mod fragment_streaming;
 mod hud;
+mod impact;
+mod impact_demo;
+mod interaction;
+mod performance;
 mod physics;
+mod progressive_demo;
 mod render;
 mod scene;
+mod sim_lab;
 mod streaming;
 
+use bevy::app::{RunFixedMainLoop, RunFixedMainLoopSystems};
 use bevy::prelude::*;
-use bevy::window::{PresentMode, WindowPlugin};
+use bevy::window::{PresentMode, WindowPlugin, WindowPosition};
 use engine_geometry::SectionMeshCache;
 use engine_world::World as EngineWorld;
 use std::path::PathBuf;
@@ -106,7 +118,19 @@ fn main() {
 
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
-            title: "Micrology — DROP 0003 sandbox".into(),
+            // Configure only this newly created capture window; never move or
+            // resize an existing desktop window to make a recording fit.
+            resolution: if std::env::var_os("MICROLOGY_CAPTURE_COMPACT").is_some() {
+                (800, 450).into()
+            } else {
+                default()
+            },
+            position: if std::env::var_os("MICROLOGY_CAPTURE_COMPACT").is_some() {
+                WindowPosition::At(IVec2::new(8, 8))
+            } else {
+                default()
+            },
+            title: "Micrology — volumetric destruction lab".into(),
             present_mode: PresentMode::AutoVsync,
             ..default()
         }),
@@ -131,8 +155,18 @@ fn main() {
     .init_resource::<physics::FragmentBudgetRes>()
     .init_resource::<physics::FragmentSmoke>()
     .init_resource::<fragment_render::FragmentEntities>()
+    .init_resource::<fragment_streaming::FragmentStreamRes>()
+    .init_resource::<fragment_streaming::FragmentStreamTasks>()
     .init_resource::<destruction::DestructionHost>()
     .init_resource::<destruction::DestructionSmoke>()
+    .init_resource::<impact::ImpactHost>()
+    .init_resource::<contact_fracture::ContactFractureHost>()
+    .init_resource::<performance::PerformanceCapture>()
+    .init_resource::<collapse_demo::CollapseDemo>()
+    .init_resource::<fracture_demo::FractureDemo>()
+    .init_resource::<impact_demo::ImpactDemo>()
+    .init_resource::<progressive_demo::ProgressiveDamageDemo>()
+    .init_resource::<sim_lab::SimulationLab>()
     .init_resource::<streaming::StreamTasks>()
     .init_resource::<edit::Palette>()
     // `setup_view` reads the world manifest's spawn, so it has to run after
@@ -142,6 +176,11 @@ fn main() {
         (
             scene::setup_world,
             destruction::load_fragment_state,
+            sim_lab::seed,
+            progressive_demo::seed,
+            impact_demo::seed,
+            collapse_demo::seed,
+            fracture_demo::seed,
             destruction::seed_destruction_smoke,
             physics::seed_fragment_smoke,
             scene::setup_view,
@@ -159,14 +198,28 @@ fn main() {
                 // section spawned this frame is positioned against the new anchor.
                 render::maintain_render_origin,
                 edit::select_material,
-                edit::edit_cells,
-                edit::save_and_load,
+                edit::edit_cells.run_if(sim_lab::inactive),
+                edit::save_and_load.run_if(sim_lab::inactive),
                 edit::toggle_compiler,
                 edit::quit,
+                sim_lab::controls,
+                sim_lab::strike,
+                (
+                    interaction::drive,
+                    contact_fracture::process_background,
+                    fracture_worker::drive,
+                )
+                    .chain(),
+                progressive_demo::drive,
+                impact_demo::drive,
+                collapse_demo::drive,
+                fracture_demo::drive,
+                impact::process_secondary_damage,
                 // Structural classification is async. A returning result is
                 // validated before it can remove cells or create fragments.
                 destruction::dispatch_structural_jobs,
                 destruction::poll_structural_jobs,
+                destruction::sync_structural_region_demand,
             )
                 .chain(),
             (
@@ -174,19 +227,34 @@ fn main() {
                 // apply whatever came back that is still current.
                 streaming::drive_streaming,
                 streaming::poll_region_tasks,
+                // Non-blocking completion opportunities around independent host
+                // work: at most three commits/snapshots per frame, never a spin.
+                fracture_worker::drive,
                 streaming::queue_dirty_sections,
                 streaming::dispatch_mesh_jobs,
                 streaming::apply_mesh_results,
+                // Fragment payload residency is independent of both terrain
+                // residency and the smaller render/physics neighbourhoods.
+                fragment_streaming::poll_fragment_tasks.run_if(sim_lab::inactive),
+                fragment_streaming::drive_fragment_streaming.run_if(sim_lab::inactive),
                 // Physics residency is deliberately smaller than render residency.
                 // Rebuild only nearby static colliders, from the live cell world.
+                fracture_worker::drive,
                 physics::sync_static_colliders,
-                // Admit fragment render memory first, then let physics see the
-                // same updated budget before creating a body.
-                fragment_render::sync_fragment_render,
+                // Collision is authoritative for simulation and comes directly
+                // from cells. Give it first claim on the shared host budget;
+                // rendering may lag or be withheld without deciding when a
+                // fragment starts participating in physics.
                 physics::sync_fragment_bodies,
+                fragment_render::sync_fragment_render,
+                interaction::sync_motion,
                 hud::toggle,
                 hud::apply_visibility,
                 hud::update,
+                // Drawn last, from engine state rather than from anything the
+                // renderer owns.
+                fracture_demo::draw,
+                interaction::draw,
             )
                 .chain(),
         )
@@ -194,25 +262,36 @@ fn main() {
             // and all of that before the HUD reports the frame.
             .chain(),
     )
+    .add_systems(
+        RunFixedMainLoop,
+        sim_lab::apply_pending_fixed_step.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+    )
     // Dynamic fragment state remains engine-owned. Read physics back after
     // Avian's fixed step instead of making the backend authoritative.
     .add_systems(
         FixedPostUpdate,
         (
             physics::readback_fragment_bodies,
+            impact::collect_fragment_impacts,
+            contact_fracture::collect,
+            contact_fracture::process,
             physics::verify_fragment_smoke,
             destruction::verify_destruction_smoke,
         )
             .chain()
             .after(avian3d::prelude::PhysicsSystems::Last),
     )
+    .add_systems(FixedPreUpdate, interaction::hold)
+    .add_systems(FixedLast, sim_lab::count_fixed_tick)
     // Unsaved edits must reach disk before the process does, so this runs in
     // `Last`, after the exit message exists and before the app stops.
     .add_systems(
         Last,
         (
-            streaming::flush_on_exit,
-            destruction::flush_fragments_on_exit,
+            streaming::flush_on_exit.run_if(sim_lab::inactive),
+            destruction::flush_fragments_on_exit.run_if(sim_lab::inactive),
+            performance::record,
+            performance::capture_snapshot,
         ),
     );
 

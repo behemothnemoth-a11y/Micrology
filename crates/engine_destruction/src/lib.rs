@@ -34,28 +34,108 @@
 //!    corner contact are not support. Any later optimisation must keep an exact
 //!    oracle beside it — the same discipline that made the greedy mesher
 //!    trustworthy.
+//!
+//! # Fracture does not change any of that
+//!
+//! [`fracture`] adds sparse persistent state — per-cell absorbed energy and
+//! per-bond remaining integrity — so that material can be present and weakened
+//! rather than only intact or absent. It reaches geometry through ordinary
+//! [`DamageTarget`]s and the existing edit pipeline, and it leaves occupancy
+//! connectivity as the sole topological oracle: a broken bond is a crack, not a
+//! cut, and nothing in that module detaches anything.
 
 pub mod collision;
 pub mod connectivity;
+pub mod contact_fracture;
+pub mod damage;
+pub mod derived_jobs;
 pub mod detach;
+pub mod fracture;
+pub mod fracture_connectivity;
+pub mod fracture_jobs;
+pub mod fracture_transaction;
 pub mod fragment;
+pub mod fragment_partition;
+pub mod impact;
+pub mod interaction;
 pub mod jobs;
 pub mod lifecycle;
 pub mod physics;
+pub mod progressive_damage;
+pub mod reference_fixture;
+pub mod residency;
 pub mod spatial;
+pub mod support_witness;
 
 pub use collision::{
     CollisionBox, CollisionCompiler, CollisionShape, CollisionStats, ExactCollisionCompiler,
     GreedyCollisionCompiler,
 };
+pub use contact_fracture::ContactFracturePolicy;
 
+pub use damage::{
+    DamageAmount, DamageEvaluation, DamageEvaluationError, DamageEvaluationLimits, DamageEvent,
+    DamageEventError, DamageEventId, DamageFalloff, DamageImpulse, DamagePolicy, DamageSequence,
+    DamageSource, DamageSpace, DamageTarget, DamageVolume, DamageWork, UniformDamagePolicy,
+    evaluate_damage_event,
+};
+pub use derived_jobs::{
+    FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,
+    FragmentMeshJobInput, FragmentMeshJobResult, StaticCollisionFingerprint,
+    StaticCollisionJobInput, StaticCollisionJobResult,
+};
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
+pub use fracture::{
+    BOND_INTEGRITY, BaselineFracturePolicy, BondFracture, BondKey, BondLoad, BondMode, BondSite,
+    CellDeposit, CellFracture, FractureDefer, FractureDigest, FractureEvaluation, FractureImpact,
+    FractureImpactError, FractureLimits, FractureLoad, FractureMeasurement, FractureOutcome,
+    FracturePolicy, FractureProfile, FracturePrune, FractureRefusal, FractureScene,
+    FractureSpaceMismatch, FractureState, FractureStats, RegionFracture, evaluate_fracture,
+};
+pub use fracture_connectivity::{
+    BondGate, CrackedBonds, FractureSeparation, IntactBonds, SeparatedComponent, SeparationCause,
+    classify_cracked_component, classify_cracked_from_roots, cracked_structure_result,
+    fracture_state_leaving_with, fragment_parts_through_cracks, separation_from_cracks,
+    separation_roots,
+};
+pub use fracture_transaction::{
+    FractureTransactionLimits, FractureTransactionRefusal, FragmentFractureCommit,
+    StaticFractureCommit, fracture_fragment_if, fracture_static_if,
+};
 pub use fragment::{Fragment, FragmentId, FragmentPose, FragmentState, Rotation};
+pub use impact::{
+    FragmentDamageResult, FragmentImpact, FragmentImpulse, RefractureOutcome, RefractureRefusal,
+    SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal,
+    UniformImpactDamagePolicy, apply_fragment_impulse, couple_damage_to_detachment,
+    damage_fragment_store_if, damage_fragment_store_with_parts, reference_detachment_impulse,
+    refracture_store_if,
+};
 pub use lifecycle::{
     FragmentAccount, FragmentBudget, FragmentDerivedFootprint, FragmentDisposition,
     FragmentFootprint, FragmentPressure, FragmentStore, FragmentStoreStats,
 };
 pub use physics::{FragmentPhysicsDescriptor, FragmentPhysicsState};
+pub use progressive_damage::{
+    AccumulatedDamageRecord, DamageFailurePolicy, DamageSite, ProgressiveDamageLimits,
+    ProgressiveDamageOutcome, ProgressiveDamageRefusal, ProgressiveDamageStore,
+    UniformFailurePolicy, fragment_after_failures, static_failure_batch,
+};
+pub use reference_fixture::{
+    REFERENCE_FIXTURE_OFFSET, REFERENCE_FOOTING_MAX, REFERENCE_FOOTING_MIN,
+    REFERENCE_FRACTURE_MATERIAL, REFERENCE_IMPACT_CENTRE, REFERENCE_IMPACT_ENERGY,
+    REFERENCE_IMPACT_IMPULSE, REFERENCE_IMPACT_IMPULSE_MAGNITUDE, REFERENCE_IMPACT_RADIUS,
+    REFERENCE_IMPACT_SOURCE, REFERENCE_IMPACT_SOURCE_DISTANCE_CELLS,
+    REFERENCE_IMPACT_STANDOFF_CELLS, REFERENCE_LOCAL_FOOTING_MAX, REFERENCE_LOCAL_FOOTING_MIN,
+    REFERENCE_LOCAL_IMPACT_CENTRE, REFERENCE_LOCAL_IMPACT_SOURCE, REFERENCE_LOCAL_WALL_MAX,
+    REFERENCE_LOCAL_WALL_MIN, REFERENCE_WALL_MAX, REFERENCE_WALL_MIN, fracture_hit_toward,
+    fracture_hit_toward_in, reference_fracture_hit, reference_fracture_hit_at,
+    reference_fracture_materials, reference_fracture_world, reference_fracture_world_at,
+    reference_impact_direction, translate_cell, translate_global,
+};
+pub use residency::{
+    FragmentLoadOutcome, FragmentLoadTicket, FragmentResidency, FragmentResidencyAction,
+    FragmentResidencyConfig, FragmentResidencyCounts, FragmentSaveOutcome, FragmentSaveTicket,
+};
 pub use spatial::{FragmentSpatialError, FragmentSpatialIndex, regions_for_fragment};
 
 pub use jobs::{
@@ -67,4 +147,8 @@ pub use connectivity::{
     AllResident, Classification, Component, ComponentSet, DeferReason, Residency, ResidentRegions,
     StructuralCounts, StructuralLimits, classify_component, classify_from_roots,
     split_into_components, touched_regions,
+};
+
+pub use support_witness::{
+    SupportWitness, SupportWitnessLimits, SupportWitnessStats, prove_all_roots_supported,
 };

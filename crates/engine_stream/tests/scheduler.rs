@@ -69,6 +69,71 @@ fn limits(active: usize, apply: usize) -> SchedulerLimits {
 }
 
 #[test]
+fn upload_byte_budget_defers_without_losing_or_starving_geometry() {
+    let w = spaced(3);
+    let mut scheduler = MeshScheduler::new(limits(3, 8));
+    for i in 0..3 {
+        scheduler.request(spaced_section(i), SectionPriority::required_dirty(0));
+    }
+    let jobs = scheduler.take_jobs(&w, GRID);
+    let mut bytes = 0;
+    for job in jobs {
+        let result = job.compile(&GreedyCompiler);
+        bytes = result.mesh.cpu_bytes() as u64;
+        scheduler.deliver(result);
+    }
+    assert!(bytes > 0);
+    assert!(
+        scheduler
+            .drain_ready_with_byte_budget(&w, GRID, 0)
+            .is_empty()
+    );
+    assert_eq!(scheduler.counts().awaiting_apply, 3);
+    assert_eq!(
+        scheduler
+            .drain_ready_with_byte_budget(&w, GRID, bytes)
+            .len(),
+        1
+    );
+    assert_eq!(scheduler.counts().awaiting_apply, 2);
+    assert_eq!(
+        scheduler.drain_ready_with_byte_budget(&w, GRID, 1).len(),
+        1,
+        "one oversize item progresses alone"
+    );
+    assert_eq!(scheduler.counts().oversized_applies, 1);
+    assert_eq!(
+        scheduler
+            .drain_ready_with_byte_budget(&w, GRID, bytes)
+            .len(),
+        1
+    );
+    assert_eq!(scheduler.counts().awaiting_apply, 0);
+    assert_eq!(scheduler.counts().applied_mesh_bytes, 3 * bytes);
+}
+
+#[test]
+fn a_byte_deferred_mesh_is_revalidated_after_later_edits() {
+    let mut w = spaced(2);
+    let mut scheduler = MeshScheduler::new(limits(2, 8));
+    for i in 0..2 {
+        scheduler.request(spaced_section(i), SectionPriority::required_dirty(0));
+    }
+    for job in scheduler.take_jobs(&w, GRID) {
+        scheduler.deliver(job.compile(&GreedyCompiler));
+    }
+    assert_eq!(scheduler.drain_ready_with_byte_budget(&w, GRID, 1).len(), 1);
+    w.set(spaced_cell(1), None);
+    assert!(
+        scheduler
+            .drain_ready_with_byte_budget(&w, GRID, 1)
+            .is_empty()
+    );
+    assert_eq!(scheduler.counts().discarded_stale, 1);
+    assert_eq!(scheduler.counts().pending, 1);
+}
+
+#[test]
 fn nearer_work_goes_first_within_a_class() {
     let mut s = MeshScheduler::default();
     s.request(section(0), SectionPriority::required_dirty(900));

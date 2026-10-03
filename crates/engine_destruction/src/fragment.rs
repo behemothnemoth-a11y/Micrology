@@ -122,6 +122,13 @@ pub struct Fragment {
     /// Local bounds of the occupied cells.
     pub bounds: CellBounds,
     pub state: FragmentState,
+    /// Runtime-only revision of the fragment's local cell geometry.
+    ///
+    /// Physics motion/state changes bump `revision` for persistence but must
+    /// not invalidate mesh/collider jobs whose inputs are unchanged. This
+    /// revision is intentionally reset when a fragment is reconstructed from
+    /// persistence because derived caches/tasks do not survive that boundary.
+    geometry_revision: Revision,
     pub revision: Revision,
 }
 
@@ -191,6 +198,7 @@ impl Fragment {
             angular_velocity: [0.0; 3],
             bounds,
             state: FragmentState::Dynamic,
+            geometry_revision: Revision::ZERO,
             revision: Revision::ZERO,
         })
     }
@@ -241,6 +249,7 @@ impl Fragment {
             } else {
                 FragmentState::Dynamic
             },
+            geometry_revision: Revision::ZERO,
             revision,
         })
     }
@@ -327,6 +336,13 @@ impl Fragment {
         self.state == FragmentState::Sleeping
     }
 
+    /// Revision used only for derived geometry/collision invalidation.
+    ///
+    /// It does not move when physics changes pose, velocity or sleep state.
+    pub fn geometry_revision(&self) -> Revision {
+        self.geometry_revision
+    }
+
     /// Record what the physics backend reports.
     pub fn update_from_physics(
         &mut self,
@@ -344,6 +360,100 @@ impl Fragment {
             FragmentState::Dynamic
         };
         self.revision.bump();
+    }
+
+    /// Return this fragment with the supplied local cells removed.
+    ///
+    /// The original stays unchanged. A successful geometry change bumps both
+    /// the geometry-only revision (for mesh/collider invalidation) and the
+    /// persistent fragment revision. If every occupied cell is removed, None is
+    /// returned so callers never have to keep an empty Fragment alive.
+    pub fn without_local_cells(&self, cells: &BTreeSet<CellPos>) -> Option<Self> {
+        if cells.is_empty() {
+            return Some(self.clone());
+        }
+
+        let mut next = self.clone();
+        let mut changed = false;
+        for cell in cells {
+            let (volume_pos, local) = cell.split();
+            let Some(volume) = next.volumes.get_mut(&volume_pos) else {
+                continue;
+            };
+            changed |= volume.set(local, None);
+        }
+        if !changed {
+            return Some(next);
+        }
+
+        next.volumes.retain(|_, volume| !volume.is_empty());
+        if next.volumes.is_empty() {
+            return None;
+        }
+        for volume in next.volumes.values_mut() {
+            volume.compact();
+        }
+
+        let mut min = CellPos::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max = CellPos::new(i32::MIN, i32::MIN, i32::MIN);
+        for (volume_pos, volume) in &next.volumes {
+            for (local, _) in volume.iter_occupied() {
+                let cell = CellPos::from_parts(*volume_pos, local);
+                min = CellPos::new(min.x.min(cell.x), min.y.min(cell.y), min.z.min(cell.z));
+                max = CellPos::new(max.x.max(cell.x), max.y.max(cell.y), max.z.max(cell.z));
+            }
+        }
+        next.bounds = CellBounds::new(min, max);
+        next.geometry_revision.bump();
+        next.revision.bump();
+        Some(next)
+    }
+
+    /// Build a child object from a connected subset while preserving this
+    /// fragment's local coordinate frame and world pose.
+    ///
+    /// Keeping the same local frame is important for rotated fragments: the
+    /// engine deliberately does not interpret quaternions, so renumbering a
+    /// child's origin would require backend-specific vector rotation. New child
+    /// identity gets fresh runtime/persistence revisions.
+    pub fn subfragment_with_id(&self, id: FragmentId, cells: &BTreeSet<CellPos>) -> Option<Self> {
+        let mut volumes: BTreeMap<VolumePos, Volume> = BTreeMap::new();
+        let mut min = CellPos::new(i32::MAX, i32::MAX, i32::MAX);
+        let mut max = CellPos::new(i32::MIN, i32::MIN, i32::MIN);
+        let mut any = false;
+
+        for cell in cells {
+            let Some(material) = self.material_at(*cell) else {
+                continue;
+            };
+            let (volume_pos, local) = cell.split();
+            volumes
+                .entry(volume_pos)
+                .or_default()
+                .set(local, Some(material));
+            min = CellPos::new(min.x.min(cell.x), min.y.min(cell.y), min.z.min(cell.z));
+            max = CellPos::new(max.x.max(cell.x), max.y.max(cell.y), max.z.max(cell.z));
+            any = true;
+        }
+        if !any {
+            return None;
+        }
+        for volume in volumes.values_mut() {
+            volume.compact();
+        }
+
+        Some(Self {
+            id,
+            volumes,
+            source_origin: self.source_origin,
+            pose: self.pose,
+            linear_velocity: self.linear_velocity,
+            angular_velocity: self.angular_velocity,
+            bounds: CellBounds::new(min, max),
+            state: self.state,
+            geometry_revision: Revision::ZERO,
+            revision: Revision::ZERO,
+        })
     }
 
     /// Split a fragment that is not actually one connected object.
