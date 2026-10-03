@@ -1,0 +1,6 @@
+{
+  "exit_code": 1,
+  "baseline_sha256": "9a72d64dfcce390df03cd5de6102fd239419f7156cdda5a7cbe5817554b35571",
+  "baseline_unchanged": true,
+  "stderr": "Error: Os { code: 80, kind: AlreadyExists, message: \"The file exists.\" }"
+}

@@ -11,12 +11,12 @@
 //!   counters on any machine, so they are committed as a baseline and asserted
 //!   in CI. A change to them is a real change in engine behaviour.
 //! * [`Timings`] are diagnostic. They vary with hardware and load, they are
-//!   never asserted, and they are never committed — which is also why they are
+//!   never asserted, and they are never committed â€” which is also why they are
 //!   kept out of any type that implements `PartialEq`, the same lesson that
 //!   removed build time from `CompileStats` in DROP 0001.
 //!
 //! The counter set deliberately includes fields the engine cannot yet populate
-//! — resident regions, queued and discarded mesh jobs — so that baselines stay
+//! â€” resident regions, queued and discarded mesh jobs â€” so that baselines stay
 //! comparable as the later passes of DROP 0002 fill them in.
 
 pub mod destruction_benchmark;
@@ -65,3 +65,5 @@ pub mod demolition;
 pub mod material_specimens;
 
 pub mod reference_house;
+
+pub mod house_impact;

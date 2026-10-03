@@ -1,0 +1,76 @@
+{
+  "identical_across_rungs": {
+    "broken_bonds": 168,
+    "evaluated_work": 887,
+    "failed_cells": 54,
+    "fragments_created": 12,
+    "local_fracture_checksum": "77e017301e150e6a",
+    "snapshot_records": 128,
+    "structural_checksum": "3b07fb1588d23136"
+  },
+  "impact": "demolition building, radial blast radius 6 energy 16000, coherent model",
+  "known_regions": 27,
+  "record_sizes_bytes": {
+    "bond_index_key": 40,
+    "bond_record": 48,
+    "cell_index_key": 40,
+    "cell_record": 48
+  },
+  "rungs": [
+    {
+      "capture_ms": 0.0816,
+      "commit_ms": 0.1803,
+      "index_entries": 128,
+      "index_regions": 1,
+      "local_bond_records": 64,
+      "local_cell_records": 64,
+      "snapshot_bytes": 6144,
+      "snapshot_records": 128,
+      "total_records_in_state": 128,
+      "unrelated_records": 0,
+      "worker_ms": 3.6387
+    },
+    {
+      "capture_ms": 0.0929,
+      "commit_ms": 0.1674,
+      "index_entries": 10128,
+      "index_regions": 21,
+      "local_bond_records": 64,
+      "local_cell_records": 64,
+      "snapshot_bytes": 6144,
+      "snapshot_records": 128,
+      "total_records_in_state": 10128,
+      "unrelated_records": 10000,
+      "worker_ms": 3.5374999999999996
+    },
+    {
+      "capture_ms": 0.1261,
+      "commit_ms": 0.1685,
+      "index_entries": 100128,
+      "index_regions": 51,
+      "local_bond_records": 64,
+      "local_cell_records": 64,
+      "snapshot_bytes": 6144,
+      "snapshot_records": 128,
+      "total_records_in_state": 100128,
+      "unrelated_records": 100000,
+      "worker_ms": 3.5442
+    },
+    {
+      "capture_ms": 0.1344,
+      "commit_ms": 0.2053,
+      "index_entries": 1000128,
+      "index_regions": 101,
+      "local_bond_records": 64,
+      "local_cell_records": 64,
+      "snapshot_bytes": 6144,
+      "snapshot_records": 128,
+      "total_records_in_state": 1000128,
+      "unrelated_records": 1000000,
+      "worker_ms": 3.6618000000000004
+    }
+  ],
+  "samples_per_rung": 5,
+  "schema": 1,
+  "scope": "CPU only, no renderer. Timings are reported, never asserted."
+}

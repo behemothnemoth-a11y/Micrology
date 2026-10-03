@@ -1,0 +1,251 @@
+{
+  "base_commit": "162b0a2f2ea943f58c588bfab2ec0abfe8c53c9b",
+  "started_utc": "2026-10-03T23:10:31.681847+00:00",
+  "platform": "win32",
+  "source_sha256_lf_normalized": {
+    "crates/engine_stress/src/lib.rs": "c27c9fbaa4bf8a8cd8445ae0f8021bb821a083421638932f5ebfbad694094a2c",
+    "crates/engine_stress/src/house_impact.rs": "bd3bb8a4b9ad8d877fd1006e7ba00bbba8ba76a399caf0a717bbe750d66e0e18",
+    "crates/engine_stress/src/bin/house_window_bench.rs": "3f48f62d9ce081bfbaf0fe41462fc21b5ca283d42d1bd7d98583cb531f060a45",
+    "crates/engine_stress/tests/house_window_impact.rs": "1952854f75b1cca4cb56705415965da1a0567b358555874a088531b1216beb4c",
+    "tools/render-house-impact-preview.py": "7a5ecc7122e9ea313706b23dbc6c17ca9584a18d39138260cd857963b65a53e2",
+    "fixtures/destruction/reference-house-window-hit-v1.json": "9a72d64dfcce390df03cd5de6102fd239419f7156cdda5a7cbe5817554b35571"
+  },
+  "checks": [
+    {
+      "name": "house_impact_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "house_window_impact"
+      ],
+      "exit_code": 0,
+      "tests_passed": 12,
+      "elapsed_seconds": 1.52,
+      "log_sha256": "6cf64c71dedc13b0f3163ea0607f7a0baa09657fbd83260802c5da2352710ea4"
+    },
+    {
+      "name": "house_impact_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "house_window_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.684,
+      "log_sha256": "811f2969643401d923feac4666271a8504c33cdc19ac176cb4f89cd1301c0c82"
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.615,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 857,
+      "elapsed_seconds": 69.339,
+      "log_sha256": "0328d528d53d92d1ed459a9f2ded6de3c5b6c028fa3379ff523f141ce31e3ad6"
+    },
+    {
+      "name": "engine_doctests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "tests_passed": 1,
+      "elapsed_seconds": 2.483,
+      "log_sha256": "e17c8927af0221ede8336b3c36771e8dd4b0c47e26d01ba2011ee1d4c5cebc95"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 2.805,
+      "log_sha256": "e61fe5c33acead7465b956433c390e058b359fccb824688bd84ad1dbd5a7ac37"
+    },
+    {
+      "name": "specimen_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "material_specimen_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.514,
+      "log_sha256": "4f44d54bdea1ba30f8631ca70e19c3e89e9d850f04dc94a10f3c01b8a3577651"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.229,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.888,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.456,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 4.882,
+      "log_sha256": "5b237932a593d1b9293586777641a2f84c62abcf804a195294e582240f97e718"
+    },
+    {
+      "name": "sandbox_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 13.082,
+      "log_sha256": "696c00f564357cd44a8620d636e9811437e46bb15f4a50e57ada569cfe323559"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.145,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "old_goldens_unchanged",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "162b0a2f2ea943f58c588bfab2ec0abfe8c53c9b",
+        "--",
+        "fixtures",
+        ":(exclude)fixtures/destruction/reference-house-window-hit-v1.json",
+        "docs/diagnostics"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.113,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_unchanged_during_run": true,
+  "all_ok": true,
+  "finished_utc": "2026-10-03T23:12:11.448897+00:00"
+}
