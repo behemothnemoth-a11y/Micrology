@@ -848,6 +848,8 @@ fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos
 /// back into the engine-owned fragment afterwards.
 pub fn sync_fragment_bodies(
     mut commands: Commands,
+    world: Res<WorldRes>,
+    statics: Res<StaticColliders>,
     fragments: Res<DynamicFragments>,
     renders: Res<crate::fragment_render::FragmentEntities>,
     budget: Res<FragmentBudgetRes>,
@@ -857,17 +859,26 @@ pub fn sync_fragment_bodies(
     bodies.withheld_current = 0;
     bodies.pending_spawn_current = 0;
     let camera = camera.map(|camera| camera.global);
+    let static_collision_ready =
+        camera.is_none_or(|camera| statics.pending_for_fixed_step(&world.0, camera) == 0);
     let wanted: BTreeSet<_> = fragments
         .iter()
         .filter(|(id, fragment)| {
             *id == SMOKE_FRAGMENT_ID
-                || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+                || (static_collision_ready
+                    && camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera)))
         })
         .map(|(id, _)| id)
         .collect();
 
     // A body may move indefinitely without changing its local collider. Only a
     // geometry fingerprint change (or leaving physics residency) invalidates it.
+    //
+    // Static collision uncertainty is also a residency boundary: real fragment
+    // bodies temporarily leave the backend while nearby static colliders rebuild.
+    // Their pose and velocity were read back after the previous fixed step and
+    // remain engine-owned, so re-entry resumes motion instead of simulating
+    // through collision that is known to be incomplete.
     let remove_bodies: Vec<_> = bodies
         .entries
         .iter()
