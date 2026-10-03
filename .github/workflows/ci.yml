@@ -28,6 +28,12 @@ jobs:
         run: cargo test --all-targets
       - name: Doc tests
         run: cargo test --doc
+      - name: Destruction benchmark is unchanged
+        run: cargo run -q -p engine_stress --bin destruction_bench -- --check
+      - name: Destruction replay is unchanged
+        run: cargo run -q -p engine_stress --bin destruction_replay -- --check
+      - name: Fragment distribution baseline is unchanged
+        run: cargo run -q -p engine_stress --bin fragment_distribution_bench -- --check
       - name: Stress baseline is unchanged
         # Deterministic counters only. Timings are diagnostic and are never
         # asserted, so this cannot fail because a runner was slow.
@@ -59,3 +65,5 @@ jobs:
             libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Clippy
         run: cargo clippy -p sandbox --all-targets
+      - name: Test
+        run: cargo test -p sandbox
