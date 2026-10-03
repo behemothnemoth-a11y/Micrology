@@ -95,10 +95,135 @@ operation or a cross-machine performance guarantee.
 The first 544-fragment stress run exposed one-completion-per-frame queue delay:
 response p95 200.93 ms, p99 284.18 ms, maximum 319.63 ms, despite frame p99
 20.31 ms and no frame above 33 ms. That observation motivated the three bounded
-poll opportunities and coalesced capacity assessment used in the final build.
-The first-run profile is preserved as `demolition-single-poll-profile.json`.
+poll opportunities and coalesced capacity assessment used in the final build. It
+is a recorded observation from the authoring machine: the profile JSON for it was
+never committed, so it cannot be re-derived from this repository.
 
-MEASUREMENTS_PENDING
+### Where these numbers come from
+
+Everything below was measured in a Claude Code cloud Linux container: CPU only,
+no GPU at all (`/dev/dri` absent), rendering through Mesa llvmpipe software
+Vulkan under Xvfb. **None of it is a performance result for the authoring
+Windows/RTX 5050 machine.** The engine CPU costs are meaningful, because they
+never touch the renderer. The frame cadence, queue wait and end-to-end response
+numbers are dominated by the software rasteriser and are reported only to say
+what was actually observed. Raw artefacts are
+`docs/diagnostics/demolition-engine-cpu.json` and
+`docs/diagnostics/demolition-replay-evidence.json`.
+
+### Engine cost without a renderer
+
+`cargo run --release -p engine_stress --bin demolition_bench`, the roof blast at
+radius 6 and 16,000 energy against the coherent model, 31 samples after 3
+warmups. The same final structural digest on all 34 iterations, so the
+transaction is deterministic; mass closes at 1,657 static + 100 fragment + 54
+failed = 1,811.
+
+| stage | median | p95 | p99 | max |
+|---|---|---|---|---|
+| snapshot capture | 0.014 ms | 0.026 ms | 0.033 ms | 0.033 ms |
+| worker analysis | 3.164 ms | 7.252 ms | 7.362 ms | 7.362 ms |
+| main-thread commit | 0.106 ms | 0.125 ms | 0.134 ms | 0.134 ms |
+
+The split the design exists for is the measured part: analysis costs about
+thirty times what the authoritative commit costs, and only the commit is on the
+frame thread.
+
+### Demolition building replay
+
+`tools/verify-demolition-replay.py` passes against ten real host dumps, one per
+label. Every row conserves mass exactly, and the authoritative queue never went
+stale, refused or capped.
+
+| dump | static | fragment cells | fragments | failed | total | capacity | capacity failed | contact bonds |
+|---|---|---|---|---|---|---|---|---|
+| intact | 1811 | 0 | 0 | 0 | 1811 | on, Sound | 0 | 0 |
+| one_support | 1807 | 0 | 0 | 4 | 1811 | on, Sound | 0 | 0 |
+| overloaded_off | 1803 | 0 | 0 | 8 | 1811 | off | 0 | 0 |
+| roof_released | 1113 | 682 | 1 | 16 | 1811 | on | 8 | 0 |
+| roof_impact | 1113 | 682 | 1 | 16 | 1811 | on | 8 | 0 |
+| lifted | 1113 | 682 | 1 | 16 | 1811 | on | 8 | 0 |
+| pulled | 1113 | 682 | 1 | 16 | 1811 | on | 8 | 0 |
+| slammed | 1113 | 682 | 1 | 16 | 1811 | on | 8 | 3 |
+| settled | 1107 | 681 | 4 | 23 | 1811 | on | 8 | 3 |
+| systems_off | 1107 | 681 | 4 | 23 | 1811 | off | 8 | 3 |
+
+One cut leaves the fixture sound. A second cut with capacity disabled leaves
+1,803 cells in the authored static world and **zero** fragments: the mechanical
+policy, not the cut, is what releases anything. Enabling capacity fails eight
+further support cells in one generation and releases exactly one native 682-cell
+fragment, which then keeps all 682 cells through the fall, the grab and the
+180-step pull. The throw adds real collision cracks (three broken bonds, up from
+none). The blast leaves four pieces holding 681 of the 682 cells — seven cells
+failed in total across the whole sequence, which is the chunk-preserving
+behaviour this fixture exists to show rather than debris confetti. With both
+damage systems disabled the final interval holds structural state identical to
+`settled` and the fracture checksum byte-identical at `f4546c6026930b5a`,
+revision 9, 89 broken bonds.
+
+### Demolition stress replay
+
+The same verifier's stress branch passes. Mass closes against an independently
+computed expectation that accounts for every launched chunk: 1,811 + 9x60 =
+2,351, then 1,811 + 18x60 = 2,891.
+
+| dump | static | fragment cells | fragments | failed | total | expected |
+|---|---|---|---|---|---|---|
+| stress_9 | 1134 | 1101 | 305 | 116 | 2351 | 2351 |
+| stress_18 | 1024 | 1622 | 515 | 245 | 2891 | 2891 |
+| stress_off | 1024 | 1622 | 515 | 245 | 2891 | 2891 |
+
+At `stress_18`: 515 live fragments tracked as bodies, 2,176 contact-broken
+bonds, 81 fragment-fragment pairs, fracture state of 3,385 bond and 2,487 cell
+entries at revision 294, structural checksum `da31e2d5ba1b4e54` and fracture
+checksum `eb7dcb8394550adf`. Turning both damage systems off reproduces both
+checksums exactly while bodies keep moving.
+
+Queue behaviour under that load is the part worth reading carefully. The
+authoritative fracture FIFO reached its bound — high-water 32 of 32 — and
+**capped zero requests**: it filled to the boundary without ever rejecting
+authoritative work, and mass conservation above is the proof none was lost or
+applied twice. Twenty-eight worker results were rejected as stale, which is the
+revision check doing its job in a run where 515 fragments are being edited
+concurrently, not a fault. The *opportunistic* queues did shed work, as they are
+allowed to: contact sampling capped 53 of 276 enqueued and interaction capped 26.
+Shedding a contact sample or a kick changes no geometry; shedding an
+authoritative fracture job would, and that count is zero.
+
+### Host latency, and what it does not establish
+
+From the stress replay, 333 samples:
+
+| stage | median | p95 | p99 | max |
+|---|---|---|---|---|
+| capture | 0.014 ms | 0.664 ms | 0.763 ms | 1.764 ms |
+| worker | 0.165 ms | 2.659 ms | 7.249 ms | 19.138 ms |
+| commit | 0.060 ms | 0.161 ms | 0.644 ms | 1.581 ms |
+| queue wait | 49.985 ms | 281.763 ms | 733.716 ms | 907.964 ms |
+| response | 67.758 ms | 323.524 ms | 791.254 ms | 967.806 ms |
+
+The engine's own costs stay small and bounded: worker p99 7.249 ms off-frame,
+commit p99 0.644 ms on the frame thread. Response latency is almost entirely
+queue wait, and queue wait here is a function of how fast frames retire, because
+the queue drains at most three commits per frame. On a software rasteriser frames
+are very slow, so these two rows mostly measure llvmpipe.
+
+That has a consequence worth stating plainly: **this run neither confirms nor
+refutes the bounded multiple-poll improvement.** The 544-fragment observation
+that motivated it (response p95 200.93 ms, p99 284.18 ms, maximum 319.63 ms,
+against frame p99 20.31 ms) was taken on the authoring machine with real GPU
+frames, and nothing here is comparable to it. The earlier single-poll profile is
+described in this document from that session's notes; the JSON for it was never
+committed to the repository, so it is a recorded observation rather than a
+reproducible artefact.
+
+Still pending, by environment rather than by omission: the Windows frame profile
+(p50/p95/p99/max and the count of frames over 33.3 ms), the GPU-frame response
+latency that would actually test the poll change, and all visual evidence. This
+container has no PowerShell, so `tools/capture-demo.ps1 -CheckOnly` cannot run;
+its ffmpeg has neither `ddagrab` nor `gdigrab`; and there is no GPU to capture.
+Those must be produced on the Windows machine with the existing non-invasive
+capture path.
 
 Verification covers stale world, damage and parent-geometry results; identity
 collision; aggregate admission; zero snapshot/analysis budgets; unknown

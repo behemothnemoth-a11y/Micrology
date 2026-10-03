@@ -1,0 +1,511 @@
+{
+  "building_replay": {
+    "intact": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 0
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 0,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": false,
+      "failed_cells": 0,
+      "fracture_checksum": "cbf29ce484222325",
+      "fragment_cells": 0,
+      "fragments": 0,
+      "queue": {
+        "accepted": 0,
+        "capped": 0,
+        "high_water": 1,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1811,
+      "structural_checksum": "048084123a921d69"
+    },
+    "lifted": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 1
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": true,
+      "failed_cells": 16,
+      "fracture_checksum": "0d56093bd1725239",
+      "fragment_cells": 682,
+      "fragments": 1,
+      "queue": {
+        "accepted": 5,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1113,
+      "structural_checksum": "4fa4fc10f6b1ba55"
+    },
+    "one_support": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 0
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 0,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": false,
+      "failed_cells": 4,
+      "fracture_checksum": "cbf29ce484222325",
+      "fragment_cells": 0,
+      "fragments": 0,
+      "queue": {
+        "accepted": 1,
+        "capped": 0,
+        "high_water": 1,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1807,
+      "structural_checksum": "8a1543273f9adab9"
+    },
+    "overloaded_off": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 0
+      },
+      "capacity_enabled": false,
+      "capacity_failed": 0,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": false,
+      "failed_cells": 8,
+      "fracture_checksum": "cbf29ce484222325",
+      "fragment_cells": 0,
+      "fragments": 0,
+      "queue": {
+        "accepted": 2,
+        "capped": 0,
+        "high_water": 1,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1803,
+      "structural_checksum": "633e8a05486fd421"
+    },
+    "pulled": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 1
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": true,
+      "failed_cells": 16,
+      "fracture_checksum": "0d56093bd1725239",
+      "fragment_cells": 682,
+      "fragments": 1,
+      "queue": {
+        "accepted": 5,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1113,
+      "structural_checksum": "4fa4fc10f6b1ba55"
+    },
+    "roof_impact": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 1
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": true,
+      "failed_cells": 16,
+      "fracture_checksum": "0d56093bd1725239",
+      "fragment_cells": 682,
+      "fragments": 1,
+      "queue": {
+        "accepted": 5,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1113,
+      "structural_checksum": "4fa4fc10f6b1ba55"
+    },
+    "roof_released": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 1
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 0,
+      "contact_fracture_enabled": false,
+      "failed_cells": 16,
+      "fracture_checksum": "cbf29ce484222325",
+      "fragment_cells": 682,
+      "fragments": 1,
+      "queue": {
+        "accepted": 3,
+        "capped": 0,
+        "high_water": 1,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1113,
+      "structural_checksum": "4fa4fc10f6b1ba55"
+    },
+    "settled": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 4
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 3,
+      "contact_fracture_enabled": true,
+      "failed_cells": 23,
+      "fracture_checksum": "f4546c6026930b5a",
+      "fragment_cells": 681,
+      "fragments": 4,
+      "queue": {
+        "accepted": 9,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1107,
+      "structural_checksum": "01d891ce03fb8a20"
+    },
+    "slammed": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 1
+      },
+      "capacity_enabled": true,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 3,
+      "contact_fracture_enabled": true,
+      "failed_cells": 16,
+      "fracture_checksum": "33792ac67cb1b8b4",
+      "fragment_cells": 682,
+      "fragments": 1,
+      "queue": {
+        "accepted": 7,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1113,
+      "structural_checksum": "4fa4fc10f6b1ba55"
+    },
+    "systems_off": {
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 4
+      },
+      "capacity_enabled": false,
+      "capacity_failed": 8,
+      "capacity_status": "Sound",
+      "conserved_total": 1811,
+      "contact_broken_bonds": 3,
+      "contact_fracture_enabled": false,
+      "failed_cells": 23,
+      "fracture_checksum": "f4546c6026930b5a",
+      "fragment_cells": 681,
+      "fragments": 4,
+      "queue": {
+        "accepted": 9,
+        "capped": 0,
+        "high_water": 2,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1107,
+      "structural_checksum": "01d891ce03fb8a20"
+    }
+  },
+  "schema": 1,
+  "stress_replay": {
+    "stress_18": {
+      "authoritative_queue": {
+        "accepted": 292,
+        "capped": 0,
+        "high_water": 32,
+        "refused": 0,
+        "stale": 28
+      },
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 515
+      },
+      "conserved_expected": 2891,
+      "conserved_total": 2891,
+      "contact_queue": {
+        "broken_bonds": 2176,
+        "capped": 53,
+        "enqueued": 276,
+        "fragment_fragment_pairs": 81,
+        "processed": 276,
+        "refused": 0,
+        "samples": 191,
+        "stale": 28,
+        "work": 22868
+      },
+      "failed_cells": 245,
+      "fracture": {
+        "bond_entries": 3385,
+        "broken_bonds": 1375,
+        "cell_entries": 2487,
+        "checksum_fnv1a64": "eb7dcb8394550adf",
+        "revision": 294
+      },
+      "fragment_cells": 1622,
+      "fragments": 515,
+      "host_latency": {
+        "capture": {
+          "max_ms": 1.764,
+          "median_ms": 0.014,
+          "p95_ms": 0.664,
+          "p99_ms": 0.763,
+          "samples": 333
+        },
+        "commit": {
+          "max_ms": 1.581,
+          "median_ms": 0.06,
+          "p95_ms": 0.161,
+          "p99_ms": 0.644,
+          "samples": 333
+        },
+        "queue_wait": {
+          "max_ms": 907.964,
+          "median_ms": 49.985,
+          "p95_ms": 281.763,
+          "p99_ms": 733.716,
+          "samples": 333
+        },
+        "response": {
+          "max_ms": 967.806,
+          "median_ms": 67.758,
+          "p95_ms": 323.524,
+          "p99_ms": 791.254,
+          "samples": 333
+        },
+        "worker": {
+          "max_ms": 19.138,
+          "median_ms": 0.165,
+          "p95_ms": 2.659,
+          "p99_ms": 7.249,
+          "samples": 333
+        }
+      },
+      "interaction_queue": {
+        "applied": 43,
+        "blasts": 2,
+        "capped": 26,
+        "kicks": 78,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1024,
+      "structural_checksum": "da31e2d5ba1b4e54"
+    },
+    "stress_9": {
+      "authoritative_queue": {
+        "accepted": 163,
+        "capped": 0,
+        "high_water": 32,
+        "refused": 0,
+        "stale": 21
+      },
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 305
+      },
+      "conserved_expected": 2351,
+      "conserved_total": 2351,
+      "contact_queue": {
+        "broken_bonds": 1329,
+        "capped": 29,
+        "enqueued": 172,
+        "fragment_fragment_pairs": 43,
+        "processed": 172,
+        "refused": 0,
+        "samples": 115,
+        "stale": 21,
+        "work": 15804
+      },
+      "failed_cells": 116,
+      "fracture": {
+        "bond_entries": 2950,
+        "broken_bonds": 885,
+        "cell_entries": 1869,
+        "checksum_fnv1a64": "12a70b2fe9563222",
+        "revision": 164
+      },
+      "fragment_cells": 1101,
+      "fragments": 305,
+      "host_latency": {
+        "capture": {
+          "max_ms": 1.079,
+          "median_ms": 0.017,
+          "p95_ms": 0.608,
+          "p99_ms": 0.763,
+          "samples": 190
+        },
+        "commit": {
+          "max_ms": 1.581,
+          "median_ms": 0.054,
+          "p95_ms": 0.159,
+          "p99_ms": 0.676,
+          "samples": 190
+        },
+        "queue_wait": {
+          "max_ms": 907.964,
+          "median_ms": 49.833,
+          "p95_ms": 454.663,
+          "p99_ms": 849.919,
+          "samples": 190
+        },
+        "response": {
+          "max_ms": 967.806,
+          "median_ms": 55.292,
+          "p95_ms": 454.845,
+          "p99_ms": 907.863,
+          "samples": 190
+        },
+        "worker": {
+          "max_ms": 19.138,
+          "median_ms": 0.165,
+          "p95_ms": 2.659,
+          "p99_ms": 16.353,
+          "samples": 190
+        }
+      },
+      "interaction_queue": {
+        "applied": 11,
+        "blasts": 1,
+        "capped": 0,
+        "kicks": 72,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1134,
+      "structural_checksum": "8e2f7706121bc4db"
+    },
+    "stress_off": {
+      "authoritative_queue": {
+        "accepted": 292,
+        "capped": 0,
+        "high_water": 32,
+        "refused": 0,
+        "stale": 28
+      },
+      "bodies": {
+        "awake": 0,
+        "fragments_tracked": 515
+      },
+      "conserved_expected": 2891,
+      "conserved_total": 2891,
+      "contact_queue": {
+        "broken_bonds": 2176,
+        "capped": 53,
+        "enqueued": 276,
+        "fragment_fragment_pairs": 81,
+        "processed": 276,
+        "refused": 0,
+        "samples": 191,
+        "stale": 28,
+        "work": 22868
+      },
+      "failed_cells": 245,
+      "fracture": {
+        "bond_entries": 3385,
+        "broken_bonds": 1375,
+        "cell_entries": 2487,
+        "checksum_fnv1a64": "eb7dcb8394550adf",
+        "revision": 294
+      },
+      "fragment_cells": 1622,
+      "fragments": 515,
+      "host_latency": {
+        "capture": {
+          "max_ms": 1.764,
+          "median_ms": 0.014,
+          "p95_ms": 0.664,
+          "p99_ms": 0.763,
+          "samples": 333
+        },
+        "commit": {
+          "max_ms": 1.581,
+          "median_ms": 0.06,
+          "p95_ms": 0.161,
+          "p99_ms": 0.644,
+          "samples": 333
+        },
+        "queue_wait": {
+          "max_ms": 907.964,
+          "median_ms": 49.985,
+          "p95_ms": 281.763,
+          "p99_ms": 733.716,
+          "samples": 333
+        },
+        "response": {
+          "max_ms": 967.806,
+          "median_ms": 67.758,
+          "p95_ms": 323.524,
+          "p99_ms": 791.254,
+          "samples": 333
+        },
+        "worker": {
+          "max_ms": 19.138,
+          "median_ms": 0.165,
+          "p95_ms": 2.659,
+          "p99_ms": 7.249,
+          "samples": 333
+        }
+      },
+      "interaction_queue": {
+        "applied": 43,
+        "blasts": 2,
+        "capped": 26,
+        "kicks": 78,
+        "refused": 0,
+        "stale": 0
+      },
+      "static_cells": 1024,
+      "structural_checksum": "da31e2d5ba1b4e54"
+    }
+  },
+  "where": {
+    "host": "Claude Code cloud Linux container",
+    "note": "Engine CPU costs are meaningful here. Frame cadence, queue wait and end-to-end response are dominated by the software rasteriser and are NOT a performance result for the authoring Windows/RTX 5050 machine.",
+    "renderer": "Mesa llvmpipe software Vulkan under Xvfb (no GPU; /dev/dri absent)"
+  }
+}
