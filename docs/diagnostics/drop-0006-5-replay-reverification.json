@@ -1,0 +1,169 @@
+{
+  "building_replay": {
+    "all_match_pre_0006_5": true,
+    "labels": 10
+  },
+  "finding": "No. The deterministic building replay reproduces bit-for-bit across the change. The stress replay differs, but it also differs from itself on identical code, so its variation is pre-existing scenario non-determinism and not attributable to the index.",
+  "invariant_in_every_run": [
+    "mass conserved exactly (2351 and 2891)",
+    "authoritative fracture queue refused 0 and capped 0",
+    "stress_18 structural and fracture state identical to stress_off (systems-off freeze)"
+  ],
+  "question": "Did DROP 0006.5 change host replay behaviour?",
+  "schema": 1,
+  "stress_replay": {
+    "run1_post_0006_5": {
+      "stress_18": {
+        "authoritative_queue": {
+          "accepted": 242,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 31
+        },
+        "conserved_total": 2891,
+        "contacts": {
+          "broken_bonds": 1768,
+          "capped": 57,
+          "enqueued": 230,
+          "processed": 230,
+          "samples": 172,
+          "stale": 31
+        },
+        "failed_cells": 221,
+        "fracture_checksum": "06a9891db1cd1192",
+        "fragment_cells": 1614,
+        "fragments": 559,
+        "static_cells": 1056,
+        "structural_checksum": "bc64a34cbffd7ed0"
+      },
+      "stress_9": {
+        "authoritative_queue": {
+          "accepted": 141,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 26
+        },
+        "conserved_total": 2351,
+        "contacts": {
+          "broken_bonds": 921,
+          "capped": 40,
+          "enqueued": 152,
+          "processed": 152,
+          "samples": 116,
+          "stale": 26
+        },
+        "failed_cells": 111,
+        "fracture_checksum": "137303fee6d382a8",
+        "fragment_cells": 1112,
+        "fragments": 300,
+        "static_cells": 1128,
+        "structural_checksum": "6442c45f0d578431"
+      },
+      "stress_off": {
+        "authoritative_queue": {
+          "accepted": 242,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 31
+        },
+        "conserved_total": 2891,
+        "contacts": {
+          "broken_bonds": 1768,
+          "capped": 57,
+          "enqueued": 230,
+          "processed": 230,
+          "samples": 172,
+          "stale": 31
+        },
+        "failed_cells": 221,
+        "fracture_checksum": "06a9891db1cd1192",
+        "fragment_cells": 1614,
+        "fragments": 559,
+        "static_cells": 1056,
+        "structural_checksum": "bc64a34cbffd7ed0"
+      }
+    },
+    "run2_post_0006_5_identical_code": {
+      "stress_18": {
+        "authoritative_queue": {
+          "accepted": 186,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 23
+        },
+        "conserved_total": 2891,
+        "contacts": {
+          "broken_bonds": 1257,
+          "capped": 76,
+          "enqueued": 180,
+          "processed": 180,
+          "samples": 166,
+          "stale": 23
+        },
+        "failed_cells": 184,
+        "fracture_checksum": "38eb1b11fd427bd3",
+        "fragment_cells": 1643,
+        "fragments": 419,
+        "static_cells": 1064,
+        "structural_checksum": "f36f8ca16d6517eb"
+      },
+      "stress_9": {
+        "authoritative_queue": {
+          "accepted": 142,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 23
+        },
+        "conserved_total": 2351,
+        "contacts": {
+          "broken_bonds": 842,
+          "capped": 35,
+          "enqueued": 152,
+          "processed": 152,
+          "samples": 111,
+          "stale": 23
+        },
+        "failed_cells": 87,
+        "fracture_checksum": "03117612e624a778",
+        "fragment_cells": 1131,
+        "fragments": 295,
+        "static_cells": 1133,
+        "structural_checksum": "849f38fbd46084b5"
+      },
+      "stress_off": {
+        "authoritative_queue": {
+          "accepted": 186,
+          "capped": 0,
+          "high_water": 32,
+          "refused": 0,
+          "stale": 23
+        },
+        "conserved_total": 2891,
+        "contacts": {
+          "broken_bonds": 1257,
+          "capped": 76,
+          "enqueued": 180,
+          "processed": 180,
+          "samples": 166,
+          "stale": 23
+        },
+        "failed_cells": 184,
+        "fracture_checksum": "38eb1b11fd427bd3",
+        "fragment_cells": 1643,
+        "fragments": 419,
+        "static_cells": 1064,
+        "structural_checksum": "f36f8ca16d6517eb"
+      }
+    }
+  },
+  "varies_between_runs": [
+    "contact samples taken before the cap sheds them",
+    "and therefore fragment count, failed cells and the structural checksum"
+  ],
+  "where": "Claude Code cloud Linux container, Mesa llvmpipe software Vulkan under Xvfb, no GPU."
+}

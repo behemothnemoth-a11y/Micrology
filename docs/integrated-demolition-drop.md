@@ -179,6 +179,16 @@ entries at revision 294, structural checksum `da31e2d5ba1b4e54` and fracture
 checksum `eb7dcb8394550adf`. Turning both damage systems off reproduces both
 checksums exactly while bodies keep moving.
 
+**Those stress figures are one sample, not a fixture.** DROP 0006.5 re-ran this
+replay twice on one unchanged binary and got three different outcomes across the
+three runs in total — fragment counts of 515, 559 and 419 — because the contact
+queue sheds opportunistic samples at a rate that depends on how fast frames
+retire. What repeats every time is the part that matters: mass conserved exactly,
+the authoritative fracture queue refusing and capping nothing, and `stress_18`
+matching `stress_off`. The building replay above *is* deterministic and does
+reproduce bit-for-bit. Do not treat a changed stress checksum as a regression
+signal; see `docs/drop-0006-5.md`.
+
 Queue behaviour under that load is the part worth reading carefully. The
 authoritative fracture FIFO reached its bound — high-water 32 of 32 — and
 **capped zero requests**: it filled to the boundary without ever rejecting
