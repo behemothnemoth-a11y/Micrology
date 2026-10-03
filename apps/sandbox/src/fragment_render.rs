@@ -72,10 +72,6 @@ impl FragmentEntities {
         self.stats.mesh_bytes
     }
 
-    pub fn contains(&self, id: FragmentId) -> bool {
-        self.entries.contains_key(&id)
-    }
-
     pub fn clear(&mut self, commands: &mut Commands) {
         for (_, entry) in self.entries.drain() {
             commands.entity(entry.entity).despawn();
