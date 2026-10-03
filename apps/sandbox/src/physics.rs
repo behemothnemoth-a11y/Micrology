@@ -97,13 +97,7 @@ pub struct StaticColliderStats {
 #[derive(Resource, Default)]
 pub struct StaticColliders {
     entries: BTreeMap<VolumePos, StaticColliderEntry>,
-    jobs: BTreeMap<
-        VolumePos,
-        (
-            StaticCollisionFingerprint,
-            Task<StaticCollisionJobResult>,
-        ),
-    >,
+    jobs: BTreeMap<VolumePos, (StaticCollisionFingerprint, Task<StaticCollisionJobResult>)>,
     ready: BTreeMap<VolumePos, StaticCollisionJobResult>,
     stats: StaticColliderStats,
 }
@@ -288,13 +282,15 @@ pub fn sync_static_colliders(
     // Completion order never becomes publication order. Results first land in
     // a BTreeMap, then the nearest current volumes publish deterministically.
     let mut completed = Vec::new();
-    colliders.jobs.retain(|volume, (_, task)| match check_ready(task) {
-        Some(result) => {
-            completed.push((*volume, result));
-            false
-        }
-        None => true,
-    });
+    colliders
+        .jobs
+        .retain(|volume, (_, task)| match check_ready(task) {
+            Some(result) => {
+                completed.push((*volume, result));
+                false
+            }
+            None => true,
+        });
     for (volume, result) in completed {
         if wanted.contains(&volume) && result.is_current(&world.0) {
             colliders.ready.insert(volume, result);
@@ -331,11 +327,11 @@ pub fn sync_static_colliders(
             continue;
         };
         let fingerprint = input.fingerprint();
-        colliders
-            .jobs
-            .insert(volume, (fingerprint, pool.spawn(async move { input.run() })));
-        colliders.stats.jobs_started_total =
-            colliders.stats.jobs_started_total.saturating_add(1);
+        colliders.jobs.insert(
+            volume,
+            (fingerprint, pool.spawn(async move { input.run() })),
+        );
+        colliders.stats.jobs_started_total = colliders.stats.jobs_started_total.saturating_add(1);
     }
 
     let mut ready: Vec<_> = colliders
