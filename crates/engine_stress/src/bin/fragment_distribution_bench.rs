@@ -6,12 +6,16 @@
 //! change in distribution is a visible diff rather than a surprise.
 use engine_core::GlobalPos;
 use engine_destruction::{
-    ContactFracturePolicy, DamageAmount, DamageSpace, FractureTransactionLimits, FragmentStore,
-    fracture::FractureModel,
-    fracture_jobs::*,
+    AllResident, BaselineFracturePolicy, ContactFracturePolicy, DamageAmount, DamageSequence,
+    DamageSpace, DestructionSequence, FractureImpact, FractureState, FractureTransactionLimits,
+    FragmentStore, fracture::FractureModel, fracture_hit_toward, fracture_jobs::*,
+    fracture_static_if,
     fragment_partition::{FragmentPartitionPolicy, PartitionWork},
 };
-use engine_stress::fragment_distribution::{FragmentDistribution, measure};
+use engine_stress::{
+    DestructionBenchmarkCase, baseline_wall, case_stimulus,
+    fragment_distribution::{FragmentDistribution, measure},
+};
 use engine_world::World;
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -119,7 +123,71 @@ fn chunk_case(
     )
 }
 
+/// Measure the accepted static-world path without changing it.
+///
+/// The first strong hit is allowed to be a precondition: the probe reports the
+/// exact hit that first produces native fragments through the ordinary
+/// `fracture_static_if` transaction. This answers DROP 0006.6's open question
+/// before anybody wires fragment partitioning into the static path.
+fn static_liberation_probe() -> FragmentDistribution {
+    let stage = case_stimulus(DestructionBenchmarkCase::StrongCenterHit)
+        .expect("the accepted benchmark pack contains strong_center_hit");
+    let mut world = baseline_wall();
+    let mut state = FractureState::new();
+    let mut damage = DamageSequence::default();
+    let mut sequence = DestructionSequence::default();
+    let mut store = FragmentStore::default();
+
+    for hit in 1..=4u8 {
+        let event = fracture_hit_toward(
+            damage.next_root(),
+            stage.target,
+            stage.direction_milli,
+            DamageAmount(stage.energy),
+        );
+        let impact =
+            FractureImpact::from_static_event(&event).expect("static benchmark impact is valid");
+        let commit = fracture_static_if(
+            &mut world,
+            &mut store,
+            &mut state,
+            &mut sequence,
+            &impact,
+            &BaselineFracturePolicy::REFERENCE,
+            &AllResident,
+            FractureTransactionLimits::default(),
+            |_| true,
+        )
+        .expect("accepted wall impact remains within live transaction limits");
+
+        if !store.is_empty() {
+            return measure(
+                &format!("static_strong_first_liberation_hit_{hit}"),
+                &store,
+                &state,
+                DamageSpace::StaticWorld,
+                commit.measurement.cells_visited,
+                commit.measurement.bonds_considered,
+                commit.fracture.failed.len() as u64,
+            );
+        }
+    }
+
+    panic!("four accepted strong-center hits failed to liberate static material");
+}
+
 fn main() {
+    if std::env::args().any(|a| a == "--probe-static") {
+        let first = static_liberation_probe();
+        let second = static_liberation_probe();
+        assert_eq!(
+            first, second,
+            "static fracture distribution is not deterministic enough to guide policy"
+        );
+        println!("{}", serde_json::to_string_pretty(&first).unwrap());
+        return;
+    }
+
     let check = std::env::args().any(|a| a == "--check");
     let write = std::env::args().any(|a| a == "--write");
 
