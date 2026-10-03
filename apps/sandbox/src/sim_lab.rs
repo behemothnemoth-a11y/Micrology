@@ -1115,16 +1115,28 @@ pub fn controls(
         info!("{}", status.0);
     }
 }
+#[derive(SystemParam)]
+pub struct FixedStepReadiness<'w, 's> {
+    world: Res<'w, WorldRes>,
+    fragments: Res<'w, DynamicFragments>,
+    bodies: Res<'w, FragmentBodies>,
+    statics: Res<'w, StaticColliders>,
+    camera: Option<Single<'w, 's, &'static FlyCamera>>,
+}
+
 pub fn apply_pending_fixed_step(
     mut lab: ResMut<SimulationLab>,
     fixed_time: Res<Time<Fixed>>,
     mut virtual_time: ResMut<Time<Virtual>>,
-    world: Res<WorldRes>,
-    fragments: Res<DynamicFragments>,
-    bodies: Res<FragmentBodies>,
-    statics: Res<StaticColliders>,
-    camera: Option<Single<&FlyCamera>>,
+    readiness: FixedStepReadiness,
 ) {
+    let FixedStepReadiness {
+        world,
+        fragments,
+        bodies,
+        statics,
+        camera,
+    } = readiness;
     if !lab.enabled
         || lab.background.busy()
         || lab.interaction.busy()
