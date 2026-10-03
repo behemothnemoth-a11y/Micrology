@@ -135,10 +135,7 @@ impl StaticCollisionJobInput {
     pub fn run(self) -> StaticCollisionJobResult {
         let min = self.fingerprint.volume.origin();
         let edge = VOLUME_EDGE - 1;
-        let bounds = CellBounds::new(
-            min,
-            CellPos::new(min.x + edge, min.y + edge, min.z + edge),
-        );
+        let bounds = CellBounds::new(min, CellPos::new(min.x + edge, min.y + edge, min.z + edge));
         StaticCollisionJobResult {
             fingerprint: self.fingerprint,
             collider: GreedyCollisionCompiler.compile(&self.snapshot, bounds),
