@@ -6,8 +6,9 @@
 //! Avian, renderer or task-pool type appears here.
 
 use crate::{CollisionCompiler, CollisionShape, Fragment, FragmentId, GreedyCollisionCompiler};
-use engine_core::{CellPos, MaterialRegistry, Revision};
+use engine_core::{CellBounds, CellPos, MaterialRegistry, Revision, VOLUME_EDGE, VolumePos};
 use engine_geometry::{GreedyCompiler, MeshData, QuadSet, SurfaceCompiler};
+use engine_world::World;
 
 /// Exact cache identity for data derived from a fragment's local cells.
 ///
@@ -76,6 +77,84 @@ pub struct FragmentMeshJobResult {
 impl FragmentMeshJobResult {
     pub fn is_current(&self, fragment: &Fragment) -> bool {
         self.fingerprint.matches(fragment)
+    }
+}
+
+/// Exact identity for static collision derived from one storage volume.
+///
+/// A neighbouring volume cannot change collision *inside* this volume, so the
+/// volume's own revision is the complete fingerprint. Rendering has different
+/// invalidation rules and deliberately does not participate.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StaticCollisionFingerprint {
+    pub volume: VolumePos,
+    pub revision: Option<Revision>,
+}
+
+impl StaticCollisionFingerprint {
+    pub fn of(world: &World, volume: VolumePos) -> Self {
+        Self {
+            volume,
+            revision: world.volume_revision(volume),
+        }
+    }
+
+    pub fn matches(self, world: &World) -> bool {
+        self == Self::of(world, self.volume)
+    }
+}
+
+/// Owned worker input for one static collision volume.
+///
+/// The snapshot contains only the volume being compiled. That is sufficient
+/// because collision is solid occupancy inside the volume; unlike a surface
+/// mesh, no neighbouring volume can hide or reveal collision.
+#[derive(Clone, Debug)]
+pub struct StaticCollisionJobInput {
+    fingerprint: StaticCollisionFingerprint,
+    snapshot: World,
+}
+
+impl StaticCollisionJobInput {
+    pub fn new(world: &World, volume: VolumePos) -> Option<Self> {
+        let source = world.volume(volume)?.clone();
+        let fingerprint = StaticCollisionFingerprint::of(world, volume);
+        let mut snapshot = World::new();
+        snapshot.insert_volume(volume, source);
+        snapshot.take_dirty();
+        Some(Self {
+            fingerprint,
+            snapshot,
+        })
+    }
+
+    pub fn fingerprint(&self) -> StaticCollisionFingerprint {
+        self.fingerprint
+    }
+
+    pub fn run(self) -> StaticCollisionJobResult {
+        let min = self.fingerprint.volume.origin();
+        let edge = VOLUME_EDGE - 1;
+        let bounds = CellBounds::new(
+            min,
+            CellPos::new(min.x + edge, min.y + edge, min.z + edge),
+        );
+        StaticCollisionJobResult {
+            fingerprint: self.fingerprint,
+            collider: GreedyCollisionCompiler.compile(&self.snapshot, bounds),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct StaticCollisionJobResult {
+    pub fingerprint: StaticCollisionFingerprint,
+    pub collider: CollisionShape,
+}
+
+impl StaticCollisionJobResult {
+    pub fn is_current(&self, world: &World) -> bool {
+        self.fingerprint.matches(world)
     }
 }
 
@@ -160,6 +239,35 @@ mod tests {
         assert_eq!(first, second);
         assert!(!first.mesh.is_empty());
         assert!(first.is_current(&f));
+    }
+
+    #[test]
+    fn static_collision_job_is_owned_deterministic_and_stale_checked() {
+        let mut world = World::new();
+        world.fill_box(
+            CellPos::new(0, 0, 0),
+            CellPos::new(15, 7, 15),
+            Some(MaterialId(1)),
+        );
+        world.take_dirty();
+        let volume = CellPos::ZERO.volume();
+
+        let first = StaticCollisionJobInput::new(&world, volume)
+            .expect("populated volume")
+            .run();
+        let second = StaticCollisionJobInput::new(&world, volume)
+            .expect("same populated volume")
+            .run();
+
+        assert_eq!(first, second);
+        assert!(first.is_current(&world));
+        assert!(!first.collider.is_empty());
+
+        world.set(CellPos::new(0, 0, 0), None);
+        assert!(
+            !first.is_current(&world),
+            "a result compiled from an older volume revision must be stale"
+        );
     }
 
     #[test]
