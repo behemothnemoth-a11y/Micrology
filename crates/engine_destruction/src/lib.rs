@@ -53,6 +53,7 @@ pub mod detach;
 pub mod fracture;
 pub mod fracture_connectivity;
 pub mod fracture_jobs;
+pub mod fracture_policy;
 pub mod fracture_transaction;
 pub mod fragment;
 pub mod fragment_partition;

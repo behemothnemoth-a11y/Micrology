@@ -1,0 +1,229 @@
+{
+  "base_commit": "623800fc03444c3ce0bd694c54d90236b84f66b3",
+  "started_utc": "2026-10-03T22:09:00.091484+00:00",
+  "platform": "win32",
+  "source_sha256_lf_normalized": {
+    "apps/sandbox/src/fracture_worker.rs": "0975c5775f5927433505ce3a20df998cdc8b1cb654f9fd3ee3030aa5f6de8245",
+    "crates/engine_destruction/src/fracture_jobs.rs": "412fb77e601b05a072a41e4003c33a659aa05a2879790d5a39176caebb4a8a67",
+    "crates/engine_destruction/src/lib.rs": "12ed39a5259202bacde06cc37d30e305c58f43f666f29b9df654dc2d2d20ec30",
+    "crates/engine_destruction/src/fracture_policy.rs": "e35b04b1dc0bca9f2f2d173fdef774f6ea88cbdd294d4a8623d235e67e1ffd05",
+    "crates/engine_stress/tests/material_policy_worker.rs": "bcc3b07766452c5502d00c7d23406f56836f0923c6e59042cdcdfd5046436ae0"
+  },
+  "checks": [
+    {
+      "name": "policy_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "material_policy_worker",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "tests_passed": 13,
+      "elapsed_seconds": 1.894,
+      "log_sha256": "5b37507a83eb07c9e81ab9b343aba5b499301ae5dcbc7d55f4926436e56cb5dd"
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.696,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 824,
+      "elapsed_seconds": 61.676,
+      "log_sha256": "5b686bccb1607e5a2866327e1fdcbf03de353f024dd14a61eca57dcddc4b4d88"
+    },
+    {
+      "name": "engine_doctests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "tests_passed": 1,
+      "elapsed_seconds": 2.581,
+      "log_sha256": "4f3b8fb10cf3eeb072b4dc7431141aec8a79f27fae60c3629fc90875668f37fe"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 6.795,
+      "log_sha256": "e1843da041fca8fa805661e35587d9ba3814d55d60e12d131c198694f8b988c5"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.483,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.35,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.516,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 5.065,
+      "log_sha256": "69cdbebef151056819ae7c11e93fd2688d73d7c961b6c6768873a5d267322700"
+    },
+    {
+      "name": "sandbox_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 30.292,
+      "log_sha256": "69f4d29e509e6ca39d8cab0f0ac97d27f277ad6650cf246438cfd079216b2609"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.042,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "old_goldens_unchanged",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "623800fc03444c3ce0bd694c54d90236b84f66b3",
+        "--",
+        "fixtures",
+        "docs/diagnostics"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.029,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_unchanged_during_run": true,
+  "all_ok": true,
+  "finished_utc": "2026-10-03T22:10:52.529824+00:00",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "retained_logs": {
+    "policy_tests.txt": {
+      "source_log": "policy_tests.log",
+      "sha256_lf_normalized": "45ed548c7cc1e3d7d3a3f04f3020b954fad72877c761a0c5060149b7f1a8a085"
+    },
+    "fracture_locality.json": {
+      "source_log": "fracture_locality.log",
+      "sha256_lf_normalized": "69cdbebef151056819ae7c11e93fd2688d73d7c961b6c6768873a5d267322700"
+    },
+    "sandbox_clippy.txt": {
+      "source_log": "sandbox_clippy.log",
+      "sha256_lf_normalized": "69f4d29e509e6ca39d8cab0f0ac97d27f277ad6650cf246438cfd079216b2609"
+    }
+  },
+  "log_note": "Original raw log hashes identify local execution files retained in target/material-worker-step4-verification. Committed retained logs are LF-normalized and stripped of extra blank EOF lines; their separate hashes are above."
+}

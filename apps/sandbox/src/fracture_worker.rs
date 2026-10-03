@@ -11,7 +11,9 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future},
 };
 use engine_core::{CellPos, GlobalPos, RegionPos, Revision};
-use engine_destruction::{fracture::FractureModel, fracture_jobs::*, *};
+use engine_destruction::{
+    fracture::FractureModel, fracture_jobs::*, fracture_policy::OwnedFracturePolicy, *,
+};
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
@@ -34,12 +36,20 @@ pub struct Request {
     pub geometry: Option<Revision>,
     pub static_volume: Option<(engine_core::VolumePos, Option<Revision>)>,
 }
-type Answer = (Result<Option<FractureJobResult>, JobRefusal>, f64, String);
+enum PreparedAnswer {
+    Impact(PolicyFractureJobResult),
+    Geometry(FractureJobResult),
+}
+type Answer = (Result<Option<PreparedAnswer>, JobRefusal>, f64, String);
 #[derive(Default)]
 pub struct FractureWorker {
     pub enabled: bool,
     pub building: bool,
     pub capacity_enabled: bool,
+    /// Optional owned tuning. None preserves the accepted coherent solid.
+    /// Pending requests capture the current value at launch; active impacts
+    /// reject before commit if this value changes to different contents.
+    pub impact_policy: Option<OwnedFracturePolicy>,
     capacity_due: Option<u8>,
     pending: VecDeque<(Request, std::time::Instant)>,
     active: Option<(Task<Answer>, Request, std::time::Instant)>,
@@ -69,6 +79,11 @@ impl std::fmt::Debug for FractureWorker {
     }
 }
 impl FractureWorker {
+    fn current_impact_policy(&self) -> OwnedFracturePolicy {
+        self.impact_policy
+            .clone()
+            .unwrap_or_else(|| OwnedFracturePolicy::homogeneous(FractureModel::Coherent))
+    }
     pub fn busy(&self) -> bool {
         self.active.is_some()
             || !self.pending.is_empty()
@@ -169,17 +184,27 @@ pub fn drive(resources: Resources) {
         } else {
             answer
         };
+        let current_policy = lab.background.current_impact_policy();
         let result = answer.and_then(|answer| {
             answer
-                .map(|a| {
-                    a.commit(
+                .map(|a| match a {
+                    PreparedAnswer::Impact(a) => a.commit(
+                        &current_policy,
                         &mut world.0,
                         fragments.store_mut(),
                         &mut lab.fracture_state,
                         &mut destruction.sequence,
                         |_| true,
                         |parts| crate::sim_lab::fits_fragment_storage(parts, available),
-                    )
+                    ),
+                    PreparedAnswer::Geometry(a) => a.commit(
+                        &mut world.0,
+                        fragments.store_mut(),
+                        &mut lab.fracture_state,
+                        &mut destruction.sequence,
+                        |_| true,
+                        |parts| crate::sim_lab::fits_fragment_storage(parts, available),
+                    ),
                 })
                 .transpose()
         });
@@ -333,12 +358,19 @@ pub fn drive(resources: Resources) {
         Work::Remove(t) => Work::Remove(t.clone()),
         Work::Capacity(g) => Work::Capacity(*g),
     };
+    let impact_policy = lab.background.current_impact_policy();
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let start = std::time::Instant::now();
         let mut state = String::new();
         let result = input.and_then(|input| match work {
-            Work::Impact(impact) => input.run(impact, FractureModel::Coherent).map(Some),
-            Work::Remove(targets) => input.run_removals(targets).map(Some),
+            Work::Impact(impact) => input
+                .run_with_policy(impact, impact_policy)
+                .map(PreparedAnswer::Impact)
+                .map(Some),
+            Work::Remove(targets) => input
+                .run_removals(targets)
+                .map(PreparedAnswer::Geometry)
+                .map(Some),
             Work::Capacity(g) => {
                 let failures = engine_stress::demolition::capacity(
                     &input.world,
@@ -348,7 +380,10 @@ pub fn drive(resources: Resources) {
                 );
                 state = format!("{failures:?}");
                 if failures.is_actionable() {
-                    input.run_removals(failures.targets().to_vec()).map(Some)
+                    input
+                        .run_removals(failures.targets().to_vec())
+                        .map(PreparedAnswer::Geometry)
+                        .map(Some)
                 } else {
                     Ok(None)
                 }
