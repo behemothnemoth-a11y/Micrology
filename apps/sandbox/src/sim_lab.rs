@@ -4,6 +4,7 @@
 //! fracture implementation. It provides a disposable benchmark scene, virtual
 //! time controls, replay-script plumbing, and deterministic state dumps.
 
+use crate::camera::FlyCamera;
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
 use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
