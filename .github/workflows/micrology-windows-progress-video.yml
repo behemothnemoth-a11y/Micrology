@@ -1,0 +1,146 @@
+name: Render Windows Micrology Progress Video
+
+on:
+  push:
+    branches:
+      - chatgpt/micrology-windows-progress-video-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+
+      - name: Render final progress video
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SRC="docs/diagnostics/fresh_progress_video_20261003_win_clean"
+          OUT="docs/diagnostics/micrology_progress_video_20261003_final"
+          WORK="${RUNNER_TEMP}/micrology-progress-final"
+          mkdir -p "$OUT" "$WORK"
+
+          FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          test -f "$FONT"
+
+          PROG="$SRC/Micrology_fresh_progress_video_20261003_win_clean_progressive.mp4"
+          IMPACT="$SRC/Micrology_fresh_progress_video_20261003_win_clean_impact.mp4"
+          FRACTURE="$SRC/Micrology_fresh_progress_video_20261003_win_clean_fracture.mp4"
+          COLLAPSE="$SRC/Micrology_fresh_progress_video_20261003_win_clean_collapse.mp4"
+          REPLAY="$SRC/Micrology_fresh_progress_video_20261003_win_clean_replay.mp4"
+
+          for f in "$PROG" "$IMPACT" "$FRACTURE" "$COLLAPSE" "$REPLAY"; do
+            test -s "$f"
+          done
+
+          card() {
+            local name="$1"
+            local duration="$2"
+            local body="$3"
+            printf '%s\n' "$body" > "$WORK/$name.txt"
+            ffmpeg -hide_banner -loglevel error -y               -f lavfi -i "color=c=0x0b0d12:s=1920x1080:r=30:d=$duration"               -vf "drawtext=fontfile=$FONT:textfile=$WORK/$name.txt:fontcolor=white:fontsize=58:line_spacing=18:x=(w-text_w)/2:y=(h-text_h)/2"               -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30               "$WORK/$name.mp4"
+          }
+
+          clip() {
+            local name="$1"
+            local src="$2"
+            local start="$3"
+            local duration="$4"
+            local label="$5"
+            printf '%s\n' "$label" > "$WORK/$name-label.txt"
+            ffmpeg -hide_banner -loglevel error -y               -ss "$start" -i "$src" -t "$duration" -an               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,drawtext=fontfile=$FONT:textfile=$WORK/$name-label.txt:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.60:boxborderw=14:x=40:y=h-text_h-40,fade=t=in:st=0:d=0.3,fade=t=out:st=$duration-0.3:d=0.3"               -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30               "$WORK/$name.mp4"
+          }
+
+          card intro 4 $'MICROLOGY\nCURRENT BUILD PROGRESS\nFresh Windows / NVIDIA capture — October 3, 2026'
+
+          clip progressive "$PROG" 0 5.5             "Fresh current build — progressive local damage"
+
+          card damage 3.5 $'DAMAGE IS STATE NOW\nRepeated weak hits accumulate instead of just deleting cells'
+
+          clip impact "$IMPACT" 0 3.7             "Fresh current build — native fragment impact + re-fracture"
+
+          clip fracture "$FRACTURE" 0.5 9.5             "Fresh current build — persistent fracture / crack field"
+
+          card fracture_done 4 $'DROP 0006 COMPLETE\nPersistent cracks • native re-destruction\nsecondary contact damage • bounded async collision rebuilds'
+
+          clip collapse "$COLLAPSE" 0 2.8             "Fresh current build — material mechanics / structural collapse"
+
+          card mechanics 4 $'MATERIAL MECHANICS\nSame geometry can behave differently by material\nFantasy / impossible worlds can still opt out of physics'
+
+          clip volley_a "$REPLAY" 0 12             "Fresh current build — deterministic contact volley, first wave"
+
+          clip volley_b "$REPLAY" 16 12             "Fresh current build — second wave / secondary destruction"
+
+          clip volley_c "$REPLAY" 30 8             "Fresh current build — final 300-tick damage-off state"
+
+          card chaos 5 $'LATEST ACCEPTANCE\nParticipation matrix: 6 / 6\nMechanics Chaos Pass: 24 / 24\nFull-collapse replay: 24 identical runs'
+
+          card editor 6 $'NOW BUILDING: EDITOR FOUNDATION\nCanonical edit commands • stale-safe mutation\nExact undo / redo • bounded history\nSame engine world — no second editor world'
+
+          card final 4 $'NEXT\nSelection • paint / carve / add • gizmos • editor / play mode\nCurrent Windows footage + GitHub Actions render'
+
+          cat > "$WORK/concat.txt" <<EOF
+          file '$WORK/intro.mp4'
+          file '$WORK/progressive.mp4'
+          file '$WORK/damage.mp4'
+          file '$WORK/impact.mp4'
+          file '$WORK/fracture.mp4'
+          file '$WORK/fracture_done.mp4'
+          file '$WORK/collapse.mp4'
+          file '$WORK/mechanics.mp4'
+          file '$WORK/volley_a.mp4'
+          file '$WORK/volley_b.mp4'
+          file '$WORK/volley_c.mp4'
+          file '$WORK/chaos.mp4'
+          file '$WORK/editor.mp4'
+          file '$WORK/final.mp4'
+          EOF
+
+          ffmpeg -hide_banner -loglevel error -y             -f concat -safe 0 -i "$WORK/concat.txt"             -c copy -movflags +faststart             "$OUT/Micrology_Current_Build_Progress_2026-10-03.mp4"
+
+          # Thumbnail from the fresh fracture capture.
+          ffmpeg -hide_banner -loglevel error -y             -ss 4 -i "$FRACTURE" -frames:v 1             -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,drawtext=fontfile=$FONT:text='MICROLOGY — CURRENT BUILD':fontcolor=white:fontsize=70:box=1:boxcolor=black@0.62:boxborderw=22:x=(w-text_w)/2:y=52,drawtext=fontfile=$FONT:text='FRESH WINDOWS PROGRESS VIDEO':fontcolor=white:fontsize=54:box=1:boxcolor=black@0.62:boxborderw=18:x=(w-text_w)/2:y=h-text_h-52"             "$OUT/Micrology_Current_Build_Progress_2026-10-03_thumbnail.png"
+
+          ffprobe -v error -select_streams v:0             -show_entries stream=width,height,r_frame_rate,duration             -of default=nw=1             "$OUT/Micrology_Current_Build_Progress_2026-10-03.mp4"             > "$OUT/video_probe.txt"
+
+          cat > "$OUT/README.md" <<'EOF'
+          # Micrology current-build progress video — 2026-10-03
+
+          Final edit rendered on GitHub Actions from fresh Windows/NVIDIA footage
+          captured from the current Micrology build on the same date.
+
+          No previously committed Micrology MP4 footage is used in the final edit.
+
+          Fresh source clips:
+          - progressive local damage
+          - native fragment impact + re-fracture
+          - persistent fracture / crack-field visualization
+          - material-mechanics structural collapse
+          - full two-wave contact-volley replay through fixed tick 300
+
+          The contact volley reached all six authoritative replay checkpoints,
+          including the final damage-off checkpoint at fixed tick 300.
+
+          DROP 0007 editor work is currently engine-side, so it is represented by
+          a factual milestone card rather than fabricated editor UI footage.
+          EOF
+
+      - name: Commit rendered video
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/micrology_progress_video_20261003_final
+          git commit -m "video: render fresh Windows Micrology progress update [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
