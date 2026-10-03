@@ -55,6 +55,7 @@ fn material_that_does_not_touch_is_never_grouped() {
     for policy in [
         FragmentPartitionPolicy::CONSERVATIVE,
         FragmentPartitionPolicy::MEAN,
+        FragmentPartitionPolicy::MEDIAN,
         FragmentPartitionPolicy::COARSE,
         FragmentPartitionPolicy::CoherentScale {
             numerator: 1000,
@@ -97,6 +98,7 @@ fn the_partition_never_loses_or_duplicates_a_cell() {
         FragmentPartitionPolicy::PerCrackComponent,
         FragmentPartitionPolicy::CONSERVATIVE,
         FragmentPartitionPolicy::MEAN,
+        FragmentPartitionPolicy::MEDIAN,
         FragmentPartitionPolicy::COARSE,
     ] {
         let (groups, _) = partition(&parts, policy, PartitionLimits::default());
@@ -144,6 +146,43 @@ fn the_grouping_does_not_depend_on_the_order_components_arrive_in() {
         PartitionLimits::default(),
     );
     assert_eq!(groups, expected, "reversal changed the partition");
+}
+
+#[test]
+fn median_scale_is_not_pulled_up_by_one_large_tail_component() {
+    // Four face-adjacent crack components with sizes 1, 1, 1 and 20. The mean
+    // is 5.75 cells, so the mean policy absorbs the tiny pieces. The median is
+    // exactly 1 cell, so a one-cell component is not below the threshold and
+    // remains separate. This is the specific tail sensitivity 0006.6 left for
+    // 0006.7 to measure rather than guess about.
+    let parts = [
+        component(&[CellPos::new(0, 0, 0)]),
+        component(&[CellPos::new(1, 0, 0)]),
+        component(&[CellPos::new(2, 0, 0)]),
+        component(&row(3, 22)),
+    ];
+
+    let (mean, _) = partition(
+        &parts,
+        FragmentPartitionPolicy::MEAN,
+        PartitionLimits::default(),
+    );
+    let (median, _) = partition(
+        &parts,
+        FragmentPartitionPolicy::MEDIAN,
+        PartitionLimits::default(),
+    );
+
+    assert!(
+        mean.len() < median.len(),
+        "mean should merge more aggressively when one large component pulls the scale upward"
+    );
+    assert_eq!(median.len(), 4, "median should leave one-cell atoms at their own scale");
+    assert_eq!(
+        median.iter().map(BTreeSet::len).sum::<usize>(),
+        23,
+        "the scale comparison must not change the material set"
+    );
 }
 
 #[test]
