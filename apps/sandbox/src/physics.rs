@@ -24,13 +24,13 @@ use avian3d::prelude::{
 };
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
-use engine_core::{CellBounds, CellPos, Revision, VOLUME_EDGE, VolumePos};
+use engine_core::{CellBounds, CellPos, VOLUME_EDGE, VolumePos};
 use engine_destruction::{
-    CollisionCompiler, CollisionShape, Fragment, FragmentAccount, FragmentBudget,
-    FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentDerivedFootprint,
-    FragmentFootprint, FragmentGeometryFingerprint, FragmentId, FragmentPhysicsDescriptor,
-    FragmentPhysicsState, FragmentPose, FragmentPressure, FragmentStore, GreedyCollisionCompiler,
-    Rotation as FragmentRotation,
+    CollisionShape, Fragment, FragmentAccount, FragmentBudget, FragmentCollisionJobInput,
+    FragmentCollisionJobResult, FragmentDerivedFootprint, FragmentFootprint,
+    FragmentGeometryFingerprint, FragmentId, FragmentPhysicsDescriptor, FragmentPhysicsState,
+    FragmentPose, FragmentPressure, FragmentStore, Rotation as FragmentRotation,
+    StaticCollisionFingerprint, StaticCollisionJobInput, StaticCollisionJobResult,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,13 +41,12 @@ use std::collections::{BTreeMap, BTreeSet};
 /// change the physical simulation radius.
 pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 
-/// Bound synchronous collider compilation work per rendered frame.
+/// Bound backend collider publication work per rendered frame.
 ///
-/// The current physics unit is one 16³ storage volume. That choice is private to
-/// this host adapter: renderer section sizing cannot silently change collision
-/// rebuild scope. If physics granularity is ever coarsened, measure it on its
-/// own terms first.
-const MAX_STATIC_REBUILDS_PER_FRAME: usize = 8;
+/// CPU occupancy compilation runs on workers; Avian compound-collider creation
+/// still happens on the main thread and therefore remains explicitly bounded.
+const MAX_STATIC_COLLIDER_COMMITS_PER_FRAME: usize = 8;
+const MAX_ACTIVE_STATIC_COLLISION_JOBS: usize = 8;
 /// Bound fragment collider compilation / rigid-body creation per rendered frame.
 /// A fragment storm can otherwise turn one destruction result into hundreds of
 /// synchronous Avian compound-collider builds on the main thread.
@@ -58,20 +57,6 @@ const MAX_ACTIVE_FRAGMENT_COLLISION_JOBS: usize = 8;
 /// even the application root from needing to know its types.
 pub fn physics_plugins() -> PhysicsPlugins {
     PhysicsPlugins::default()
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct StaticCollisionFingerprint(Option<Revision>);
-
-impl StaticCollisionFingerprint {
-    /// Collision depends on this volume's cells only.
-    ///
-    /// Unlike surface geometry, a neighbouring volume cannot hide or reveal
-    /// collision inside this volume, so including neighbours would cause
-    /// needless collider rebuilds after unrelated seam edits.
-    fn of(world: &engine_world::World, volume: VolumePos) -> Self {
-        Self(world.volume_revision(volume))
-    }
 }
 
 #[derive(Debug)]
@@ -96,6 +81,11 @@ pub struct StaticColliderStats {
     pub rebuilt_total: u64,
     pub rebuilt_this_frame: u64,
     pub despawned_total: u64,
+    pub active_jobs: usize,
+    pub ready_results: usize,
+    pub jobs_started_total: u64,
+    pub superseded_jobs: u64,
+    pub stale_results: u64,
 }
 
 /// Static physics bodies keyed by the host's current collision unit.
@@ -107,6 +97,14 @@ pub struct StaticColliderStats {
 #[derive(Resource, Default)]
 pub struct StaticColliders {
     entries: BTreeMap<VolumePos, StaticColliderEntry>,
+    jobs: BTreeMap<
+        VolumePos,
+        (
+            StaticCollisionFingerprint,
+            Task<StaticCollisionJobResult>,
+        ),
+    >,
+    ready: BTreeMap<VolumePos, StaticCollisionJobResult>,
     stats: StaticColliderStats,
 }
 
@@ -220,9 +218,9 @@ impl StaticSectionCollider {
 
 /// Keep the static physics neighbourhood synchronized with the live world.
 ///
-/// Work is nearest-first and bounded. A stale collider is replaced from the
-/// current world directly, so there is no asynchronous stale-result rule to
-/// maintain in this pass; 0003.11's moving fragments get their own lifecycle.
+/// Requests are coalesced by volume, CPU collision compilation runs on bounded
+/// workers, and results are revision-checked before publication. The main
+/// schedule only creates a bounded number of Avian compound colliders.
 pub fn sync_static_colliders(
     mut commands: Commands,
     world: Res<WorldRes>,
@@ -230,7 +228,6 @@ pub fn sync_static_colliders(
     mut colliders: ResMut<StaticColliders>,
 ) {
     colliders.stats.rebuilt_this_frame = 0;
-    colliders.stats.pending_volumes = 0;
 
     let Some(camera) = camera else {
         return;
@@ -247,39 +244,139 @@ pub fn sync_static_colliders(
             desired.insert(volume, distance);
         }
     }
-
     let wanted: BTreeSet<_> = desired.keys().copied().collect();
-    let leaving: Vec<_> = colliders
+
+    // Residency removal cancels every representation of the volume.
+    let leaving: BTreeSet<_> = colliders
         .entries
         .keys()
+        .chain(colliders.jobs.keys())
+        .chain(colliders.ready.keys())
         .filter(|volume| !wanted.contains(volume))
         .copied()
         .collect();
     for volume in leaving {
         colliders.remove(&mut commands, volume);
+        colliders.jobs.remove(&volume);
+        colliders.ready.remove(&volume);
     }
 
-    // Rebuild changed or newly relevant collision volumes nearest-first.
-    let mut rebuilds = Vec::new();
-    for (volume, distance) in desired {
-        let fingerprint = StaticCollisionFingerprint::of(&world.0, volume);
-        let current = colliders
-            .entries
-            .get(&volume)
-            .is_some_and(|entry| entry.fingerprint == fingerprint);
-        if !current {
-            rebuilds.push((distance, volume, fingerprint));
+    // A newer edit supersedes an in-flight snapshot. Dropping the old task is
+    // conservative: no obsolete collider can publish, and the latest revision
+    // is re-requested below.
+    let superseded: Vec<_> = colliders
+        .jobs
+        .iter()
+        .filter_map(|(volume, (fingerprint, _))| {
+            (!fingerprint.matches(&world.0)).then_some(*volume)
+        })
+        .collect();
+    for volume in superseded {
+        colliders.jobs.remove(&volume);
+        colliders.stats.superseded_jobs = colliders.stats.superseded_jobs.saturating_add(1);
+    }
+    let stale_ready: Vec<_> = colliders
+        .ready
+        .iter()
+        .filter_map(|(volume, result)| (!result.is_current(&world.0)).then_some(*volume))
+        .collect();
+    for volume in stale_ready {
+        colliders.ready.remove(&volume);
+        colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
+    }
+
+    // Completion order never becomes publication order. Results first land in
+    // a BTreeMap, then the nearest current volumes publish deterministically.
+    let mut completed = Vec::new();
+    colliders.jobs.retain(|volume, (_, task)| match check_ready(task) {
+        Some(result) => {
+            completed.push((*volume, result));
+            false
+        }
+        None => true,
+    });
+    for (volume, result) in completed {
+        if wanted.contains(&volume) && result.is_current(&world.0) {
+            colliders.ready.insert(volume, result);
+        } else {
+            colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
         }
     }
-    rebuilds.sort_by_key(|(distance, volume, _)| (*distance, *volume));
-    colliders.stats.pending_volumes = rebuilds.len().saturating_sub(MAX_STATIC_REBUILDS_PER_FRAME);
 
-    for (_, volume, fingerprint) in rebuilds.into_iter().take(MAX_STATIC_REBUILDS_PER_FRAME) {
-        let bounds = volume_bounds(volume);
-        let shape = GreedyCollisionCompiler.compile(&world.0, bounds);
-        colliders.install(&mut commands, volume, fingerprint, bounds, shape);
+    // Dispatch only the latest missing/stale revision, nearest first. One
+    // volume can own at most one worker job and one ready result, so repeated
+    // edits coalesce rather than multiplying work.
+    let mut requests: Vec<_> = desired
+        .iter()
+        .filter_map(|(volume, distance)| {
+            let fingerprint = StaticCollisionFingerprint::of(&world.0, *volume);
+            let current = colliders
+                .entries
+                .get(volume)
+                .is_some_and(|entry| entry.fingerprint == fingerprint);
+            (!current
+                && !colliders.jobs.contains_key(volume)
+                && !colliders.ready.contains_key(volume))
+            .then_some((*distance, *volume))
+        })
+        .collect();
+    requests.sort_by_key(|(distance, volume)| (*distance, *volume));
+
+    let pool = AsyncComputeTaskPool::get();
+    for (_, volume) in requests {
+        if colliders.jobs.len() >= MAX_ACTIVE_STATIC_COLLISION_JOBS {
+            break;
+        }
+        let Some(input) = StaticCollisionJobInput::new(&world.0, volume) else {
+            continue;
+        };
+        let fingerprint = input.fingerprint();
+        colliders
+            .jobs
+            .insert(volume, (fingerprint, pool.spawn(async move { input.run() })));
+        colliders.stats.jobs_started_total =
+            colliders.stats.jobs_started_total.saturating_add(1);
     }
 
+    let mut ready: Vec<_> = colliders
+        .ready
+        .keys()
+        .filter_map(|volume| desired.get(volume).map(|distance| (*distance, *volume)))
+        .collect();
+    ready.sort_by_key(|(distance, volume)| (*distance, *volume));
+    for (_, volume) in ready
+        .into_iter()
+        .take(MAX_STATIC_COLLIDER_COMMITS_PER_FRAME)
+    {
+        let Some(result) = colliders.ready.remove(&volume) else {
+            continue;
+        };
+        if !result.is_current(&world.0) {
+            colliders.stats.stale_results = colliders.stats.stale_results.saturating_add(1);
+            continue;
+        }
+        let bounds = volume_bounds(volume);
+        colliders.install(
+            &mut commands,
+            volume,
+            result.fingerprint,
+            bounds,
+            result.collider,
+        );
+    }
+
+    colliders.stats.pending_volumes = desired
+        .keys()
+        .filter(|volume| {
+            let fingerprint = StaticCollisionFingerprint::of(&world.0, **volume);
+            !colliders
+                .entries
+                .get(volume)
+                .is_some_and(|entry| entry.fingerprint == fingerprint)
+        })
+        .count();
+    colliders.stats.active_jobs = colliders.jobs.len();
+    colliders.stats.ready_results = colliders.ready.len();
     colliders.refresh_live_stats();
 }
 
