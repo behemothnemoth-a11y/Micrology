@@ -348,6 +348,57 @@ mod tests {
     }
 
     #[test]
+    fn fixed_step_readiness_comes_from_cells_not_render_progress() {
+        let mut world = engine_world::World::new();
+        let cell = CellPos::new(0, 0, 0);
+        world.set(cell, Some(engine_core::MaterialId(1)));
+        world.take_dirty();
+        let camera = engine_core::GlobalPos::new(0.5, 0.5, 0.5);
+        let volume = cell.volume();
+
+        let mut statics = StaticColliders::default();
+        assert_eq!(statics.pending_for_fixed_step(&world, camera), 1);
+        statics.entries.insert(
+            volume,
+            StaticColliderEntry {
+                entity: None,
+                fingerprint: StaticCollisionFingerprint::of(&world, volume),
+                boxes: 0,
+                bytes: 0,
+            },
+        );
+        assert_eq!(statics.pending_for_fixed_step(&world, camera), 0);
+
+        let id = FragmentId {
+            sequence: 7,
+            index: 0,
+        };
+        let cells = BTreeSet::from([cell]);
+        let mut fragment =
+            Fragment::from_cells(id, &world, &cells).expect("one-cell fragment");
+        fragment.pose.translation = camera;
+
+        let mut fragments = DynamicFragments::default();
+        fragments.insert(fragment);
+        let mut bodies = FragmentBodies::default();
+
+        assert_eq!(
+            bodies.pending_for_fixed_step(&fragments, Some(camera)),
+            1,
+            "a native fragment with no current body must hold a scripted step"
+        );
+
+        // A hard-budget refusal is a settled host-policy result, not an async
+        // race. Treat it as ready so the replay cannot deadlock waiting for a
+        // body the configured budget explicitly forbids.
+        bodies.blocked.insert(id);
+        assert_eq!(
+            bodies.pending_for_fixed_step(&fragments, Some(camera)),
+            0
+        );
+    }
+
+    #[test]
     fn distance_math_does_not_overflow_at_world_extremes() {
         let bounds = CellBounds::new(
             CellPos::new(i32::MAX - 15, 0, 0),
