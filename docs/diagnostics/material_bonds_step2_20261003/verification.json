@@ -1,0 +1,194 @@
+{
+  "started_utc": "2026-10-03T14:39:28.460693+00:00",
+  "base_commit": "b6f8b49877564fe279140e8906d54698c6213f32",
+  "platform": "win32",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "source_sha256_lf_normalized": {
+    "Cargo.lock": "6d9318b2675953a061b881388ebacb5220f4b466981d4535c4ae434218bc014a",
+    "crates/engine_editor/src/lib.rs": "5344ce97d4197e1805d8a45fb5b9ad34dde03e7ecc1a0f8110fedf34cacf4965",
+    "crates/engine_destruction/src/fracture.rs": "48f53d9c090afa36995afb8e5d5577619970b6f7beb573a6b1edfb79f6999d23",
+    "crates/engine_destruction/src/lib.rs": "5829fcc450f288806b6ee3a6ee01b0dec1fda5f7185cc6c486f3d2af00df992b",
+    "crates/engine_destruction/tests/fracture_material_pairs.rs": "69e96261f388dd6ff2a0d20aa3dc8c5ab45b03b2b5b22e1a0fc8048d9df5e267"
+  },
+  "checks": [
+    {
+      "name": "focused",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_destruction",
+        "--test",
+        "fracture_material_pairs"
+      ],
+      "exit_code": 0,
+      "passed_tests": 10,
+      "elapsed_seconds": 0.256,
+      "log_sha256": "af10119dab69394a5e4219a0d7f492debed78ebfd2da46aa486263ea1ca98b37"
+    },
+    {
+      "name": "workspace_fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.541,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_all_targets",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "passed_tests": 797,
+      "elapsed_seconds": 26.892,
+      "log_sha256": "9c6244f1ddd8b22dfd9cc992ad3a4a1af0a425f6e7e01d9a96b2a71e3534ddb8"
+    },
+    {
+      "name": "engine_doc_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "passed_tests": 1,
+      "elapsed_seconds": 2.553,
+      "log_sha256": "066fe9b59a8105acdca02fa54e921462e38c360dc0549bf2086c9a7a39961a12"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.509,
+      "log_sha256": "5ec3730e2d97357e7b77a0b8d8cac60d287dab77cd6540ed8799f3f3f54198ce"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.28,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.217,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.898,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 5.579,
+      "log_sha256": "312b893260f03b0d70156a7d412dfe0f8d1c7dc4bf694c562d7ff832d8d2bb40"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.044,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "goldens_untouched",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "b6f8b49877564fe279140e8906d54698c6213f32",
+        "--",
+        "fixtures",
+        "docs/diagnostics"
+      ],
+      "exit_code": 0,
+      "passed_tests": 0,
+      "elapsed_seconds": 0.032,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "all_ok": true,
+  "source_unchanged_during_run": true,
+  "finished_utc": "2026-10-03T14:40:06.365064+00:00"
+}

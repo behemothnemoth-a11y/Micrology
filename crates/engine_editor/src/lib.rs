@@ -75,8 +75,7 @@ impl EditorCommand {
     /// of tracked bytes on every platform.
     pub fn tracked_bytes(&self) -> usize {
         self.changes.len().saturating_mul(
-            size_of::<CellPos>()
-                .saturating_add(size_of::<Option<MaterialId>>() * 2),
+            size_of::<CellPos>().saturating_add(size_of::<Option<MaterialId>>() * 2),
         )
     }
 

@@ -729,6 +729,42 @@ impl FractureProfile {
     }
 }
 
+/// Impact properties of a shared face, separate from either endpoint's cell
+/// crush threshold or mass. Bond identity remains canonical lower-cell + axis;
+/// coordinate ownership must not choose the physical properties of a joint.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct BondFractureProfile {
+    /// Thousandths of the energy gradient turned into bond load. Evaluation
+    /// clamps overrides to 0..=1000, just like the existing material factor.
+    pub load_milli: i64,
+    pub tensile: DamageAmount,
+    pub compressive: DamageAmount,
+    pub shear: DamageAmount,
+}
+
+impl BondFractureProfile {
+    /// A symmetric, deliberately simple reference composition: minimum capacity
+    /// in each mode and maximum bond-load fraction. This is an isotropic
+    /// weaker-side approximation, not a calibrated law for glue, mortar or nails.
+    /// A policy may override it. Identical profiles reproduce the old response.
+    pub fn weaker_side(a: FractureProfile, b: FractureProfile) -> Self {
+        Self {
+            load_milli: a.brittleness_milli().max(b.brittleness_milli()),
+            tensile: a.tensile.min(b.tensile),
+            compressive: a.compressive.min(b.compressive),
+            shear: a.shear.min(b.shear),
+        }
+    }
+
+    pub const fn capacity(&self, mode: BondMode) -> DamageAmount {
+        match mode {
+            BondMode::Tension => self.tensile,
+            BondMode::Compression => self.compressive,
+            BondMode::Shear => self.shear,
+        }
+    }
+}
+
 /// What a material does under impact.
 ///
 /// The seam DROP 0005 proved for damage, in the same shape: the trait is defined
@@ -738,6 +774,13 @@ impl FractureProfile {
 pub trait FracturePolicy: Send + Sync {
     /// The profile governing one material.
     fn profile(&self, material: MaterialId) -> FractureProfile;
+    /// Properties of one shared face, not the lower endpoint's material.
+    /// Isotropic policies must return the same properties for (a, b) and (b, a).
+    /// Actual impact direction and tensile/compressive/shear mode are evaluated
+    /// separately; symmetric property lookup does not discard load direction.
+    fn bond_profile(&self, a: MaterialId, b: MaterialId) -> BondFractureProfile {
+        BondFractureProfile::weaker_side(self.profile(a), self.profile(b))
+    }
     fn surface_gain_milli(&self, _space: DamageSpace) -> i64 {
         SPALL_GAIN_MILLI
     }
@@ -2456,14 +2499,17 @@ pub fn evaluate_fracture(
             let upper = key.upper();
             let lower_energy = deposits.get(&lower).map_or(0, |entry| entry.1);
             let upper_energy = deposits.get(&upper).map_or(0, |entry| entry.1);
-            // The lower cell's material names the bond, the way a component's
-            // lowest cell names the component: one of the two has to, and
-            // position is the only tie-break that does not depend on traversal.
+            // The lower material is still the historical record-owner tag.
+            // It must not choose this interface's response: both endpoints do.
             let material = match scene.cells.material_at(lower) {
                 Some(material) => material,
                 None => continue,
             };
-            let profile = policy.profile(material);
+            let upper_material = match scene.cells.material_at(upper) {
+                Some(material) => material,
+                None => continue,
+            };
+            let profile = policy.bond_profile(material, upper_material);
 
             // Both deposits are clamped into the u32 range, so the difference
             // cannot overflow i64.
@@ -2473,7 +2519,10 @@ pub fn evaluate_fracture(
             }
 
             let concentration = concentration_milli(state, scene.space(), key, &mut measurement);
-            let load = scale_milli(gradient, &[profile.brittleness_milli(), concentration]);
+            let load = scale_milli(
+                gradient,
+                &[profile.load_milli.clamp(0, MILLI), concentration],
+            );
             if load == 0 {
                 continue;
             }
