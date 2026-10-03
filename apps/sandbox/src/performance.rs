@@ -38,16 +38,28 @@ fn distribution(values: &VecDeque<f64>) -> serde_json::Value {
     let percentile = |p: usize| sorted[(sorted.len() * p).div_ceil(100).saturating_sub(1)];
     serde_json::json!({ "count": sorted.len(), "median_ms": percentile(50), "p95_ms": percentile(95), "p99_ms": percentile(99), "max_ms": sorted[sorted.len()-1], "frames_over_33ms": sorted.iter().filter(|v| **v > 33.3).count(), "frames_over_50ms": sorted.iter().filter(|v| **v > 50.).count() })
 }
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct PerformanceSources<'w> {
+    lab: Res<'w, SimulationLab>,
+    fragments: Res<'w, DynamicFragments>,
+    fragment_bodies: Res<'w, FragmentBodies>,
+    static_colliders: Res<'w, StaticColliders>,
+    contacts: Res<'w, ContactFractureHost>,
+}
+
 pub fn record(
     real: Res<Time<Real>>,
-    lab: Res<SimulationLab>,
-    fragments: Res<DynamicFragments>,
-    fragment_bodies: Res<FragmentBodies>,
-    static_colliders: Res<StaticColliders>,
-    contacts: Res<ContactFractureHost>,
+    sources: PerformanceSources,
     mut capture: ResMut<PerformanceCapture>,
     mut events: ParamSet<(MessageReader<AppExit>, MessageWriter<AppExit>)>,
 ) {
+    let PerformanceSources {
+        lab,
+        fragments,
+        fragment_bodies,
+        static_colliders,
+        contacts,
+    } = sources;
     if !lab.enabled {
         return;
     }
