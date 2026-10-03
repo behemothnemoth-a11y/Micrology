@@ -7,7 +7,6 @@
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
 use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
-use crate::camera::FlyCamera;
 use crate::physics::{
     DynamicFragments, FragmentBodies, FragmentBudgetRes, StaticColliders,
     pending_fixed_step_collision_work,
@@ -1139,14 +1138,7 @@ pub fn apply_pending_fixed_step(
     // from the current cells/fragments is installed. Mesh uploads are
     // intentionally irrelevant: they may lag without changing physics.
     let camera = camera.map(|camera| camera.global);
-    if pending_fixed_step_collision_work(
-        &world.0,
-        &fragments,
-        &bodies,
-        &statics,
-        camera,
-    ) > 0
-    {
+    if pending_fixed_step_collision_work(&world.0, &fragments, &bodies, &statics, camera) > 0 {
         return;
     }
 
