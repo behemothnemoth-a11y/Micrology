@@ -8,7 +8,10 @@ use engine_core::GlobalPos;
 use engine_destruction::{
     AllResident, BaselineFracturePolicy, ContactFracturePolicy, DamageAmount, DamageSequence,
     DamageSpace, DestructionSequence, FractureImpact, FractureState, FractureTransactionLimits,
-    FragmentStore, fracture::FractureModel, fracture_hit_toward, fracture_jobs::*,
+    FragmentStore,
+    fracture::FractureModel,
+    fracture_hit_toward,
+    fracture_jobs::*,
     fracture_static_if,
     fragment_partition::{FragmentPartitionPolicy, PartitionWork},
 };
