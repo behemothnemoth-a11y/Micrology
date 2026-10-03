@@ -8,17 +8,28 @@
 //! state. The live target is digested before the run and re-verified afterwards.
 //! The run is not complete until that integrity check passes.
 
-use engine_core::{CellPos, CellSource, GlobalPos, MaterialId, MaterialRegistry};
+use engine_core::{
+    CellPos, CellSource, GlobalPos, MaterialId, MaterialRegistry, REGION_EDGE_CELLS, RegionPos,
+};
 use engine_destruction::{
-    DamageAmount, DamageEvaluationLimits, DamageEvent, DamageEventId, DamageFalloff, DamageImpulse,
-    DamageSequence, DamageSource, DamageSpace, DamageTarget, DamageVolume, DamageWork,
-    DestructionSequence, DetachRefusal, Fragment, FragmentCollisionJobInput, FragmentDamageResult,
-    FragmentId, FragmentMeshJobInput, FragmentResidency, FragmentResidencyAction,
-    FragmentResidencyConfig, FragmentSaveOutcome, FragmentSpatialIndex, FragmentStore,
-    ProgressiveDamageLimits, ProgressiveDamageStore, ResultDisposition, SecondaryDamage,
-    SecondaryDamageLimits, SecondaryDamageQueue, SecondaryDamageRefusal, SnapshotLimits,
-    StructuralLimits, StructureJobInput, UniformDamagePolicy, UniformFailurePolicy,
-    damage_fragment_store_if, detach_if, evaluate_damage_event,
+    AllResident, DamageAmount, DamageEvaluationLimits, DamageEvent, DamageEventId, DamageFalloff,
+    DamageImpulse, DamageSequence, DamageSource, DamageSpace, DamageTarget, DamageVolume,
+    DamageWork, DestructionSequence, DetachRefusal, Fragment, FragmentCollisionJobInput,
+    FragmentDamageResult, FragmentId, FragmentMeshJobInput, FragmentResidency,
+    FragmentResidencyAction, FragmentResidencyConfig, FragmentSaveOutcome, FragmentSpatialIndex,
+    FragmentStore, FractureJobInput, FractureJobLimits, FractureState, JobRefusal,
+    ProgressiveDamageLimits, ProgressiveDamageStore, REFERENCE_FRACTURE_MATERIAL, Residency,
+    ResultDisposition, SecondaryDamage, SecondaryDamageLimits, SecondaryDamageQueue,
+    SecondaryDamageRefusal, SnapshotLimits, StructuralLimits, StructureJobInput,
+    UniformDamagePolicy, UniformFailurePolicy, damage_fragment_store_if, detach_if,
+    evaluate_damage_event,
+};
+use engine_mechanics::{
+    CapacityDefer, CapacityLimits, CapacityVerdict, CollapseLimits, Held, Inconclusive,
+    MechanicalFailures, MechanicalProfile, MechanicalRegistry, MechanicalSettings, Milli,
+    Participation, ParticipationPolicy, ParticipationSet, PhysicalSystem, PolicyScope,
+    ReferenceMaterial, density_detachment_impulse, evaluate_structure, fragment_mass,
+    mechanical_failures, reference_registry, settings_to_json,
 };
 use engine_world::{World, WorldEditBatch};
 use serde::Serialize;
@@ -1156,6 +1167,644 @@ fn fantasy_mode_structural_disabled(cases: &mut Vec<Case>) {
 }
 
 // ---------------------------------------------------------------------------
+// DROP 0005.9 — mechanics / participation chaos extension
+// ---------------------------------------------------------------------------
+
+const D5_WOOD: MaterialId = MaterialId(21);
+const D5_MASONRY: MaterialId = MaterialId(22);
+const D5_CONCRETE: MaterialId = MaterialId(23);
+const D5_STEEL: MaterialId = MaterialId(24);
+const D5_GLASS: MaterialId = MaterialId(25);
+const D5_LIGHT: MaterialId = MaterialId(26);
+const D5_HEAVY: MaterialId = MaterialId(27);
+
+fn drop5_registry() -> MechanicalRegistry {
+    reference_registry([
+        (ReferenceMaterial::Wood, D5_WOOD),
+        (ReferenceMaterial::Masonry, D5_MASONRY),
+        (ReferenceMaterial::Concrete, D5_CONCRETE),
+        (ReferenceMaterial::Steel, D5_STEEL),
+        (ReferenceMaterial::Glass, D5_GLASS),
+    ])
+}
+
+fn drop5_structural_policy() -> ParticipationPolicy {
+    ParticipationPolicy::new().with_scope(
+        PolicyScope::World,
+        ParticipationSet::new()
+            .enabling(PhysicalSystem::MaterialMechanics)
+            .enabling(PhysicalSystem::StructuralCapacity),
+    )
+}
+
+fn verdict_kind(verdict: &CapacityVerdict) -> &'static str {
+    match verdict {
+        CapacityVerdict::NotEvaluated => "not_evaluated",
+        CapacityVerdict::Sufficient { .. } => "sufficient",
+        CapacityVerdict::Insufficient { .. } => "insufficient",
+        CapacityVerdict::Inconclusive(_) => "inconclusive",
+    }
+}
+
+fn drop5_mixed_block() -> World {
+    let mut world = World::new();
+    let materials = [D5_WOOD, D5_MASONRY, D5_CONCRETE, D5_STEEL, D5_GLASS];
+    for y in 0..8 {
+        for z in 0..16 {
+            for x in 0..16 {
+                let material = materials[((x + 3 * z + 5 * y) as usize) % materials.len()];
+                world.set(CellPos::new(x, y, z), Some(material));
+                if y == 0 {
+                    world.set_anchor(CellPos::new(x, y, z), true);
+                }
+            }
+        }
+    }
+    world.take_dirty();
+    world
+}
+
+fn drop5_massive_mixed_material(cases: &mut Vec<Case>) {
+    let world = drop5_mixed_block();
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy();
+    let limits = CapacityLimits::new(4_096, 250_000);
+
+    let first = evaluate_structure(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [CellPos::ZERO],
+        limits,
+    );
+    let second = evaluate_structure(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [CellPos::ZERO],
+        limits,
+    );
+
+    let repeatable = first == second;
+    let conclusive = first.is_conclusive();
+    let measurement = first.measurement();
+    let bounded = measurement.is_some_and(|m| {
+        m.cells <= limits.max_cells
+            && m.augmentations <= limits.max_augmentations
+            && m.cells_visited >= m.cells as u64
+    });
+    let populated = world.occupied_count() == 2_048;
+
+    push(
+        cases,
+        "drop5_massive_mixed_material",
+        repeatable && conclusive && bounded && populated,
+        format!(
+            "cells={}, verdict={}, repeatable={repeatable}, bounded={bounded}, measurement={measurement:?}",
+            world.occupied_count(),
+            verdict_kind(&first),
+        ),
+    );
+}
+
+fn drop5_overloaded_wall() -> (World, Vec<CellPos>) {
+    let mut world = World::new();
+    let mut anchors = Vec::new();
+    for x in 0..8 {
+        let anchor = CellPos::new(x, 0, 0);
+        world.set(anchor, Some(D5_MASONRY));
+        world.set_anchor(anchor, true);
+        anchors.push(anchor);
+        for y in 1..=30 {
+            world.set(CellPos::new(x, y, 0), Some(D5_MASONRY));
+        }
+    }
+    world.take_dirty();
+    (world, anchors)
+}
+
+type CollapseSignature = (Vec<Vec<CellPos>>, u64, Option<Held>, bool);
+
+fn run_drop5_redistribution() -> CollapseSignature {
+    let (mut world, anchors) = drop5_overloaded_wall();
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy();
+    let limits = CollapseLimits::new(16, 1, CapacityLimits::new(4_096, 250_000));
+    let mut generations = Vec::new();
+    let mut held = None;
+
+    for generation in 1..=17u8 {
+        match mechanical_failures(
+            &world,
+            &world,
+            &AllResident,
+            &registry,
+            &policy,
+            [anchors[0]],
+            generation,
+            limits,
+        ) {
+            MechanicalFailures::Failed { targets, .. } => {
+                let cells: Vec<_> = targets.iter().map(|target| target.cell()).collect();
+                world.apply(&engine_destruction::static_failure_batch(&targets));
+                generations.push(cells);
+            }
+            MechanicalFailures::Sound => break,
+            MechanicalFailures::Held(reason) => {
+                held = Some(reason);
+                break;
+            }
+        }
+    }
+
+    let anchors_intact = anchors
+        .iter()
+        .all(|cell| world.is_occupied(*cell) && world.is_anchor(*cell));
+    (generations, world.occupied_count(), held, anchors_intact)
+}
+
+fn drop5_overload_redistribution(cases: &mut Vec<Case>) {
+    let first = run_drop5_redistribution();
+    let second = run_drop5_redistribution();
+    let repeatable = first == second;
+    let bounded = first.0.iter().all(|step| step.len() <= 1) && first.0.len() <= 16;
+    let redistributed = first.0.len() >= 2;
+    push(
+        cases,
+        "drop5_overload_redistribution",
+        repeatable && bounded && redistributed && first.3,
+        format!(
+            "generations={}, final_cells={}, held={:?}, anchors_intact={}, repeatable={repeatable}",
+            first.0.len(),
+            first.1,
+            first.2,
+            first.3
+        ),
+    );
+}
+
+struct MissingRegion(RegionPos);
+impl Residency for MissingRegion {
+    fn is_resident(&self, cell: CellPos) -> bool {
+        cell.region() != self.0
+    }
+}
+
+fn drop5_capacity_region_boundary(cases: &mut Vec<Case>) {
+    let mut world = World::new();
+    let start = REGION_EDGE_CELLS - 4;
+    for x in start..=REGION_EDGE_CELLS + 4 {
+        world.set(CellPos::new(x, 4, 4), Some(D5_STEEL));
+    }
+    world.set_anchor(CellPos::new(start, 4, 4), true);
+    world.take_dirty();
+
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy();
+    let limits = CapacityLimits::new(128, 4_096);
+    let root = CellPos::new(start, 4, 4);
+    let complete = evaluate_structure(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [root],
+        limits,
+    );
+
+    let missing_region = CellPos::new(REGION_EDGE_CELLS, 4, 4).region();
+    let missing = evaluate_structure(
+        &world,
+        &world,
+        &MissingRegion(missing_region),
+        &registry,
+        &policy,
+        [root],
+        limits,
+    );
+
+    let complete_conclusive = complete.is_conclusive();
+    let conservative = matches!(
+        &missing,
+        CapacityVerdict::Inconclusive(Inconclusive::MissingRegions(regions))
+            if regions.contains(&missing_region)
+    );
+
+    push(
+        cases,
+        "drop5_capacity_region_boundary",
+        complete_conclusive && conservative,
+        format!(
+            "complete={}, missing_region={missing_region:?}, missing_verdict={}, conservative={conservative}",
+            verdict_kind(&complete),
+            verdict_kind(&missing)
+        ),
+    );
+}
+
+fn drop5_tiny_budgets_hold(cases: &mut Vec<Case>) {
+    let (world, anchors) = drop5_overloaded_wall();
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy();
+    let before = world.occupied_count();
+
+    let memory = mechanical_failures(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [anchors[0]],
+        1,
+        CollapseLimits::new(4, 4, CapacityLimits::new(4, u64::MAX)),
+    );
+    let work = mechanical_failures(
+        &world,
+        &world,
+        &AllResident,
+        &registry,
+        &policy,
+        [anchors[0]],
+        1,
+        CollapseLimits::new(4, 4, CapacityLimits::new(4_096, 0)),
+    );
+
+    let memory_held = matches!(
+        memory,
+        MechanicalFailures::Held(Held::Inconclusive(Inconclusive::Deferred(
+            CapacityDefer::NetworkTooLarge
+        )))
+    );
+    let work_held = matches!(
+        work,
+        MechanicalFailures::Held(Held::Inconclusive(Inconclusive::Deferred(
+            CapacityDefer::AugmentationBudgetSpent
+        )))
+    );
+
+    let mut known = BTreeSet::new();
+    known.insert(anchors[0].region());
+    let store = FragmentStore::default();
+    let state = FractureState::new();
+    let byte_refusal = FractureJobInput::capture(
+        &world,
+        &store,
+        &state,
+        DestructionSequence::default(),
+        DamageSpace::StaticWorld,
+        known,
+        FractureJobLimits {
+            bytes: 1,
+            ..Default::default()
+        },
+    );
+    let bytes_held = matches!(byte_refusal, Err(JobRefusal::SnapshotBudget));
+    let unchanged = world.occupied_count() == before;
+
+    push(
+        cases,
+        "drop5_tiny_budgets_hold",
+        memory_held && work_held && bytes_held && unchanged,
+        format!(
+            "memory_held={memory_held}, work_held={work_held}, snapshot_byte_refused={bytes_held}, unchanged={unchanged}"
+        ),
+    );
+}
+
+fn drop5_stale_async_capacity_result(cases: &mut Vec<Case>) {
+    let mut world = engine_stress::demolition::building();
+    for index in [0usize, 1] {
+        let targets = engine_stress::demolition::cut_support(&world, index);
+        world.apply(&engine_destruction::static_failure_batch(&targets));
+    }
+
+    let mut state = FractureState::new();
+    let mut sequence = DestructionSequence::default();
+    let mut store = FragmentStore::default();
+    let origin = CellPos::new(64, 9, 64).region();
+    let known: BTreeSet<_> = (-1..=1)
+        .flat_map(|x| {
+            (-1..=1).flat_map(move |y| {
+                (-1..=1).map(move |z| RegionPos::new(origin.x + x, origin.y + y, origin.z + z))
+            })
+        })
+        .collect();
+
+    let input = FractureJobInput::capture(
+        &world,
+        &store,
+        &state,
+        sequence,
+        DamageSpace::StaticWorld,
+        known,
+        FractureJobLimits::default(),
+    )
+    .expect("demolition capacity snapshot fits");
+    let failures =
+        engine_stress::demolition::capacity(&input.world, &input.state, &input.residency, 1);
+    let actionable = failures.is_actionable();
+    let result = input
+        .run_removals(failures.targets().to_vec())
+        .expect("snapshot capacity removals analyze");
+
+    let mutation = CellPos::new(50, 0, 50);
+    assert!(world.get(mutation).is_none());
+    world.set(mutation, Some(REFERENCE_FRACTURE_MATERIAL));
+    let after_mutation = world.occupied_count();
+    let state_revision = state.revision();
+    let sequence_before = sequence;
+
+    let commit = result.commit(
+        &mut world,
+        &mut store,
+        &mut state,
+        &mut sequence,
+        |_| true,
+        |_| true,
+    );
+    let stale = commit == Err(JobRefusal::Stale);
+    let unchanged = world.occupied_count() == after_mutation
+        && state.revision() == state_revision
+        && sequence == sequence_before
+        && store.is_empty();
+
+    push(
+        cases,
+        "drop5_stale_async_capacity_result",
+        actionable && stale && unchanged,
+        format!(
+            "capacity_actionable={actionable}, stale_commit={stale}, authoritative_state_unchanged={unchanged}"
+        ),
+    );
+}
+
+fn fragment_of_material(id: FragmentId, material: MaterialId) -> Fragment {
+    let mut world = World::new();
+    world.fill_box(CellPos::ZERO, CellPos::new(1, 1, 1), Some(material));
+    world.take_dirty();
+    Fragment::from_cells(id, &world, &box_cells(CellPos::ZERO, CellPos::new(1, 1, 1)))
+        .expect("eight-cell fragment")
+}
+
+fn drop5_extreme_density_ratios(cases: &mut Vec<Case>) {
+    let mut registry = MechanicalRegistry::new();
+    let mut light = MechanicalProfile::inert(D5_LIGHT);
+    light.density = Milli(1);
+    let mut heavy = MechanicalProfile::inert(D5_HEAVY);
+    heavy.density = Milli::MAX;
+    registry.insert(light);
+    registry.insert(heavy);
+
+    let light_fragment = fragment_of_material(FragmentId::new(5_000, 0), D5_LIGHT);
+    let heavy_fragment = fragment_of_material(FragmentId::new(5_001, 0), D5_HEAVY);
+    let light_mass = fragment_mass(&light_fragment, &registry);
+    let heavy_mass = fragment_mass(&heavy_fragment, &registry);
+
+    let event = DamageEvent::new(
+        DamageEventId::new(5_000, 0),
+        DamageSpace::StaticWorld,
+        Some(GlobalPos::new(-10.0, 0.0, 0.0)),
+        DamageVolume::Cell(CellPos::ZERO),
+        DamageAmount(1),
+        Some(DamageImpulse::new([1.0e12, 2.0e11, -3.0e11]).expect("finite impulse")),
+    )
+    .expect("valid impulse event");
+    let light_impulse =
+        density_detachment_impulse(&event, &light_fragment, &registry).expect("impulse");
+    let heavy_impulse =
+        density_detachment_impulse(&event, &heavy_fragment, &registry).expect("impulse");
+
+    let finite = light_impulse
+        .linear_delta
+        .iter()
+        .chain(light_impulse.angular_delta.iter())
+        .chain(heavy_impulse.linear_delta.iter())
+        .chain(heavy_impulse.angular_delta.iter())
+        .all(|value| value.is_finite());
+    let ordered = light_mass < heavy_mass
+        && light_impulse.linear_delta[0].abs() > heavy_impulse.linear_delta[0].abs();
+    let saturated = heavy_mass == Milli::MAX;
+
+    push(
+        cases,
+        "drop5_extreme_density_ratios",
+        finite && ordered && saturated,
+        format!(
+            "light_mass={light_mass:?}, heavy_mass={heavy_mass:?}, heavy_saturated={saturated}, finite={finite}, lighter_moves_more={ordered}"
+        ),
+    );
+}
+
+fn drop5_storm_world() -> (World, Vec<CellPos>, BTreeSet<CellPos>) {
+    let mut world = World::new();
+    let mut roots = Vec::new();
+    let mut anchors = BTreeSet::new();
+    for tower in 0..24 {
+        let x = (tower % 8) * 5;
+        let z = (tower / 8) * 5;
+        for dx in 0..3 {
+            let anchor = CellPos::new(x + dx, 0, z);
+            world.set(anchor, Some(D5_MASONRY));
+            world.set_anchor(anchor, true);
+            anchors.insert(anchor);
+            for y in 1..=24 {
+                world.set(CellPos::new(x + dx, y, z), Some(D5_MASONRY));
+            }
+        }
+        roots.push(CellPos::new(x, 0, z));
+    }
+    world.take_dirty();
+    (world, roots, anchors)
+}
+
+type StormSignature = (Vec<Vec<CellPos>>, u64, bool, Option<Held>);
+
+fn run_drop5_mechanical_storm() -> StormSignature {
+    let (mut world, roots, anchors) = drop5_storm_world();
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy();
+    let limits = CollapseLimits::new(8, 16, CapacityLimits::new(8_192, 500_000));
+    let mut generations = Vec::new();
+    let mut held = None;
+
+    for generation in 1..=9u8 {
+        match mechanical_failures(
+            &world,
+            &world,
+            &AllResident,
+            &registry,
+            &policy,
+            roots.iter().copied(),
+            generation,
+            limits,
+        ) {
+            MechanicalFailures::Failed { targets, .. } => {
+                let cells: Vec<_> = targets.iter().map(|target| target.cell()).collect();
+                world.apply(&engine_destruction::static_failure_batch(&targets));
+                generations.push(cells);
+            }
+            MechanicalFailures::Sound => break,
+            MechanicalFailures::Held(reason) => {
+                held = Some(reason);
+                break;
+            }
+        }
+    }
+    let anchors_intact = anchors
+        .iter()
+        .all(|cell| world.is_occupied(*cell) && world.is_anchor(*cell));
+    (generations, world.occupied_count(), anchors_intact, held)
+}
+
+fn drop5_mechanical_failure_storm(cases: &mut Vec<Case>) {
+    let first = run_drop5_mechanical_storm();
+    let second = run_drop5_mechanical_storm();
+    let repeatable = first == second;
+    let bounded = first.0.len() <= 8 && first.0.iter().all(|step| step.len() <= 16);
+    let active = !first.0.is_empty();
+    push(
+        cases,
+        "drop5_mechanical_failure_storm",
+        repeatable && bounded && active && first.2,
+        format!(
+            "generations={}, final_cells={}, anchors_intact={}, held={:?}, repeatable={repeatable}, bounded={bounded}",
+            first.0.len(),
+            first.1,
+            first.2,
+            first.3
+        ),
+    );
+}
+
+fn drop5_deterministic_full_collapse(cases: &mut Vec<Case>) {
+    let mut signature: Option<CollapseSignature> = None;
+    let mut identical = true;
+    let mut runs = 0usize;
+    for _ in 0..24 {
+        let current = run_drop5_redistribution();
+        runs += 1;
+        match &signature {
+            None => signature = Some(current),
+            Some(expected) if expected == &current => {}
+            Some(_) => {
+                identical = false;
+                break;
+            }
+        }
+    }
+    let generations = signature.as_ref().map_or(0, |s| s.0.len());
+    push(
+        cases,
+        "drop5_deterministic_full_collapse",
+        identical && runs == 24 && generations >= 2,
+        format!(
+            "runs={runs}, identical={identical}, collapse_generations={generations}, final_cells={}",
+            signature.as_ref().map_or(0, |s| s.1)
+        ),
+    );
+}
+
+fn drop5_fantasy_stress_disabled(cases: &mut Vec<Case>) {
+    let mut world = World::new();
+    for y in 40..48 {
+        for z in 20..36 {
+            for x in 20..36 {
+                let material = if (x + y + z) % 2 == 0 {
+                    D5_MASONRY
+                } else {
+                    D5_STEEL
+                };
+                world.set(CellPos::new(x, y, z), Some(material));
+            }
+        }
+    }
+    world.take_dirty();
+    let before = world.clone();
+    let registry = drop5_registry();
+    let policy = drop5_structural_policy().with_scope(
+        PolicyScope::Object,
+        ParticipationSet::new().with(
+            PhysicalSystem::StructuralCapacity,
+            Participation::Disable,
+        ),
+    );
+
+    let root = CellPos::new(20, 40, 20);
+    let mut all_held = true;
+    for _ in 0..128 {
+        all_held &= mechanical_failures(
+            &world,
+            &world,
+            &AllResident,
+            &registry,
+            &policy,
+            [root],
+            1,
+            CollapseLimits::new(8, 32, CapacityLimits::new(16_384, 500_000)),
+        ) == MechanicalFailures::Held(Held::NotEvaluated);
+    }
+    let unchanged = world == before;
+    push(
+        cases,
+        "drop5_fantasy_stress_disabled",
+        all_held && unchanged,
+        format!(
+            "floating_profiled_cells={}, 128 stress attempts all_not_evaluated={all_held}, world_unchanged={unchanged}",
+            world.occupied_count()
+        ),
+    );
+}
+
+fn drop5_mechanics_isolation_and_integrity(cases: &mut Vec<Case>) -> bool {
+    let live = sandbox_dir("drop5-live-target");
+    let world = drop5_mixed_block();
+    engine_io::save_world(&world, live.join("world.json")).expect("save drop5 live world");
+    let settings = MechanicalSettings {
+        registry: drop5_registry(),
+        policy: drop5_structural_policy(),
+    };
+    std::fs::write(
+        live.join("mechanics.json"),
+        settings_to_json(&settings).expect("serialize mechanics settings"),
+    )
+    .expect("save mechanics settings");
+
+    let baseline = digest_tree(&live);
+    let copy = sandbox_dir("drop5-disposable-copy");
+    copy_tree(&live, &copy);
+    let copy_started_equal = digest_tree(&copy) == baseline;
+
+    let mut wrecked = engine_io::load_world(copy.join("world.json")).expect("load copy world");
+    let mut batch = WorldEditBatch::new();
+    batch.fill_box(CellPos::new(-64, -64, -64), CellPos::new(64, 64, 64), None);
+    wrecked.apply(&batch);
+    engine_io::save_world(&wrecked, copy.join("world.json")).expect("save wrecked copy");
+    std::fs::write(copy.join("mechanics.json"), "{}\n").expect("wreck copy mechanics");
+
+    let copy_changed = digest_tree(&copy) != baseline;
+    let live_intact = digest_tree(&live) == baseline;
+    let _ = std::fs::remove_dir_all(&copy);
+    let torn_down = !copy.exists();
+    let _ = std::fs::remove_dir_all(&live);
+
+    let ok = copy_started_equal && copy_changed && live_intact && torn_down;
+    push(
+        cases,
+        "drop5_mechanics_isolation_and_integrity",
+        ok,
+        format!(
+            "copy_started_equal={copy_started_equal}, abused_copy_changed={copy_changed}, live_byte_identical={live_intact}, sandbox_torn_down={torn_down}"
+        ),
+    );
+    live_intact
+}
+
+// ---------------------------------------------------------------------------
 // Chaos Pass rule: isolation and post-run integrity verification
 // ---------------------------------------------------------------------------
 
@@ -1233,40 +1882,92 @@ fn write_report(path: &Path, report: &ChaosReport) {
     std::fs::write(path, json).expect("write chaos report");
 }
 
-fn main() {
-    let output = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("docs/diagnostics/drop0004_9_chaos/report.json"));
+fn baseline_chaos_cases(cases: &mut Vec<Case>) {
+    population_beyond_residency(cases);
+    travel_away_and_back(cases);
+    dirty_eviction_during_motion(cases);
+    incremental_persistence_crash_windows(cases);
+    structural_demand_at_boundary(cases);
+    many_simultaneous_damage_events(cases);
+    repeated_subthreshold_damage(cases);
+    radial_event_at_integer_limits(cases);
+    refracture_storm(cases);
+    secondary_recursion_exhaustion(cases);
+    stale_derived_results(cases);
+    deterministic_replay(cases);
+    fantasy_mode_structural_disabled(cases);
+}
 
-    let mut cases = Vec::new();
-    population_beyond_residency(&mut cases);
-    travel_away_and_back(&mut cases);
-    dirty_eviction_during_motion(&mut cases);
-    incremental_persistence_crash_windows(&mut cases);
-    structural_demand_at_boundary(&mut cases);
-    many_simultaneous_damage_events(&mut cases);
-    repeated_subthreshold_damage(&mut cases);
-    radial_event_at_integer_limits(&mut cases);
-    refracture_storm(&mut cases);
-    secondary_recursion_exhaustion(&mut cases);
-    stale_derived_results(&mut cases);
-    deterministic_replay(&mut cases);
-    fantasy_mode_structural_disabled(&mut cases);
-    let integrity_verified = isolation_and_integrity(&mut cases);
-
+fn finish_report(
+    output: &Path,
+    drop_section: &'static str,
+    cases: Vec<Case>,
+    integrity_verified: bool,
+) {
     let all_ok = cases.iter().all(|case| case.ok) && integrity_verified;
     let report = ChaosReport {
         generated_by: "engine_stress::chaos4",
-        drop_section: "0004.9",
+        drop_section,
         cases,
         integrity_verified,
         all_ok,
     };
-    write_report(&output, &report);
+    write_report(output, &report);
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
-
     if !all_ok {
         std::process::exit(2);
+    }
+}
+
+fn run_drop4(output: &Path) {
+    let mut cases = Vec::new();
+    baseline_chaos_cases(&mut cases);
+    let integrity_verified = isolation_and_integrity(&mut cases);
+    finish_report(output, "0004.9", cases, integrity_verified);
+}
+
+fn run_drop5(output: &Path) {
+    let mut cases = Vec::new();
+
+    // Every older DROP 4 abuse case still runs first. DROP 5 is an extension,
+    // not a replacement chaos framework.
+    baseline_chaos_cases(&mut cases);
+
+    drop5_massive_mixed_material(&mut cases);
+    drop5_overload_redistribution(&mut cases);
+    drop5_capacity_region_boundary(&mut cases);
+    drop5_tiny_budgets_hold(&mut cases);
+    drop5_stale_async_capacity_result(&mut cases);
+    drop5_extreme_density_ratios(&mut cases);
+    drop5_mechanical_failure_storm(&mut cases);
+    drop5_deterministic_full_collapse(&mut cases);
+    drop5_fantasy_stress_disabled(&mut cases);
+
+    let old_integrity = isolation_and_integrity(&mut cases);
+    let mechanics_integrity = drop5_mechanics_isolation_and_integrity(&mut cases);
+    finish_report(
+        output,
+        "0005.9",
+        cases,
+        old_integrity && mechanics_integrity,
+    );
+}
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let first = args.next();
+    if first.as_deref() == Some("--drop5") {
+        let output = args
+            .next()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("docs/diagnostics/drop0005_9_chaos/report.json"));
+        run_drop5(&output);
+    } else {
+        // Compatibility: DROP 0004.9 historically accepted the first positional
+        // argument as an output path. Preserve that exact CLI and report.
+        let output = first
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("docs/diagnostics/drop0004_9_chaos/report.json"));
+        run_drop4(&output);
     }
 }
