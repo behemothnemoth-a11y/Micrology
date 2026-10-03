@@ -511,6 +511,9 @@ fn execute_contact(stage: Stage) -> Option<(Measured, u64, u64, u64)> {
     let limits = FractureTransactionLimits {
         fracture: fracture_limits(),
         structure: structural_limits(),
+        // The canonical chunk fixture keeps the accepted grouping, so every
+        // benchmark built on it stays comparable to its committed output.
+        ..Default::default()
     };
     let wall = fracture_static_if(
         &mut world,

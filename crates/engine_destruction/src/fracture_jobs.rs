@@ -64,6 +64,9 @@ pub struct JobSummary {
     pub created: u64,
     pub work: u64,
     pub ids: Vec<FragmentId>,
+    /// What the DROP 0006.6 grouping pass cost and produced, so a host can see
+    /// partition cost separately from damage analysis.
+    pub partition_work: crate::fragment_partition::PartitionWork,
 }
 pub struct FractureJobResult {
     space: DamageSpace,
@@ -218,6 +221,10 @@ impl FractureJobInput {
                     created: c.fragments.len() as u64,
                     work: c.measurement.cells_visited + c.measurement.bonds_considered,
                     ids: c.fragments,
+                    // The static path groups through `detach_if`, which is one
+                    // fragment per occupancy component already; no grouping
+                    // pass runs, so there is nothing to report.
+                    partition_work: Default::default(),
                 }
             }
             DamageSpace::FragmentLocal(id) => {
@@ -242,6 +249,7 @@ impl FractureJobInput {
                     },
                     work: c.measurement.cells_visited + c.measurement.bonds_considered,
                     ids,
+                    partition_work: c.partition_work,
                 }
             }
         };

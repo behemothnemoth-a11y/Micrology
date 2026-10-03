@@ -6,8 +6,10 @@
 //! change in distribution is a visible diff rather than a surprise.
 use engine_core::GlobalPos;
 use engine_destruction::{
-    ContactFracturePolicy, DamageAmount, DamageSpace, FragmentStore, fracture::FractureModel,
+    ContactFracturePolicy, DamageAmount, DamageSpace, FractureTransactionLimits, FragmentStore,
+    fracture::FractureModel,
     fracture_jobs::*,
+    fragment_partition::{FragmentPartitionPolicy, PartitionWork},
 };
 use engine_stress::fragment_distribution::{FragmentDistribution, measure};
 use engine_world::World;
@@ -34,7 +36,11 @@ struct Stages {
 
 /// The canonical 60-cell damaged chunk, struck again. This is the case the
 /// demolition report flagged: mass-preserving but 32 pieces.
-fn chunk_case(energy: u32, label: &str) -> (FragmentDistribution, Stages) {
+fn chunk_case(
+    energy: u32,
+    label: &str,
+    policy: FragmentPartitionPolicy,
+) -> (FragmentDistribution, Stages, PartitionWork) {
     let (chunk, mut state, mut seq) = engine_stress::destruction_runner::canonical_fracture_chunk()
         .expect("the canonical chunk fixture is deterministic");
     let id = chunk.id;
@@ -53,17 +59,17 @@ fn chunk_case(energy: u32, label: &str) -> (FragmentDistribution, Stages) {
         )
         .expect("the canonical contact impact is well formed");
 
+    let limits = FractureJobLimits {
+        transaction: FractureTransactionLimits {
+            partition: policy,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     let start = Instant::now();
-    let input = FractureJobInput::capture(
-        &world,
-        &store,
-        &state,
-        seq,
-        impact.space(),
-        known(),
-        Default::default(),
-    )
-    .expect("capture is within budget");
+    let input =
+        FractureJobInput::capture(&world, &store, &state, seq, impact.space(), known(), limits)
+            .expect("capture is within budget");
     let capture_ms = start.elapsed().as_secs_f64() * 1000.;
 
     let start = Instant::now();
@@ -84,6 +90,7 @@ fn chunk_case(energy: u32, label: &str) -> (FragmentDistribution, Stages) {
         )
         .expect("the commit is admitted");
     let commit_ms = start.elapsed().as_secs_f64() * 1000.;
+    let partition_work = summary.partition_work;
 
     let remaining: u64 = store.iter().map(|(_, f)| f.cell_count()).sum();
     assert_eq!(
@@ -108,6 +115,7 @@ fn chunk_case(energy: u32, label: &str) -> (FragmentDistribution, Stages) {
             analysis_and_partition_ms,
             commit_ms,
         },
+        partition_work,
     )
 }
 
@@ -123,37 +131,61 @@ fn main() {
         (2500, "chunk_contact_2500"),
         (6000, "chunk_contact_6000"),
     ];
+    // The accepted behaviour first, then the emergent-scale variants. Reported
+    // side by side so the default is chosen from the table rather than guessed.
+    let policies = [
+        (
+            "per_crack_component",
+            FragmentPartitionPolicy::PerCrackComponent,
+        ),
+        ("coherent_half_mean", FragmentPartitionPolicy::CONSERVATIVE),
+        ("coherent_mean", FragmentPartitionPolicy::MEAN),
+        ("coherent_twice_mean", FragmentPartitionPolicy::COARSE),
+    ];
 
     let mut records = Vec::new();
     for (energy, label) in cases {
-        // Run twice and require identity: the fixture is only useful if it is
-        // deterministic, so the benchmark proves that rather than assuming it.
-        let (first, stages) = chunk_case(energy, label);
-        let (second, _) = chunk_case(energy, label);
-        assert_eq!(
-            first, second,
-            "{label}: the fixture is not deterministic, so no distribution it \
-             reports can be compared to anything"
-        );
-        records.push((first, stages));
+        for (policy_name, policy) in policies {
+            let tagged = format!("{label}/{policy_name}");
+            // Run twice and require identity: the fixture is only useful if it
+            // is deterministic, so the benchmark proves that rather than
+            // assuming it.
+            let (first, stages, work) = chunk_case(energy, &tagged, policy);
+            let (second, _, work2) = chunk_case(energy, &tagged, policy);
+            assert_eq!(
+                first, second,
+                "{tagged}: the fixture is not deterministic, so no distribution \
+                 it reports can be compared to anything"
+            );
+            assert_eq!(work, work2, "{tagged}: partition work is not deterministic");
+            records.push((first, stages, work));
+        }
     }
 
     let payload = serde_json::json!({
         "schema": 1,
         "scope": "CPU only, no renderer. Timings reported, never asserted.",
         "model": "coherent",
-        "distributions": records.iter().map(|(d, _)| d).collect::<Vec<_>>(),
-        "stages": records.iter().map(|(d, s)| serde_json::json!({
+        "distributions": records.iter().map(|(d, _, _)| d).collect::<Vec<_>>(),
+        "stages": records.iter().map(|(d, s, w)| serde_json::json!({
             "fixture": d.fixture, "capture_ms": s.capture_ms,
             "analysis_and_partition_ms": s.analysis_and_partition_ms,
             "commit_ms": s.commit_ms,
+            "partition": {
+                "components_in": w.components_in, "groups_out": w.groups_out,
+                "cells_inspected": w.cells_inspected, "faces_inspected": w.faces_inspected,
+                "candidates_considered": w.candidates_considered,
+                "merges_applied": w.merges_applied,
+                "budget_exhausted": w.budget_exhausted,
+            },
         })).collect::<Vec<_>>(),
     });
 
     // Distributions only: the stage timings are wall clock and must never be
     // part of a committed comparison.
     let comparable =
-        serde_json::to_string_pretty(&records.iter().map(|(d, _)| d).collect::<Vec<_>>()).unwrap();
+        serde_json::to_string_pretty(&records.iter().map(|(d, _, _)| d).collect::<Vec<_>>())
+            .unwrap();
 
     if write {
         std::fs::write(BASELINE, comparable + "\n").expect("baseline is writable");

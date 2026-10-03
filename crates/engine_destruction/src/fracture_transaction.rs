@@ -1,5 +1,8 @@
 //! Complete fracture admission: damage, topology, ownership and identities land
 //! together. A pending result never deletes cells or consumes a fragment ID.
+use crate::fragment_partition::{
+    FragmentPartitionPolicy, PartitionLimits, PartitionWork, partition,
+};
 use crate::*;
 use engine_core::{CellPos, CellSource, MaterialId, NoSupport, RegionPos};
 use engine_world::{EditOutcome, World};
@@ -9,6 +12,13 @@ use std::collections::BTreeSet;
 pub struct FractureTransactionLimits {
     pub fracture: FractureLimits,
     pub structure: StructuralLimits,
+    /// How detached material is grouped into fragments. DROP 0006.6.
+    ///
+    /// Defaults to the pre-0006.6 behaviour, so an existing caller's
+    /// destruction character cannot change by upgrading.
+    pub partition: FragmentPartitionPolicy,
+    /// Work the grouping pass may spend.
+    pub partition_work: PartitionLimits,
 }
 
 impl Default for FractureTransactionLimits {
@@ -16,6 +26,8 @@ impl Default for FractureTransactionLimits {
         Self {
             fracture: FractureLimits::new(16_384, 49_152, 1 << 20, 1 << 21),
             structure: StructuralLimits::tight(65_536),
+            partition: FragmentPartitionPolicy::default(),
+            partition_work: PartitionLimits::default(),
         }
     }
 }
@@ -172,6 +184,8 @@ pub struct FragmentFractureCommit {
     pub fracture: FractureOutcome,
     pub measurement: FractureMeasurement,
     pub result: FragmentDamageResult,
+    /// What the DROP 0006.6 grouping pass cost and produced.
+    pub partition_work: PartitionWork,
 }
 
 /// Only the affected parent is staged, never the complete fragment store or
@@ -199,6 +213,7 @@ pub fn fracture_fragment_if(
         .map_err(FractureTransactionRefusal::State)?;
     let mut staged = FragmentStore::default();
     staged.insert(parent.clone());
+    let mut partition_work = PartitionWork::default();
     let parts = if let Some(updated) = fragment_after_failures(parent, &prepared.outcome.failed) {
         let components = classify_cracked_from_roots(
             &updated,
@@ -211,7 +226,21 @@ pub fn fracture_fragment_if(
         if !components.is_settled() {
             return Err(FractureTransactionRefusal::StructureInconclusive);
         }
-        components.components.into_iter().map(|c| c.cells).collect()
+        // DROP 0006.6. The classifier decided the topology; this only groups
+        // what it found. A merged group keeps its internal broken bonds, so the
+        // cracks inside it survive into the child and `remap_fragment` can carry
+        // them — which it cannot do for a bond whose ends land in two children.
+        let (groups, work) = partition(
+            &components.components,
+            limits.partition,
+            limits.partition_work,
+        );
+        debug_assert!(
+            crate::fragment_partition::groups_are_face_connected(&groups),
+            "a group must be material that is really touching"
+        );
+        partition_work = work;
+        groups
     } else {
         Vec::new()
     };
@@ -261,6 +290,7 @@ pub fn fracture_fragment_if(
     }
     *sequence = next;
     Ok(FragmentFractureCommit {
+        partition_work,
         fracture,
         measurement: load.measurement,
         result,

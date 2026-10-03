@@ -606,6 +606,10 @@ fn apply_benchmark_case(
     let limits = engine_destruction::FractureTransactionLimits {
         fracture: fracture_limits(),
         structure: StructuralLimits::default(),
+        // The lab keeps the accepted DROP 0006.6 grouping, so the committed
+        // replay and benchmark output stays comparable. Opting the host into a
+        // coherent policy is a destruction-character change, not a default.
+        ..Default::default()
     };
     if case == DestructionBenchmarkCase::DetachedChunkHit {
         let chunk = fragments
