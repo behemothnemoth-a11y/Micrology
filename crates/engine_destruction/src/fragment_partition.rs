@@ -59,6 +59,11 @@ pub enum FragmentPartitionPolicy {
     /// is of this break's own components. A `numerator` of zero is
     /// [`PerCrackComponent`](Self::PerCrackComponent).
     CoherentScale { numerator: u32, denominator: u32 },
+    /// Like `CoherentScale`, but derive the scale from this break's median
+    /// component size instead of its mean. This is deliberately separate rather
+    /// than a hidden tuning switch: mean is tail-sensitive, while median is
+    /// robust to one large component among many tiny ones.
+    CoherentMedianScale { numerator: u32, denominator: u32 },
 }
 
 impl FragmentPartitionPolicy {
@@ -70,6 +75,12 @@ impl FragmentPartitionPolicy {
     };
     /// The mean component size.
     pub const MEAN: Self = Self::CoherentScale {
+        numerator: 1,
+        denominator: 1,
+    };
+    /// The median component size. Useful for proving whether a large tail is
+    /// what makes the mean policy merge aggressively.
+    pub const MEDIAN: Self = Self::CoherentMedianScale {
         numerator: 1,
         denominator: 1,
     };
@@ -156,12 +167,16 @@ pub fn partition(
         .map(|c| c.cells.clone())
         .collect();
 
-    let (numerator, denominator) = match policy {
-        FragmentPartitionPolicy::PerCrackComponent => (0, 1),
+    let (numerator, denominator, use_median) = match policy {
+        FragmentPartitionPolicy::PerCrackComponent => (0, 1, false),
         FragmentPartitionPolicy::CoherentScale {
             numerator,
             denominator,
-        } => (numerator, denominator.max(1)),
+        } => (numerator, denominator.max(1), false),
+        FragmentPartitionPolicy::CoherentMedianScale {
+            numerator,
+            denominator,
+        } => (numerator, denominator.max(1), true),
     };
     if numerator == 0 || atoms.len() < 2 {
         work.groups_out = atoms.len();
@@ -177,8 +192,22 @@ pub fn partition(
     // and integer division would truncate the whole knob away: 60 cells in 32
     // components is a mean of 1, which no component is smaller than, so every
     // threshold at or below the mean would silently become a no-op.
-    let mean_milli = total * 1000 / atoms.len() as u64;
-    let scale_milli = mean_milli * u64::from(numerator) / u64::from(denominator);
+    let base_milli = if use_median {
+        let mut sizes: Vec<u64> = atoms.iter().map(|a| a.len() as u64).collect();
+        sizes.sort_unstable();
+        let middle = sizes.len() / 2;
+        if sizes.len() % 2 == 0 {
+            // Average the two middle sizes without floating point. Multiplying
+            // by 500 gives the exact median in the engine's milli convention.
+            sizes[middle - 1].saturating_add(sizes[middle]).saturating_mul(500)
+        } else {
+            sizes[middle].saturating_mul(1000)
+        }
+    } else {
+        total.saturating_mul(1000) / atoms.len() as u64
+    };
+    let scale_milli =
+        base_milli.saturating_mul(u64::from(numerator)) / u64::from(denominator);
 
     // --- adjacency, read from the cells ------------------------------------
     // Which atom owns each cell, then which atoms touch. Face adjacency is the
