@@ -423,17 +423,15 @@ mod tests {
 
         let mut first = WorldEditBatch::new();
         first.remove(CellPos::new(1, 0, 0));
-        history
-            .execute(&mut world, EditorCommand::capture(&world, &first))
-            .unwrap();
+        let first = EditorCommand::capture(&world, &first);
+        history.execute(&mut world, first).unwrap();
         history.undo(&mut world).unwrap();
         assert_eq!(history.redo_len(), 1);
 
         let mut second = WorldEditBatch::new();
         second.set(CellPos::new(2, 0, 0), Some(B));
-        history
-            .execute(&mut world, EditorCommand::capture(&world, &second))
-            .unwrap();
+        let second = EditorCommand::capture(&world, &second);
+        history.execute(&mut world, second).unwrap();
         assert_eq!(history.redo_len(), 0);
     }
 
