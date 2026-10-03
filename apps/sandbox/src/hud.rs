@@ -138,7 +138,7 @@ pub fn setup(mut commands: Commands, lab: Res<crate::sim_lab::SimulationLab>) {
             ..default()
         },
         Text::new(if lab.enabled {
-            "click grab | esc release | wasd+space/ctrl fly | h hide overlay\nLMB strike / throw | shift+LMB strong | hold RMB grab | wheel distance | B blast\nG floor | R chunk | F9 impact damage\nF6 run/pause | F7 single step | F8 speed | F10 snapshot | F11 replay | Q quit"
+            "click grab | esc release | wasd+space/ctrl fly | h hide overlay\nLMB strike / throw | shift+LMB strong | hold RMB grab | wheel distance | B blast\nG floor | R chunk | F9 impact damage | J capacity | 1-4 cut supports\nF6 run/pause | F7 single step | F8 speed | F10 snapshot | F11 replay | Q quit"
         } else { CONTROLS }),
         TextFont {
             font_size: FontSize::Px(12.0),
@@ -228,7 +228,20 @@ pub fn update(
             c.static_failed,
             c.fragment_failed,
             c.fragments_created,
-            lab.interaction.hud(),
+            format_args!(
+                "{} | capacity {} | jobs {}",
+                lab.interaction.hud(),
+                if lab.background.capacity_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                },
+                if lab.background.busy() {
+                    "working"
+                } else {
+                    "settled"
+                }
+            ),
             status.0
         );
         return;

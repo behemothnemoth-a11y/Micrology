@@ -58,3 +58,5 @@ pub use structural::{
 
 /// Where the committed baseline counters live, relative to the repository root.
 pub const BASELINE_PATH: &str = "fixtures/stress/baseline.json";
+
+pub mod demolition;

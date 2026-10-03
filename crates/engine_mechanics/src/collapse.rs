@@ -157,6 +157,21 @@ pub fn mechanical_failures(
         limits.capacity,
     );
 
+    failures_from_verdict(cells, support, registry, verdict, generation, limits)
+}
+
+/// Apply the existing conservative failure selection to a conclusive capacity result.
+pub fn failures_from_verdict(
+    cells: &dyn CellSource,
+    support: &dyn SupportSource,
+    registry: &MechanicalRegistry,
+    verdict: CapacityVerdict,
+    generation: u8,
+    limits: CollapseLimits,
+) -> MechanicalFailures {
+    if generation > limits.max_generation {
+        return MechanicalFailures::Held(Held::GenerationCeiling);
+    }
     let cut = match &verdict {
         CapacityVerdict::NotEvaluated => return MechanicalFailures::Held(Held::NotEvaluated),
         CapacityVerdict::Sufficient { .. } => return MechanicalFailures::Sound,

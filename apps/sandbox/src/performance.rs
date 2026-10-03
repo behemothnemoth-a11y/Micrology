@@ -81,6 +81,7 @@ pub fn record(
         "frames": distribution(&capture.frames_ms), "physics_active_frames": distribution(&capture.active_frames_ms), "contact_batches": distribution(&capture.contact_ms),
         "maximum_fragments": capture.max_fragments, "maximum_awake": capture.max_awake,
         "interaction": lab.interaction.snapshot(),
+        "background": lab.background.snapshot(),
         "contacts": contacts.snapshot(), "frame_intervals_ms": capture.frames_ms, "physics_active_intervals_ms": capture.active_frames_ms, "contact_batches_ms": capture.contact_ms,
     });
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/diagnostics");

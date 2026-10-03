@@ -221,6 +221,29 @@ pub fn evaluate_capacity(
     roots: impl IntoIterator<Item = CellPos>,
     limits: CapacityLimits,
 ) -> CapacityOutcome {
+    evaluate_capacity_with_bonds(
+        cells,
+        support,
+        residency,
+        registry,
+        roots,
+        limits,
+        |_, _| 1000,
+    )
+}
+
+/// Exact capacity with per-face remaining integrity, in thousandths.
+/// Occupancy collection stays unchanged; cracks reduce only the load network.
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_capacity_with_bonds(
+    cells: &dyn CellSource,
+    support: &dyn SupportSource,
+    residency: &dyn Residency,
+    registry: &MechanicalRegistry,
+    roots: impl IntoIterator<Item = CellPos>,
+    limits: CapacityLimits,
+    integrity: impl Fn(CellPos, CellPos) -> u32,
+) -> CapacityOutcome {
     // ---- 1. Grow the participating set, conservatively. -------------------
     let mut members = BTreeSet::new();
     let mut required_regions = BTreeSet::new();
@@ -333,6 +356,9 @@ pub fn evaluate_capacity(
                 .min(neighbour_profile.capacity(mode))
                 .raw()
                 .max(0);
+            let capacity = ((i128::from(capacity)
+                * i128::from(integrity(cell, neighbour).min(1000)))
+                / 1000) as i64;
             if capacity > 0 {
                 network.add(index, other, capacity);
                 connections += 1;

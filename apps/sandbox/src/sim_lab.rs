@@ -18,6 +18,26 @@ use engine_destruction::{
     DestructionSequence, FractureImpact, FractureLimits, FractureState, Fragment, StructuralLimits,
     fracture_hit_toward, fracture_hit_toward_in, reference_impact_direction,
 };
+fn cut_support(lab: &mut SimulationLab, world: &WorldRes, index: usize) -> Result<String, String> {
+    if !lab.background.building {
+        return Err("support cuts require the demolition fixture".into());
+    }
+    let targets = engine_stress::demolition::cut_support(&world.0, index);
+    if targets.is_empty() {
+        return Err("support already cut".into());
+    }
+    if !lab.background.enqueue(crate::fracture_worker::Request {
+        work: crate::fracture_worker::Work::Remove(targets),
+        effect: crate::fracture_worker::Effect::Cut,
+        space: DamageSpace::StaticWorld,
+        geometry: None,
+        static_volume: None,
+    }) {
+        return Err("cut held: queue full".into());
+    }
+    Ok(format!("support {index} cut queued"))
+}
+
 #[cfg(test)]
 use engine_destruction::{
     FractureSeparation, cracked_structure_result, detach_if, fracture_state_leaving_with,
@@ -67,6 +87,7 @@ pub struct SimulationLab {
     fracture_sequence: DamageSequence,
     pub(crate) fracture_state: FractureState,
     pub(crate) fracture_policy: BaselineFracturePolicy,
+    pub(crate) background: crate::fracture_worker::FractureWorker,
     pub(crate) interaction: crate::interaction::InteractionState,
     last_separation: Option<LabSeparation>,
     pub(crate) last_dump: Option<PathBuf>,
@@ -86,6 +107,7 @@ impl Default for SimulationLab {
             fracture_sequence: DamageSequence::default(),
             fracture_state: FractureState::new(),
             fracture_policy: BaselineFracturePolicy::REFERENCE,
+            background: Default::default(),
             interaction: Default::default(),
             last_separation: None,
             last_dump: None,
@@ -123,6 +145,7 @@ impl SimulationLab {
 pub fn requested() -> bool {
     std::env::var_os("MICROLOGY_DESTRUCTION_LAB").is_some()
         || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_some()
+        || std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some()
 }
 
 pub fn inactive(lab: Res<SimulationLab>) -> bool {
@@ -218,6 +241,26 @@ pub fn strike(
     let Ok(impact) = FractureImpact::from_event(&event, Some(direction)) else {
         return;
     };
+    if lab.background.enabled {
+        let geometry = match space {
+            DamageSpace::FragmentLocal(id) => fragments.get(id).map(Fragment::geometry_revision),
+            _ => None,
+        };
+        let queued = lab.background.enqueue(crate::fracture_worker::Request {
+            work: crate::fracture_worker::Work::Impact(impact),
+            effect: crate::fracture_worker::Effect::Strike(world_direction, f64::from(energy) * 2.),
+            space,
+            geometry,
+            static_volume: None,
+        });
+        status.0 = if queued {
+            "strike queued"
+        } else {
+            "strike held: queue full"
+        }
+        .into();
+        return;
+    }
     let policy = lab.fracture_policy;
     let limits = engine_destruction::FractureTransactionLimits::default();
     let result = match space {
@@ -285,6 +328,11 @@ fn replay_from_environment() -> Result<ReplayScript, String> {
             .map_err(|error| format!("read replay {}: {error}", path.display()))?;
         serde_json::from_str(&text)
             .map_err(|error| format!("parse replay {}: {error}", path.display()))?
+    } else if std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some() {
+        serde_json::from_str(include_str!(
+            "../../../fixtures/destruction/replay-demolition-building.json"
+        ))
+        .map_err(|error| error.to_string())?
     } else {
         weak_repeat_replay()
     };
@@ -333,7 +381,16 @@ pub fn seed(resources: LabSeedResources) {
         }
     };
 
-    world.0 = baseline_wall();
+    let building = matches!(
+        replay.commands.first(),
+        Some(ReplayCommand::DemolitionBuilding)
+    ) || std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some();
+    world.0 = if building {
+        engine_stress::demolition::building()
+    } else {
+        baseline_wall()
+    };
+    lab.background.building = building;
     contacts.clear();
     palette.entries = vec![(
         engine_destruction::REFERENCE_FRACTURE_MATERIAL,
@@ -346,8 +403,16 @@ pub fn seed(resources: LabSeedResources) {
     stream.enabled = false;
     stream.scheduler.clear();
     stream.streamer.clear();
-    stream.meta.spawn = [64.0, 11.0, 95.0];
-    stream.meta.look_at = Some([64.0, 10.5, 64.0]);
+    stream.meta.spawn = if building {
+        [88.0, 24.0, 98.0]
+    } else {
+        [64.0, 11.0, 95.0]
+    };
+    stream.meta.look_at = Some(if building {
+        [64.0, 5.0, 66.0]
+    } else {
+        [64.0, 10.5, 64.0]
+    });
 
     fragments.replace_store(Default::default());
     fragment_stream.reset(engine_io::FragmentIndex::default());
@@ -362,6 +427,7 @@ pub fn seed(resources: LabSeedResources) {
     virtual_time.pause();
 
     lab.enabled = true;
+    lab.background.enabled = building || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_none();
     lab.speed_milli = 1000;
     lab.pending_fixed_steps = 0;
     lab.fixed_ticks = 0;
@@ -469,6 +535,7 @@ fn dump_state(
         "contact_fracture_enabled": lab.contact_fracture,
         "contacts": lab.contact_stats,
         "interaction": lab.interaction.snapshot(),
+        "background": lab.background.snapshot(),
         "fixed_ticks": lab.fixed_ticks,
         "paused": virtual_time.is_paused(),
         "speed_milli": lab.speed_milli(),
@@ -790,10 +857,25 @@ fn execute_next_replay_command(
     };
     let index = replay.cursor;
 
-    if lab.interaction.busy() {
+    if lab.interaction.busy() || lab.background.busy() {
         return Err("waiting for blast transaction queue".into());
     }
     match command {
+        ReplayCommand::DemolitionBuilding => {
+            advance_replay_cursor(lab);
+            Ok("demolition building ready; J capacity, 1–4 cut supports".into())
+        }
+        ReplayCommand::StructuralCapacity { enabled } => {
+            lab.background.capacity_enabled = enabled;
+            lab.background.capacity(0);
+            advance_replay_cursor(lab);
+            Ok(format!("structural capacity {enabled}"))
+        }
+        ReplayCommand::CutSupport { index } => {
+            let result = cut_support(lab, world, index)?;
+            advance_replay_cursor(lab);
+            Ok(result)
+        }
         ReplayCommand::ArenaFloor => {
             let result = crate::interaction::add_floor(lab, world)?;
             advance_replay_cursor(lab);
@@ -920,6 +1002,26 @@ pub fn controls(
         return;
     }
     let keys = &context.keys;
+    if lab.background.building && !lab.background.busy() {
+        if keys.just_pressed(KeyCode::KeyJ) {
+            lab.background.capacity_enabled = !lab.background.capacity_enabled;
+            lab.background.capacity(0);
+            status.0 = format!("structural capacity {}", lab.background.capacity_enabled);
+        }
+        for (index, key) in [
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if keys.just_pressed(key) {
+                status.0 = cut_support(&mut lab, &world, index).unwrap_or_else(|e| e);
+            }
+        }
+    }
 
     if keys.just_pressed(KeyCode::F6) {
         if virtual_time.is_paused() {
@@ -970,7 +1072,9 @@ pub fn controls(
         }
     }
 
-    let capture_ready = lab.pending_fixed_steps == 0
+    let capture_ready = !lab.background.busy()
+        && !lab.interaction.busy()
+        && lab.pending_fixed_steps == 0
         && lab.replay.as_ref().is_some_and(|replay| {
             replay.cursor < replay.script.commands.len() && replay.blocked_case.is_none()
         });
@@ -979,7 +1083,7 @@ pub fn controls(
             .capture_timer
             .as_mut()
             .is_some_and(|timer| timer.tick(context.real_time.delta()).just_finished());
-    if keys.just_pressed(KeyCode::F11) || capture_step {
+    if (keys.just_pressed(KeyCode::F11) && capture_ready) || capture_step {
         let current_bytes = context
             .budget
             .account(&fragments, &context.bodies, context.renders.mesh_bytes())
@@ -1008,7 +1112,12 @@ pub fn apply_pending_fixed_step(
     fixed_time: Res<Time<Fixed>>,
     mut virtual_time: ResMut<Time<Virtual>>,
 ) {
-    if !lab.enabled || lab.pending_fixed_steps == 0 || !virtual_time.is_paused() {
+    if !lab.enabled
+        || lab.background.busy()
+        || lab.interaction.busy()
+        || lab.pending_fixed_steps == 0
+        || !virtual_time.is_paused()
+    {
         return;
     }
 

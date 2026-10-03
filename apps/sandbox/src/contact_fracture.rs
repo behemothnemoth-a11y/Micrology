@@ -63,6 +63,7 @@ pub struct ContactFractureStats {
     pub fragments_created: u64,
     pub pairs_between_fragments: u64,
     pub total_work: u64,
+    pub broken_bonds: u64,
 }
 #[derive(Resource, Default)]
 pub struct ContactFractureHost {
@@ -93,7 +94,7 @@ impl ContactFractureHost {
         serde_json::json!({ "samples": s.samples, "enqueued": s.enqueued, "processed": s.processed,
             "refused": s.refused, "stale": s.stale, "capped": s.capped, "pending": self.pending(),
             "static_failed": s.static_failed, "fragment_failed": s.fragment_failed,
-            "fragments_created": s.fragments_created, "fragment_fragment_pairs": s.pairs_between_fragments, "work": s.total_work })
+            "broken_bonds":s.broken_bonds, "fragments_created": s.fragments_created, "fragment_fragment_pairs": s.pairs_between_fragments, "work": s.total_work })
     }
 }
 
@@ -309,17 +310,46 @@ pub fn process(resources: ProcessResources) {
         mut status,
         mut performance,
     } = resources;
-    if !host.enabled || !lab.enabled {
+    if lab.background.enabled && !lab.contact_fracture {
+        host.pending.clear();
+    }
+    if !host.enabled || !lab.enabled || (lab.background.enabled && !lab.contact_fracture) {
+        lab.background.contact_backlog = 0;
         return;
     }
     let measured = !host.pending.is_empty();
     let start = std::time::Instant::now();
     let policy = BaselineFracturePolicy::REFERENCE;
-    for _ in 0..MAX_TARGETS_PER_STEP {
+    for _ in 0..if lab.background.enabled {
+        MAX_PENDING
+    } else {
+        MAX_TARGETS_PER_STEP
+    } {
+        if lab.background.enabled && !lab.background.room() {
+            break;
+        }
         let Some(hit) = host.pending.pop_front() else {
             break;
         };
         host.stats.processed += 1;
+        if lab.background.enabled {
+            if hit
+                .static_volume
+                .is_some_and(|(v, r)| world.0.volume_revision(v) != r)
+            {
+                host.stats.stale += 1;
+                continue;
+            }
+            let space = hit.impact.space();
+            lab.background.enqueue(crate::fracture_worker::Request {
+                work: crate::fracture_worker::Work::Impact(hit.impact),
+                effect: crate::fracture_worker::Effect::Contact(space, hit.generation),
+                space,
+                geometry: hit.geometry,
+                static_volume: hit.static_volume,
+            });
+            continue;
+        }
         let tracked = budget
             .account(&fragments, &bodies, renders.mesh_bytes())
             .footprint
@@ -417,6 +447,9 @@ pub fn process(resources: ProcessResources) {
         );
     }
     lab.contact_stats = host.snapshot();
+    if lab.background.enabled {
+        lab.background.contact_backlog = host.pending.len();
+    }
     if measured {
         performance.contact(start.elapsed().as_secs_f64() * 1000.);
     }
@@ -427,6 +460,42 @@ fn fits(parts: &[Fragment], available: u64) -> bool {
         .iter()
         .try_fold(0u64, |sum, f| sum.checked_add(f.footprint_bytes()))
         .is_some_and(|bytes| bytes <= available)
+}
+
+impl ContactFractureHost {
+    pub(crate) fn refuse_job(&mut self, stale: bool) {
+        if stale {
+            self.stats.stale += 1;
+        } else {
+            self.stats.refused += 1;
+        }
+    }
+    pub(crate) fn complete_job(
+        &mut self,
+        space: DamageSpace,
+        generation: u8,
+        summary: &engine_destruction::fracture_jobs::JobSummary,
+    ) {
+        match space {
+            DamageSpace::StaticWorld => self.stats.static_failed += summary.failed,
+            DamageSpace::FragmentLocal(id) => {
+                self.stats.fragment_failed += summary.failed;
+                self.generations.remove(&id);
+            }
+        }
+        self.stats.fragments_created += summary.created;
+        self.stats.total_work += summary.work;
+        self.stats.broken_bonds += summary.broken;
+        for &id in &summary.ids {
+            self.generations.insert(id, generation);
+        }
+    }
+}
+
+pub fn process_background(resources: ProcessResources) {
+    if resources.lab.background.enabled {
+        process(resources);
+    }
 }
 
 #[cfg(test)]

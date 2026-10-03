@@ -27,6 +27,7 @@ mod contact_fracture;
 mod destruction;
 mod edit;
 mod fracture_demo;
+mod fracture_worker;
 mod fragment_render;
 mod fragment_streaming;
 mod hud;
@@ -203,7 +204,12 @@ fn main() {
                 edit::quit,
                 sim_lab::controls,
                 sim_lab::strike,
-                interaction::drive,
+                (
+                    interaction::drive,
+                    contact_fracture::process_background,
+                    fracture_worker::drive,
+                )
+                    .chain(),
                 progressive_demo::drive,
                 impact_demo::drive,
                 collapse_demo::drive,
@@ -221,6 +227,9 @@ fn main() {
                 // apply whatever came back that is still current.
                 streaming::drive_streaming,
                 streaming::poll_region_tasks,
+                // Non-blocking completion opportunities around independent host
+                // work: at most three commits/snapshots per frame, never a spin.
+                fracture_worker::drive,
                 streaming::queue_dirty_sections,
                 streaming::dispatch_mesh_jobs,
                 streaming::apply_mesh_results,
@@ -230,6 +239,7 @@ fn main() {
                 fragment_streaming::drive_fragment_streaming.run_if(sim_lab::inactive),
                 // Physics residency is deliberately smaller than render residency.
                 // Rebuild only nearby static colliders, from the live cell world.
+                fracture_worker::drive,
                 physics::sync_static_colliders,
                 // Admit fragment render memory first, then let physics see the
                 // same updated budget before creating a body.

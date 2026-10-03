@@ -112,6 +112,11 @@ fn print_plan(script: &ReplayScript) {
     println!();
     for (index, command) in script.commands.iter().enumerate() {
         let description = match command {
+            ReplayCommand::DemolitionBuilding => "one-material demolition building".into(),
+            ReplayCommand::StructuralCapacity { enabled } => {
+                format!("structural capacity {enabled}")
+            }
+            ReplayCommand::CutSupport { index } => format!("cut support {index}"),
             ReplayCommand::ArenaFloor => "add one-material arena floor".into(),
             ReplayCommand::Blast {
                 center_milli,

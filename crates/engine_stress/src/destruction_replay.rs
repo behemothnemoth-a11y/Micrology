@@ -17,6 +17,13 @@ pub const DAMAGED_AREA_REPLAY_PATH: &str = "fixtures/destruction/replay-damaged-
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum ReplayCommand {
+    DemolitionBuilding,
+    StructuralCapacity {
+        enabled: bool,
+    },
+    CutSupport {
+        index: usize,
+    },
     ArenaFloor,
     Blast {
         center_milli: [i32; 3],
@@ -306,7 +313,16 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
         });
     }
 
-    let expected = destruction_benchmark_pack().fixture.checksum_fnv1a64;
+    let building = matches!(
+        script.commands.first(),
+        Some(ReplayCommand::DemolitionBuilding)
+    );
+    let expected = if building {
+        structural_state_digest(&crate::demolition::building(), &FragmentStore::default())
+            .checksum_fnv1a64
+    } else {
+        destruction_benchmark_pack().fixture.checksum_fnv1a64
+    };
     if script.fixture_checksum_fnv1a64 != expected {
         return Err(ReplayValidationError::FixtureMismatch {
             expected,
@@ -323,6 +339,18 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
 
     for (index, command) in script.commands.iter().enumerate() {
         match command {
+            ReplayCommand::BenchmarkCase { .. } if building => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::DemolitionBuilding if index != 0 => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::CutSupport { index: support } if !building || *support >= 4 => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::StructuralCapacity { .. } if !building => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
             ReplayCommand::Blast { radius, energy, .. }
                 if !(1..=8).contains(radius) || !(1..=24000).contains(energy) =>
             {

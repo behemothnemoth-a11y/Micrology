@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "name": "demolition_stress",
+  "fixture_checksum_fnv1a64": "048084123a921d69",
+  "commands": [
+    {
+      "op": "demolition_building"
+    },
+    {
+      "op": "pause"
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": true
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": true
+    },
+    {
+      "op": "launch_chunks",
+      "count": 9,
+      "speed_milli": 18000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        64500,
+        9500,
+        66500
+      ],
+      "radius": 8,
+      "energy": 20000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "dump",
+      "label": "demolition_stress_9"
+    },
+    {
+      "op": "launch_chunks",
+      "count": 9,
+      "speed_milli": 18000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        64500,
+        1000,
+        66500
+      ],
+      "radius": 8,
+      "energy": 18000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "dump",
+      "label": "demolition_stress_18"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": false
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "demolition_stress_off"
+    }
+  ]
+}

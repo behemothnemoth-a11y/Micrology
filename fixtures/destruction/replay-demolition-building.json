@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "name": "demolition_building",
+  "fixture_checksum_fnv1a64": "048084123a921d69",
+  "commands": [
+    {
+      "op": "demolition_building"
+    },
+    {
+      "op": "pause"
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": true
+    },
+    {
+      "op": "dump",
+      "label": "demolition_intact"
+    },
+    {
+      "op": "cut_support",
+      "index": 0
+    },
+    {
+      "op": "dump",
+      "label": "demolition_one_support"
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": false
+    },
+    {
+      "op": "cut_support",
+      "index": 1
+    },
+    {
+      "op": "dump",
+      "label": "demolition_overloaded_off"
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": true
+    },
+    {
+      "op": "dump",
+      "label": "demolition_roof_released"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": true
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "demolition_roof_impact"
+    },
+    {
+      "op": "grab_largest",
+      "target_milli": [
+        64500,
+        14500,
+        68000
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 90
+    },
+    {
+      "op": "dump",
+      "label": "demolition_lifted"
+    },
+    {
+      "op": "move_grab",
+      "target_milli": [
+        68500,
+        14000,
+        71000
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 90
+    },
+    {
+      "op": "dump",
+      "label": "demolition_pulled"
+    },
+    {
+      "op": "release",
+      "velocity_milli": [
+        0,
+        -24000,
+        0
+      ]
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 90
+    },
+    {
+      "op": "dump",
+      "label": "demolition_slammed"
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        68500,
+        3000,
+        71000
+      ],
+      "radius": 7,
+      "energy": 16000
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 180
+    },
+    {
+      "op": "dump",
+      "label": "demolition_settled"
+    },
+    {
+      "op": "structural_capacity",
+      "enabled": false
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": false
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 120
+    },
+    {
+      "op": "dump",
+      "label": "demolition_systems_off"
+    }
+  ]
+}

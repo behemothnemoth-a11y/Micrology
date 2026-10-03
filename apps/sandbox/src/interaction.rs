@@ -428,6 +428,9 @@ pub fn drive(
     let start = std::time::Instant::now();
     let measured = lab.interaction.busy();
     for _ in 0..TARGETS_PER_FRAME {
+        if lab.background.enabled && !lab.background.room() {
+            break;
+        }
         let Some(target) = lab.interaction.pending.pop_front() else {
             break;
         };
@@ -456,6 +459,16 @@ pub fn drive(
             lab.interaction.refused += 1;
             continue;
         };
+        if lab.background.enabled {
+            lab.background.enqueue(crate::fracture_worker::Request {
+                work: crate::fracture_worker::Work::Impact(impact),
+                effect: crate::fracture_worker::Effect::Blast(target.center, target.radius),
+                space: target.space,
+                geometry: target.revision,
+                static_volume: None,
+            });
+            continue;
+        }
         let available = budget.0.hard_bytes.saturating_sub(
             budget
                 .account(&fragments, &bodies, renders.mesh_bytes())
@@ -659,6 +672,33 @@ pub fn hold(
         forces.apply_force_at_point(Vector::from_array(acceleration) * mass.value(), point);
         lab.interaction.hold_steps += 1;
         return;
+    }
+}
+
+pub(crate) fn refuse_blast(lab: &mut SimulationLab) {
+    lab.interaction.refused += 1;
+}
+pub(crate) fn complete_blast(
+    lab: &mut SimulationLab,
+    fragments: &mut DynamicFragments,
+    summary: &engine_destruction::fracture_jobs::JobSummary,
+    center: GlobalPos,
+    radius: u32,
+) {
+    lab.interaction.applied += 1;
+    lab.interaction.failed += summary.failed;
+    lab.interaction.broken += summary.broken;
+    lab.interaction.created += summary.created;
+    for &id in &summary.ids {
+        if let Some(c) = fragments.get(id).and_then(world_center)
+            && let Some(delta) = radial_velocity(
+                (c - Vector::new(center.x, center.y, center.z)).to_array(),
+                f64::from(radius) * 2.,
+                22.,
+            )
+        {
+            kick(lab, fragments, id, delta);
+        }
     }
 }
 

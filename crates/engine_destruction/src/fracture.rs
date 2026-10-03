@@ -544,6 +544,12 @@ impl FractureProfile {
 pub trait FracturePolicy: Send + Sync {
     /// The profile governing one material.
     fn profile(&self, material: MaterialId) -> FractureProfile;
+    fn surface_gain_milli(&self, _space: DamageSpace) -> i64 {
+        SPALL_GAIN_MILLI
+    }
+    fn erase_unbonded(&self) -> bool {
+        true
+    }
 }
 
 /// One profile for every material, by construction.
@@ -556,6 +562,140 @@ pub trait FracturePolicy: Send + Sync {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct BaselineFracturePolicy {
     profile: FractureProfile,
+}
+
+/// The historical fixture stays reproducible. The coherent model treats broken
+/// connections as separation, not vanished mass, and removes the all-surface
+/// amplification on native fragments. It uses one tougher reference solid: a
+/// wider gap between cracking and crushing lets separated chunks survive hits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FractureModel {
+    #[default]
+    Historical,
+    Coherent,
+}
+impl FracturePolicy for FractureModel {
+    fn profile(&self, _: MaterialId) -> FractureProfile {
+        let mut profile = FractureProfile::REFERENCE_SOLID;
+        if *self == Self::Coherent {
+            profile.crush = DamageAmount(12000);
+            profile.toughness_milli = 650;
+        }
+        profile
+    }
+    fn surface_gain_milli(&self, space: DamageSpace) -> i64 {
+        if *self == Self::Coherent && matches!(space, DamageSpace::FragmentLocal(_)) {
+            0
+        } else {
+            SPALL_GAIN_MILLI
+        }
+    }
+    fn erase_unbonded(&self) -> bool {
+        *self == Self::Historical
+    }
+}
+
+/// Worker-owned sparse delta. Only changed sites are copied back to authority.
+#[derive(Clone, Debug)]
+pub(crate) struct FracturePatch {
+    revision: Revision,
+    cells: Vec<(DamageSite, Option<CellFracture>)>,
+    bonds: Vec<(BondSite, Option<BondFracture>)>,
+}
+impl FractureState {
+    pub(crate) fn snapshot_space(&self, space: DamageSpace, max: usize) -> Option<Self> {
+        let mut result = Self {
+            revision: self.revision,
+            ..Self::new()
+        };
+        for r in self.cells_in(space) {
+            if result.cells.len() >= max {
+                return None;
+            }
+            result.cells.insert(r.site, r);
+        }
+        for r in self.bonds_in(space) {
+            if result.cells.len() + result.bonds.len() >= max {
+                return None;
+            }
+            result.bonds.insert(r.site, r);
+        }
+        Some(result)
+    }
+    pub(crate) fn patch_from(&self, before: &Self) -> FracturePatch {
+        let cells = before
+            .cells
+            .keys()
+            .chain(self.cells.keys())
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter(|k| before.cells.get(k) != self.cells.get(k))
+            .map(|k| (k, self.cells.get(&k).copied()))
+            .collect();
+        let bonds = before
+            .bonds
+            .keys()
+            .chain(self.bonds.keys())
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .filter(|k| before.bonds.get(k) != self.bonds.get(k))
+            .map(|k| (k, self.bonds.get(&k).copied()))
+            .collect();
+        FracturePatch {
+            revision: before.revision,
+            cells,
+            bonds,
+        }
+    }
+    pub(crate) fn patch_fits(&self, patch: &FracturePatch, limits: FractureLimits) -> bool {
+        if patch.revision != self.revision {
+            return false;
+        }
+        let cells = patch
+            .cells
+            .iter()
+            .try_fold(self.cells.len(), |count, (key, value)| {
+                count
+                    .checked_sub(usize::from(self.cells.contains_key(key)))?
+                    .checked_add(usize::from(value.is_some()))
+            });
+        let bonds = patch
+            .bonds
+            .iter()
+            .try_fold(self.bonds.len(), |count, (key, value)| {
+                count
+                    .checked_sub(usize::from(self.bonds.contains_key(key)))?
+                    .checked_add(usize::from(value.is_some()))
+            });
+        cells.is_some_and(|count| count <= limits.max_cell_entries)
+            && bonds.is_some_and(|count| count <= limits.max_bond_entries)
+    }
+    pub(crate) fn apply_patch(&mut self, patch: FracturePatch) {
+        debug_assert_eq!(patch.revision, self.revision);
+        for (k, v) in patch.cells {
+            match v {
+                Some(v) => {
+                    self.cells.insert(k, v);
+                }
+                None => {
+                    self.cells.remove(&k);
+                }
+            }
+        }
+        for (k, v) in patch.bonds {
+            match v {
+                Some(v) => {
+                    self.bonds.insert(k, v);
+                }
+                None => {
+                    self.bonds.remove(&k);
+                }
+            }
+        }
+        self.revision.bump();
+    }
 }
 
 impl BaselineFracturePolicy {
@@ -1800,7 +1940,9 @@ impl FractureState {
         // Records for a cell that is about to leave the world are meaningless,
         // and leaving them would let stale integrity decide a later impact.
         let mut failed_cells: BTreeSet<CellPos> = crushed.clone();
-        failed_cells.extend(unbonded.iter().copied());
+        if policy.erase_unbonded() {
+            failed_cells.extend(unbonded.iter().copied());
+        }
         for cell in &failed_cells {
             staged_cells.remove(&DamageSite { space, cell: *cell });
             for dir in FaceDir::ALL {
@@ -1970,7 +2112,10 @@ pub fn evaluate_fracture(
             }
         }
         let spall = if exposed {
-            MILLI + SPALL_GAIN_MILLI
+            MILLI
+                + policy
+                    .surface_gain_milli(impact.space)
+                    .clamp(0, SPALL_GAIN_MILLI)
         } else {
             MILLI
         };

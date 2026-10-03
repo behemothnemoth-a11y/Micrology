@@ -268,7 +268,14 @@ pub fn classify_cracked_from_roots(
         seen.extend(component.cells.iter().copied());
         set.components.push(component);
 
-        if remaining == 0 {
+        // An empty or exactly-completed component cannot hide unvisited roots.
+        // Stop only once an explicit deferred component records the exhaustion.
+        if remaining == 0
+            && set
+                .components
+                .last()
+                .is_some_and(|c| c.classification.is_deferred())
+        {
             break;
         }
     }

@@ -115,7 +115,7 @@ impl CapacityVerdict {
         }
     }
 
-    fn from_outcome(outcome: CapacityOutcome) -> Self {
+    pub fn from_outcome(outcome: CapacityOutcome) -> Self {
         match outcome {
             CapacityOutcome::Satisfied {
                 demand,
