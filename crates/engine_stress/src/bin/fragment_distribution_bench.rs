@@ -140,6 +140,7 @@ fn main() {
         ),
         ("coherent_half_mean", FragmentPartitionPolicy::CONSERVATIVE),
         ("coherent_mean", FragmentPartitionPolicy::MEAN),
+        ("coherent_median", FragmentPartitionPolicy::MEDIAN),
         ("coherent_twice_mean", FragmentPartitionPolicy::COARSE),
     ];
 
