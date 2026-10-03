@@ -22,6 +22,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all --check
+      - name: Check whitespace
+        run: git diff --check
       - name: Clippy
         run: cargo clippy --workspace --exclude sandbox --all-targets
       - name: Test
@@ -34,6 +36,8 @@ jobs:
         run: cargo run -q -p engine_stress --bin destruction_replay -- --check
       - name: Fragment distribution baseline is unchanged
         run: cargo run -q -p engine_stress --bin fragment_distribution_bench -- --check
+      - name: Fracture locality remains bounded
+        run: cargo run -q -p engine_stress --bin fracture_locality_bench
       - name: Stress baseline is unchanged
         # Deterministic counters only. Timings are diagnostic and are never
         # asserted, so this cannot fail because a runner was slow.
