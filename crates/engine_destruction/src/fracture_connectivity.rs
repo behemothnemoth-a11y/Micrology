@@ -240,14 +240,21 @@ pub fn classify_cracked_from_roots(
     let mut seen: BTreeSet<CellPos> = BTreeSet::new();
     let mut remaining = limits.max_cells_total;
 
-    for root in roots {
+    // Deliberately this classifier's own bookkeeping, not the oracle's. The two
+    // passes share the `Component`/`Classification` vocabulary and nothing
+    // else, so that their agreement stays something a test proves rather than
+    // something the code guarantees by construction.
+    let mut pending = roots.iter().copied();
+    while let Some(root) = pending.next() {
         if seen.contains(&root) {
             set.roots_merged += 1;
             continue;
         }
         if set.components.len() >= limits.max_components {
+            let mut skipped = BTreeSet::from([root]);
+            skipped.extend(pending.filter(|next| !seen.contains(next)));
             set.components.push(Component {
-                cells: BTreeSet::from([root]),
+                cells: skipped,
                 classification: Classification::Deferred {
                     reason: DeferReason::TooManyComponents,
                 },
@@ -269,6 +276,22 @@ pub fn classify_cracked_from_roots(
         set.components.push(component);
 
         if remaining == 0 {
+            // The roots this pass never reached are deferred, not dropped.
+            // Without this the set could hold nothing but settled components
+            // while whole roots went unexamined, and `is_settled` would call
+            // an exhausted pass a conclusive answer.
+            let skipped: BTreeSet<CellPos> = pending
+                .by_ref()
+                .filter(|next| !seen.contains(next))
+                .collect();
+            if !skipped.is_empty() {
+                set.components.push(Component {
+                    cells: skipped,
+                    classification: Classification::Deferred {
+                        reason: DeferReason::PassBudgetSpent,
+                    },
+                });
+            }
             break;
         }
     }
@@ -310,9 +333,27 @@ fn walk(
     let mut required: BTreeSet<RegionPos> = BTreeSet::new();
     let mut anchored = false;
 
+    // The root is charged against the budget like any other cell, and charged
+    // before it is looked at. Charging only neighbours left `max_cells_total`
+    // no bound at all — N roots in N components cost nothing — and let a pass
+    // with no budget at all still answer `Detached`, which is the one outcome
+    // that removes things.
+    if *remaining == 0 || limits.max_cells_per_component == 0 {
+        let reason = if limits.max_cells_per_component == 0 {
+            DeferReason::ComponentTooLarge
+        } else {
+            DeferReason::PassBudgetSpent
+        };
+        return Component {
+            cells: BTreeSet::new(),
+            classification: Classification::Deferred { reason },
+        };
+    }
+
     // A stale root — one the world removed between gathering and searching — is
     // not an empty detached component, because that would conjure a fragment
-    // out of nothing.
+    // out of nothing. Checked after the budget gate, so that a stale root
+    // cannot answer conclusively for a pass that had nothing left to spend.
     if !cells.is_occupied(root) {
         return Component {
             cells: BTreeSet::new(),
@@ -320,6 +361,7 @@ fn walk(
         };
     }
 
+    *remaining = remaining.saturating_sub(1);
     reached.insert(root);
     frontier.push_back(root);
 

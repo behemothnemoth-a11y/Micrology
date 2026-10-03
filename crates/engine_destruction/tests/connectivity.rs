@@ -565,3 +565,101 @@ fn connectivity_at_the_integer_world_edge_never_wraps_to_the_other_side() {
     assert_eq!(set.components[0].classification, Classification::Supported);
     assert_eq!(set.components[0].len(), 1);
 }
+
+// --- the budget is a bound, not a suggestion -------------------------------
+
+/// Three isolated, unanchored single cells: three one-cell components, so each
+/// root costs exactly one cell of budget and nothing else.
+fn three_islands() -> (World, CellPos, CellPos) {
+    let mut w = world();
+    let a = CellPos::new(4, 0, 0);
+    let b = CellPos::new(8, 0, 0);
+    w.set(CellPos::ZERO, Some(STONE));
+    w.set(a, Some(STONE));
+    w.set(b, Some(STONE));
+    w.take_dirty();
+    (w, a, b)
+}
+
+#[test]
+fn the_pass_budget_bounds_the_cells_the_search_visits() {
+    // The root cell used to be free, which made `max_cells_total` no bound at
+    // all: N roots in N distinct components visited N cells whatever the budget
+    // said. A budget that does not bound work cannot keep analysis off the
+    // frame thread, which is the only reason it exists.
+    let (w, a, b) = three_islands();
+
+    for budget in 0..=3 {
+        let set = classify(&w, [CellPos::ZERO, a, b], StructuralLimits::tight(budget));
+        assert!(
+            set.cells_visited <= budget as u64,
+            "budget {budget} permitted {} cells",
+            set.cells_visited
+        );
+    }
+}
+
+#[test]
+fn roots_the_pass_never_examined_are_deferred_rather_than_dropped() {
+    // Stopping on an exhausted budget used to `break` without recording the
+    // roots it had not reached. The components it had already closed were each
+    // conclusive, so the pass as a whole reported itself settled while two
+    // thirds of the question went unasked.
+    let (w, a, b) = three_islands();
+    let set = classify(&w, [CellPos::ZERO, a, b], StructuralLimits::tight(1));
+
+    assert!(!set.is_settled(), "an exhausted pass is never settled");
+    let deferred: BTreeSet<CellPos> = set
+        .deferred()
+        .flat_map(|component| component.cells.iter().copied())
+        .collect();
+    assert!(
+        deferred.contains(&a) && deferred.contains(&b),
+        "the roots nobody searched must be named, got {deferred:?}"
+    );
+}
+
+#[test]
+fn a_zero_budget_concludes_nothing_and_detaches_nothing() {
+    // The dangerous direction. With no budget at all the old pass still
+    // answered `Detached` — the one classification that removes geometry — for
+    // the first root it happened to look at.
+    let (w, a, b) = three_islands();
+    let set = classify(&w, [CellPos::ZERO, a, b], StructuralLimits::tight(0));
+
+    assert!(!set.is_settled());
+    assert_eq!(set.cells_visited, 0);
+    assert_eq!(set.detached().count(), 0);
+    assert_eq!(set.detached_cells(), 0);
+    assert!(
+        set.components
+            .iter()
+            .all(|component| component.classification.is_deferred()),
+        "nothing may be concluded on a budget of zero: {:?}",
+        set.components
+    );
+}
+
+#[test]
+fn a_stale_root_cannot_refund_an_exhausted_budget() {
+    // An unoccupied root costs nothing and answers conclusively, which is
+    // correct on its own. It must still not let a pass that was already out of
+    // budget present itself as a finished one.
+    let mut w = world();
+    let a = CellPos::new(4, 0, 0);
+    let b = CellPos::new(8, 0, 0);
+    // CellPos::ZERO deliberately left empty: the stale root, and the first in
+    // canonical order, so it is the one the pass meets first.
+    w.set(a, Some(STONE));
+    w.set(b, Some(STONE));
+    w.take_dirty();
+
+    for budget in [0, 1] {
+        let set = classify(&w, [CellPos::ZERO, a, b], StructuralLimits::tight(budget));
+        assert!(
+            !set.is_settled(),
+            "budget {budget}: a stale root hid an exhausted pass: {:?}",
+            set.components
+        );
+    }
+}
