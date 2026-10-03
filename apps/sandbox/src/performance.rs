@@ -1,7 +1,9 @@
 //! Bounded lab telemetry. Wall clocks are diagnostics only and never choose
 //! fracture outcomes or enter a deterministic state digest.
 use crate::{
-    contact_fracture::ContactFractureHost, physics::DynamicFragments, sim_lab::SimulationLab,
+    contact_fracture::ContactFractureHost,
+    physics::{DynamicFragments, FragmentBodies, StaticColliders},
+    sim_lab::SimulationLab,
 };
 use bevy::prelude::*;
 use std::collections::VecDeque;
@@ -40,6 +42,8 @@ pub fn record(
     real: Res<Time<Real>>,
     lab: Res<SimulationLab>,
     fragments: Res<DynamicFragments>,
+    fragment_bodies: Res<FragmentBodies>,
+    static_colliders: Res<StaticColliders>,
     contacts: Res<ContactFractureHost>,
     mut capture: ResMut<PerformanceCapture>,
     mut events: ParamSet<(MessageReader<AppExit>, MessageWriter<AppExit>)>,
@@ -75,11 +79,32 @@ pub fn record(
     if capture.written || (!timed_out && events.p0().read().next().is_none()) {
         return;
     }
+    let collision = static_colliders.stats();
     let report = serde_json::json!({
         "schema": 1, "elapsed_seconds": real.elapsed_secs_f64(), "warmup_seconds": 5,
         "scope": "Real frame intervals, VSync may cap throughput; no GPU timer; recording affects timings",
         "frames": distribution(&capture.frames_ms), "physics_active_frames": distribution(&capture.active_frames_ms), "contact_batches": distribution(&capture.contact_ms),
         "maximum_fragments": capture.max_fragments, "maximum_awake": capture.max_awake,
+        "static_collision": {
+            "active_volumes": collision.active_volumes,
+            "pending_volumes": collision.pending_volumes,
+            "active_jobs": collision.active_jobs,
+            "ready_results": collision.ready_results,
+            "jobs_started_total": collision.jobs_started_total,
+            "rebuilt_total": collision.rebuilt_total,
+            "rebuilt_this_frame": collision.rebuilt_this_frame,
+            "stale_results": collision.stale_results,
+            "superseded_jobs": collision.superseded_jobs,
+            "despawned_total": collision.despawned_total,
+            "boxes": collision.boxes,
+            "shape_bytes": collision.bytes,
+        },
+        "fragment_collision": {
+            "bodies": fragment_bodies.len(),
+            "pending": fragment_bodies.pending_spawn_current(),
+            "withheld_current": fragment_bodies.withheld_current(),
+            "withheld_total": fragment_bodies.withheld_total(),
+        },
         "interaction": lab.interaction.snapshot(),
         "background": lab.background.snapshot(),
         "contacts": contacts.snapshot(), "frame_intervals_ms": capture.frames_ms, "physics_active_intervals_ms": capture.active_frames_ms, "contact_batches_ms": capture.contact_ms,
