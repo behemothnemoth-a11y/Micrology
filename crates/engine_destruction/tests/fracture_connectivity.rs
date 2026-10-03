@@ -691,3 +691,102 @@ fn a_cracked_classification_of_a_stale_root_conjures_nothing() {
             .all(|component| !component.cells.contains(&CellPos::new(40, 40, 40)))
     );
 }
+
+// --- budget exhaustion, in both classifiers at once ------------------------
+
+#[test]
+fn empty_or_exactly_completed_roots_cannot_hide_budget_exhaustion_from_either_oracle() {
+    // The conservative-budget edge case, asserted against both classifiers
+    // because a safety property that only one of them has is not a safety
+    // property. Two ways a pass could previously look finished when it was not:
+    //
+    // * a root whose component closed *exactly* as the budget ran out — the
+    //   component is conclusive, so every component in the set was settled, and
+    //   the roots behind it were dropped without a trace;
+    // * a stale, unoccupied root, which costs nothing and answers
+    //   conclusively, landing on an already-exhausted budget.
+    //
+    // Either way `is_settled` claimed a conclusive answer for a pass that had
+    // stopped early, and `Detached` is what removes geometry.
+    let mut exact = World::with_materials(materials());
+    let a = CellPos::new(4, 0, 0);
+    let b = CellPos::new(8, 0, 0);
+    exact.set(CellPos::ZERO, Some(SOLID));
+    exact.set(a, Some(SOLID));
+    exact.set(b, Some(SOLID));
+
+    // The same roots, with the first one missing: the stale-root case.
+    let mut stale = World::with_materials(materials());
+    stale.set(a, Some(SOLID));
+    stale.set(b, Some(SOLID));
+
+    for (label, world) in [("exactly completed", &exact), ("stale root", &stale)] {
+        for budget in [0, 1] {
+            let roots = [CellPos::ZERO, a, b];
+            let limits = StructuralLimits::tight(budget);
+
+            let occupancy = classify_from_roots(world, world, &AllResident, roots, limits);
+            let cracked = classify_cracked_from_roots(
+                world,
+                world,
+                &AllResident,
+                &IntactBonds,
+                roots,
+                limits,
+            );
+
+            assert!(
+                !occupancy.is_settled(),
+                "{label}, budget {budget}: the occupancy oracle called an exhausted pass \
+                 settled: {:?}",
+                occupancy.components
+            );
+            assert!(
+                !cracked.is_settled(),
+                "{label}, budget {budget}: the fracture-aware classifier called an exhausted \
+                 pass settled: {:?}",
+                cracked.components
+            );
+
+            // Neither may spend more than it was given. Note what is *not*
+            // asserted: that no component came back `Detached`. A one-cell
+            // component the pass closed completely really is detached, and
+            // saying so is useful — it becomes actionable once the rest of the
+            // pass resolves. The safety property is that the *pass* is
+            // unsettled, which is where every caller gates
+            // (`fracture_transaction`, `jobs`, `sim_lab`), so an exhausted pass
+            // is never acted on whatever its individual components say.
+            for (which, set) in [("occupancy", &occupancy), ("cracked", &cracked)] {
+                assert!(
+                    set.cells_visited <= budget as u64,
+                    "{label}, budget {budget}: {which} visited {} cells",
+                    set.cells_visited
+                );
+                if budget == 0 {
+                    // With nothing spent, nothing was examined, so there is
+                    // nothing to be conclusive about at all.
+                    assert_eq!(
+                        set.detached_cells(),
+                        0,
+                        "{label}: {which} concluded on a budget of zero"
+                    );
+                    assert!(
+                        set.components
+                            .iter()
+                            .all(|component| component.classification.is_deferred()),
+                        "{label}: {which} answered on a budget of zero: {:?}",
+                        set.components
+                    );
+                }
+            }
+
+            // And they must still agree with each other, which is the whole
+            // reason the second implementation exists.
+            assert_eq!(
+                shape_of(&occupancy),
+                shape_of(&cracked),
+                "{label}, budget {budget}: the two classifiers disagreed under exhaustion"
+            );
+        }
+    }
+}
