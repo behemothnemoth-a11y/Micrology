@@ -1,0 +1,201 @@
+name: Micrology Fresh Runtime Showcase
+
+on:
+  push:
+    branches:
+      - chatgpt/fresh-runtime-showcase-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  render-current-runtime:
+    if: ${{ !contains(github.event.head_commit.message, '[skip fresh video]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux graphics and capture dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools \
+            xvfb openbox xdotool ffmpeg fonts-dejavu-core
+
+      - name: Build current Micrology sandbox
+        run: cargo build --release -p sandbox
+
+      - name: Capture a brand-new current-code demolition run
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUTDIR="docs/diagnostics/fresh_runtime_showcase_2026_10_03"
+          WORK="${RUNNER_TEMP}/micrology-fresh-showcase"
+          mkdir -p "$OUTDIR" "$WORK"
+
+          export DISPLAY=:99
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export WGPU_BACKEND=vulkan
+
+          LVP="/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+          if [ -f "$LVP" ]; then
+            export VK_ICD_FILENAMES="$LVP"
+          fi
+
+          Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset >"$WORK/xvfb.log" 2>&1 &
+          XVFB_PID=$!
+          trap 'kill $XVFB_PID 2>/dev/null || true' EXIT
+          sleep 2
+          openbox >"$WORK/openbox.log" 2>&1 &
+          sleep 2
+
+          vulkaninfo --summary >"$OUTDIR/vulkan-summary.txt" 2>&1 || true
+
+          export MICROLOGY_DESTRUCTION_LAB=1
+          export MICROLOGY_REPLAY_SCRIPT="${GITHUB_WORKSPACE}/fixtures/destruction/replay-demolition-building.json"
+          export MICROLOGY_REPLAY_CAPTURE=1
+          export RUST_BACKTRACE=1
+          export RUST_LOG=info
+
+          "${GITHUB_WORKSPACE}/target/release/sandbox" \
+            >"$OUTDIR/sandbox.stdout.log" 2>"$OUTDIR/sandbox.stderr.log" &
+          APP_PID=$!
+
+          # Wait for the actual Winit window. This is a disposable virtual desktop,
+          # so resizing the capture window cannot disturb a user's machine.
+          WINDOW_ID=""
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "Micrology exited before a render window appeared."
+              cat "$OUTDIR/sandbox.stderr.log" || true
+              exit 1
+            fi
+            WINDOW_ID="$(xdotool search --onlyvisible --pid "$APP_PID" 2>/dev/null | head -n 1 || true)"
+            [ -n "$WINDOW_ID" ] && break
+            sleep 0.25
+          done
+
+          if [ -z "$WINDOW_ID" ]; then
+            echo "No Micrology render window found."
+            exit 1
+          fi
+
+          xdotool windowmove "$WINDOW_ID" 0 0 || true
+          xdotool windowsize "$WINDOW_ID" 1280 720 || true
+          sleep 1
+
+          # Start after the window exists. Replay actions are paced by Micrology's
+          # own two-second capture timer, so this is genuinely a new live run.
+          ffmpeg -hide_banner -loglevel warning -y \
+            -f x11grab -framerate 30 -video_size 1280x720 -i :99.0+0,0 \
+            -t 82 \
+            -an -c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p \
+            "$WORK/runtime.mp4"
+
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "Micrology exited unexpectedly during capture."
+            cat "$OUTDIR/sandbox.stderr.log" || true
+            exit 1
+          fi
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+
+          FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          if [ ! -f "$FONT" ]; then
+            FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          fi
+
+          cat >"$WORK/intro.txt" <<'EOF'
+MICROLOGY
+CURRENT RUNTIME SHOWCASE
+Fresh capture — October 3, 2026
+
+Structural collapse • native fragments
+contact fracture • grab / move / slam • blast
+EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=4" \
+            -vf "drawtext=fontfile=$FONT:textfile=$WORK/intro.txt:fontcolor=white:fontsize=40:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
+            "$WORK/intro.mp4"
+
+          cat >"$WORK/outro.txt" <<'EOF'
+ALL FOOTAGE ABOVE WAS RENDERED FROM THE CURRENT CODE
+
+No old diagnostic video was reused.
+Linux Xvfb + Mesa lavapipe software Vulkan capture.
+EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=5" \
+            -vf "drawtext=fontfile=$FONT:textfile=$WORK/outro.txt:fontcolor=white:fontsize=36:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
+            "$WORK/outro.mp4"
+
+          cat >"$WORK/concat.txt" <<EOF
+file '$WORK/intro.mp4'
+file '$WORK/runtime.mp4'
+file '$WORK/outro.mp4'
+EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f concat -safe 0 -i "$WORK/concat.txt" \
+            -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart \
+            "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4"
+
+          # Keep the committed result well below GitHub's single-file limit.
+          SIZE=$(stat -c%s "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4")
+          if [ "$SIZE" -gt 80000000 ]; then
+            ffmpeg -hide_banner -loglevel error -y \
+              -i "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4" \
+              -an -c:v libx264 -preset medium -crf 28 -pix_fmt yuv420p -movflags +faststart \
+              "$WORK/reencoded.mp4"
+            mv "$WORK/reencoded.mp4" "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4"
+          fi
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 42 -i "$WORK/runtime.mp4" -frames:v 1 \
+            "$OUTDIR/thumbnail.png"
+
+          cat >"$OUTDIR/README.md" <<EOF
+# Fresh Micrology runtime showcase — 2026-10-03
+
+This is a brand-new capture of the Micrology executable built from commit:
+
+```
+${GITHUB_SHA}
+```
+
+The capture launches the current sandbox and runs:
+
+```
+fixtures/destruction/replay-demolition-building.json
+```
+
+It demonstrates the current integrated demolition path: structural-capacity
+support failure, roof release/collapse, contact fracture, native volumetric
+fragments, grabbing/moving a fragment, releasing/slamming it, and a blast.
+
+No previously committed MP4 is used as source footage.
+
+Capture environment: GitHub Actions Ubuntu runner, Xvfb, Mesa lavapipe Vulkan.
+This is visual functional evidence, not Windows/NVIDIA performance evidence.
+EOF
+
+      - name: Commit the fresh showcase
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/fresh_runtime_showcase_2026_10_03
+          git commit -m "video: fresh current-runtime Micrology showcase [skip fresh video]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
