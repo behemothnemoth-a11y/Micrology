@@ -7,7 +7,11 @@
 use crate::destruction::DestructionHost;
 use crate::fragment_render::FragmentEntities;
 use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks};
-use crate::physics::{DynamicFragments, FragmentBodies, FragmentBudgetRes};
+use crate::camera::FlyCamera;
+use crate::physics::{
+    DynamicFragments, FragmentBodies, FragmentBudgetRes, StaticColliders,
+    pending_fixed_step_collision_work,
+};
 use crate::streaming::StreamRes;
 use crate::{StatusLine, WorldRes};
 use bevy::ecs::system::SystemParam;
@@ -1115,12 +1119,33 @@ pub fn apply_pending_fixed_step(
     mut lab: ResMut<SimulationLab>,
     fixed_time: Res<Time<Fixed>>,
     mut virtual_time: ResMut<Time<Virtual>>,
+    world: Res<WorldRes>,
+    fragments: Res<DynamicFragments>,
+    bodies: Res<FragmentBodies>,
+    statics: Res<StaticColliders>,
+    camera: Option<Single<&FlyCamera>>,
 ) {
     if !lab.enabled
         || lab.background.busy()
         || lab.interaction.busy()
         || lab.pending_fixed_steps == 0
         || !virtual_time.is_paused()
+    {
+        return;
+    }
+
+    // A scripted fixed step is an authoritative simulation step, not a reward
+    // for the renderer retiring another frame. Wait until collision derived
+    // from the current cells/fragments is installed. Mesh uploads are
+    // intentionally irrelevant: they may lag without changing physics.
+    let camera = camera.map(|camera| camera.global);
+    if pending_fixed_step_collision_work(
+        &world.0,
+        &fragments,
+        &bodies,
+        &statics,
+        camera,
+    ) > 0
     {
         return;
     }
