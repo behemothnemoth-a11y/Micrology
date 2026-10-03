@@ -68,8 +68,6 @@ jobs:
             >"$OUTDIR/sandbox.stdout.log" 2>"$OUTDIR/sandbox.stderr.log" &
           APP_PID=$!
 
-          # Wait for the actual Winit window. This is a disposable virtual desktop,
-          # so resizing the capture window cannot disturb a user's machine.
           WINDOW_ID=""
           for _ in $(seq 1 120); do
             if ! kill -0 "$APP_PID" 2>/dev/null; then
@@ -91,8 +89,6 @@ jobs:
           xdotool windowsize "$WINDOW_ID" 1280 720 || true
           sleep 1
 
-          # Start after the window exists. Replay actions are paced by Micrology's
-          # own two-second capture timer, so this is genuinely a new live run.
           ffmpeg -hide_banner -loglevel warning -y \
             -f x11grab -framerate 30 -video_size 1280x720 -i :99.0+0,0 \
             -t 82 \
@@ -113,13 +109,13 @@ jobs:
           fi
 
           cat >"$WORK/intro.txt" <<'EOF'
-MICROLOGY
-CURRENT RUNTIME SHOWCASE
-Fresh capture — October 3, 2026
+          MICROLOGY
+          CURRENT RUNTIME SHOWCASE
+          Fresh capture — October 3, 2026
 
-Structural collapse • native fragments
-contact fracture • grab / move / slam • blast
-EOF
+          Structural collapse • native fragments
+          contact fracture • grab / move / slam • blast
+          EOF
 
           ffmpeg -hide_banner -loglevel error -y \
             -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=4" \
@@ -128,11 +124,11 @@ EOF
             "$WORK/intro.mp4"
 
           cat >"$WORK/outro.txt" <<'EOF'
-ALL FOOTAGE ABOVE WAS RENDERED FROM THE CURRENT CODE
+          ALL FOOTAGE ABOVE WAS RENDERED FROM THE CURRENT CODE
 
-No old diagnostic video was reused.
-Linux Xvfb + Mesa lavapipe software Vulkan capture.
-EOF
+          No old diagnostic video was reused.
+          Linux Xvfb + Mesa lavapipe software Vulkan capture.
+          EOF
 
           ffmpeg -hide_banner -loglevel error -y \
             -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=5" \
@@ -141,17 +137,16 @@ EOF
             "$WORK/outro.mp4"
 
           cat >"$WORK/concat.txt" <<EOF
-file '$WORK/intro.mp4'
-file '$WORK/runtime.mp4'
-file '$WORK/outro.mp4'
-EOF
+          file '$WORK/intro.mp4'
+          file '$WORK/runtime.mp4'
+          file '$WORK/outro.mp4'
+          EOF
 
           ffmpeg -hide_banner -loglevel error -y \
             -f concat -safe 0 -i "$WORK/concat.txt" \
             -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart \
             "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4"
 
-          # Keep the committed result well below GitHub's single-file limit.
           SIZE=$(stat -c%s "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4")
           if [ "$SIZE" -gt 80000000 ]; then
             ffmpeg -hide_banner -loglevel error -y \
@@ -166,29 +161,29 @@ EOF
             "$OUTDIR/thumbnail.png"
 
           cat >"$OUTDIR/README.md" <<EOF
-# Fresh Micrology runtime showcase — 2026-10-03
+          # Fresh Micrology runtime showcase — 2026-10-03
 
-This is a brand-new capture of the Micrology executable built from commit:
+          This is a brand-new capture of the Micrology executable built from commit:
 
-```
-${GITHUB_SHA}
-```
+          ```
+          ${GITHUB_SHA}
+          ```
 
-The capture launches the current sandbox and runs:
+          The capture launches the current sandbox and runs:
 
-```
-fixtures/destruction/replay-demolition-building.json
-```
+          ```
+          fixtures/destruction/replay-demolition-building.json
+          ```
 
-It demonstrates the current integrated demolition path: structural-capacity
-support failure, roof release/collapse, contact fracture, native volumetric
-fragments, grabbing/moving a fragment, releasing/slamming it, and a blast.
+          It demonstrates the current integrated demolition path: structural-capacity
+          support failure, roof release/collapse, contact fracture, native volumetric
+          fragments, grabbing/moving a fragment, releasing/slamming it, and a blast.
 
-No previously committed MP4 is used as source footage.
+          No previously committed MP4 is used as source footage.
 
-Capture environment: GitHub Actions Ubuntu runner, Xvfb, Mesa lavapipe Vulkan.
-This is visual functional evidence, not Windows/NVIDIA performance evidence.
-EOF
+          Capture environment: GitHub Actions Ubuntu runner, Xvfb, Mesa lavapipe Vulkan.
+          This is visual functional evidence, not Windows/NVIDIA performance evidence.
+          EOF
 
       - name: Commit the fresh showcase
         shell: bash
