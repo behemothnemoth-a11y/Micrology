@@ -215,8 +215,9 @@ pub fn update(
     if lab.enabled {
         let debris = fragments.stats();
         let c = contacts.stats;
+        let collision = physics.stats();
         **text.into_inner() = format!(
-            "Micrology | one-material destruction lab\n{fps:.0} FPS | {} static cells | {} fragments / {} cells\ncontact damage {} | {} processed | {} pending | {} refused / {} capped\ncontacts: wall cells failed {} | debris cells failed {} | new fragments {}\n{}\n{}",
+            "Micrology | one-material destruction lab\n{fps:.0} FPS | {} static cells | {} fragments / {} cells\ncontact damage {} | {} processed | {} pending | {} refused / {} capped\ncontacts: wall cells failed {} | debris cells failed {} | new fragments {}\ncollision: static pending {} | jobs {}/{} | stale {} | superseded {} | fragment bodies pending {}\n{}\n{}",
             world_stats.occupied_cells,
             debris.fragments,
             debris.cells,
@@ -228,6 +229,12 @@ pub fn update(
             c.static_failed,
             c.fragment_failed,
             c.fragments_created,
+            collision.pending_volumes,
+            collision.active_jobs,
+            collision.ready_results,
+            collision.stale_results,
+            collision.superseded_jobs,
+            fragment_bodies.pending_spawn_current(),
             format_args!(
                 "{} | capacity {} | jobs {}",
                 lab.interaction.hud(),
@@ -283,7 +290,7 @@ pub fn update(
          volumes {volumes}  cells {cells}  dirty sections {dirty_sections}\n\
          mesh jobs: pending {pending}  active {active}  applied {applied}  stale {stale}\n\
          faces {faces}  quads {quads}  ({ratio:.1}x)  tris {tris}  entities {entities}\n\
-         physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  built {physics_built}  radius {physics_radius}\n\
+         physics: static {physics_volumes} volumes  {physics_boxes} boxes  {physics_bytes}  pending {physics_pending}  jobs {physics_jobs}/{physics_ready}  built {physics_built}  stale {physics_stale}  superseded {physics_superseded}  radius {physics_radius}\n\
          fragments: resident {fragment_count}/{fragment_persisted} persisted  wanted {fragment_wanted}  io {fragment_loads}L/{fragment_saves}S  dyn {fragment_dynamic}  sleep {fragment_sleeping}  bodies {fragment_body_count}  body-pending {fragment_body_pending}  render {fragment_render_count}/{fragment_render_pending}  cells {fragment_cells}\n\
          fragment budget: {fragment_bytes} / {fragment_soft} soft / {fragment_hard} hard  {fragment_pressure}  colliders {fragment_boxes}  body-held {fragment_withheld}/{fragment_withheld_total}  render-held {fragment_render_withheld}/{fragment_render_withheld_total}\n\
          destruction: req {destruction_requested}  active {destruction_active}  queued {destruction_pending}  wait {destruction_waiting}  demand {destruction_demanded}/{destruction_demand_withheld} held  stale {destruction_stale}  inconclusive {destruction_inconclusive}  byte-cap {destruction_byte_limited}  budget-held {destruction_rejected}  made {destruction_fragments} frag / {destruction_cells} cells\n\
@@ -328,7 +335,11 @@ pub fn update(
         physics_boxes = physics_stats.boxes,
         physics_bytes = human_bytes(physics_stats.bytes),
         physics_pending = physics_stats.pending_volumes,
+        physics_jobs = physics_stats.active_jobs,
+        physics_ready = physics_stats.ready_results,
         physics_built = physics_stats.rebuilt_this_frame,
+        physics_stale = physics_stats.stale_results,
+        physics_superseded = physics_stats.superseded_jobs,
         physics_radius = PHYSICS_RADIUS_CELLS,
         fragment_count = fragments.len(),
         fragment_persisted = fragment_persisted,
