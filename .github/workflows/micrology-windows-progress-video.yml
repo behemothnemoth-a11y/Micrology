@@ -58,7 +58,7 @@ jobs:
             local duration="$4"
             local label="$5"
             printf '%s\n' "$label" > "$WORK/$name-label.txt"
-            ffmpeg -hide_banner -loglevel error -y               -ss "$start" -i "$src" -t "$duration" -an               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,drawtext=fontfile=$FONT:textfile=$WORK/$name-label.txt:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.60:boxborderw=14:x=40:y=h-text_h-40,fade=t=in:st=0:d=0.3,fade=t=out:st=$duration-0.3:d=0.3"               -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30               "$WORK/$name.mp4"
+            ffmpeg -hide_banner -loglevel error -y               -ss "$start" -i "$src" -t "$duration" -an               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,drawtext=fontfile=$FONT:textfile=$WORK/$name-label.txt:fontcolor=white:fontsize=32:box=1:boxcolor=black@0.60:boxborderw=14:x=40:y=h-text_h-40,fade=t=in:st=0:d=0.3"               -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30               "$WORK/$name.mp4"
           }
 
           card intro 4 $'MICROLOGY\nCURRENT BUILD PROGRESS\nFresh Windows / NVIDIA capture — October 3, 2026'
