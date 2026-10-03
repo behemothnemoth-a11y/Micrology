@@ -1,0 +1,18 @@
+
+running 1 test
+
+thread 'replacing_upper_endpoint_does_not_keep_incompatible_bond_history' (29072) panicked at crates\engine_destruction\tests\fracture_material_edits.rs:32:5:
+assertion `left == right` failed: the new upper material must not inherit the old joint's broken state
+  left: DamageAmount(0)
+ right: DamageAmount(1000)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+replacing_upper_endpoint_does_not_keep_incompatible_bond_history --- FAILED
+
+failures:
+
+failures:
+    replacing_upper_endpoint_does_not_keep_incompatible_bond_history
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p engine_destruction --test fracture_material_edits`

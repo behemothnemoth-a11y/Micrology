@@ -172,6 +172,10 @@ pub struct EditOutcome {
     pub removed_cells: Vec<CellPos>,
     /// Cells that went from empty to occupied.
     pub added_cells: Vec<CellPos>,
+    /// Occupied cells replaced by a different material. No-op writes are absent.
+    /// These addresses let optional downstream systems invalidate material-local
+    /// state without scanning the world. A repaint does not change occupancy.
+    pub repainted_cells: Vec<CellPos>,
     /// Volumes whose contents changed.
     pub changed_volumes: BTreeSet<VolumePos>,
     /// Volumes marked for a geometry rebuild: the changed ones, plus the
@@ -241,8 +245,8 @@ impl World {
                 match (previous, material) {
                     (Some(_), None) => outcome.removed_cells.push(cell),
                     (None, Some(_)) => outcome.added_cells.push(cell),
-                    // A repaint changes what is drawn, never what is connected.
-                    _ => {}
+                    (Some(_), Some(_)) => outcome.repainted_cells.push(cell),
+                    (None, None) => {}
                 }
 
                 // Which seams this volume's edits touch, gathered rather than
