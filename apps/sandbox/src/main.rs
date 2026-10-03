@@ -241,10 +241,12 @@ fn main() {
                 // Rebuild only nearby static colliders, from the live cell world.
                 fracture_worker::drive,
                 physics::sync_static_colliders,
-                // Admit fragment render memory first, then let physics see the
-                // same updated budget before creating a body.
-                fragment_render::sync_fragment_render,
+                // Collision is authoritative for simulation and comes directly
+                // from cells. Give it first claim on the shared host budget;
+                // rendering may lag or be withheld without deciding when a
+                // fragment starts participating in physics.
                 physics::sync_fragment_bodies,
+                fragment_render::sync_fragment_render,
                 interaction::sync_motion,
                 hud::toggle,
                 hud::apply_visibility,
