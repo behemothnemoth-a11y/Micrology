@@ -1,0 +1,150 @@
+name: Micrology Progress Video
+
+on:
+  push:
+    branches:
+      - chatgpt/micrology-progress-video-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Render progress video
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUTDIR="docs/diagnostics/progress_video_2026_10_03"
+          WORK="${RUNNER_TEMP}/micrology-progress"
+          mkdir -p "$OUTDIR" "$WORK"
+
+          FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          if [ ! -f "$FONT" ]; then
+            FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          fi
+
+          encode_card() {
+            local name="$1"
+            local duration="$2"
+            local text="$3"
+            local txt="$WORK/$name.txt"
+            printf '%s\n' "$text" > "$txt"
+            ffmpeg -hide_banner -loglevel error -y \
+              -f lavfi -i "color=c=0x101014:s=1920x1080:r=30:d=$duration" \
+              -vf "drawtext=fontfile=$FONT:textfile=$txt:fontcolor=white:fontsize=58:line_spacing=20:x=(w-text_w)/2:y=(h-text_h)/2" \
+              -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
+              -r 30 "$WORK/$name.mp4"
+          }
+
+          encode_clip() {
+            local name="$1"
+            local src="$2"
+            local start="$3"
+            local duration="$4"
+            local label="$5"
+            local txt="$WORK/$name-label.txt"
+            printf '%s\n' "$label" > "$txt"
+            ffmpeg -hide_banner -loglevel error -y \
+              -ss "$start" -i "$src" -t "$duration" \
+              -an \
+              -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,drawtext=fontfile=$FONT:textfile=$txt:fontcolor=white:fontsize=34:box=1:boxcolor=black@0.55:boxborderw=16:x=48:y=h-text_h-48" \
+              -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 \
+              "$WORK/$name.mp4"
+          }
+
+          encode_card intro 4 $'MICROLOGY\nPROGRESS UPDATE\nOctober 3, 2026'
+
+          encode_card foundation_card 3 $'FROM CELL DATA TO NATIVE DESTRUCTION\nThe core volumetric pipeline'
+          encode_clip foundation \
+            "docs/diagnostics/drop0004_demo/Micrology_DROP0004_Quick_Demo.mp4" \
+            0 8 \
+            "DROP 0004 — native fragment/destruction foundation"
+
+          encode_card refracture_card 3 $'IMPACT + RE-FRACTURE\nDetached material stays destructible'
+          encode_clip refracture \
+            "docs/diagnostics/drop0004_8_impact_refracture/Micrology_DROP0004_8_Impact_Refracture.mp4" \
+            0 9 \
+            "Impact coupling and native fragment re-fracture"
+
+          encode_card fracture_card 3 $'PERSISTENT FRACTURE\nCracks are engine state, not decoration'
+          encode_clip fracture \
+            "docs/diagnostics/drop0006_1_takeover/Micrology_drop0006_1_takeover_replay.mp4" \
+            0 10 \
+            "DROP 0006 — persistent fracture and crack separation"
+
+          encode_card locality_card 3 $'LOCAL FRACTURE SCALING\nUnrelated world damage no longer dominates local work'
+          encode_clip locality \
+            "docs/diagnostics/drop0006_perf_local_commit/Micrology_drop0006_perf_local_commit_replay.mp4" \
+            0 10 \
+            "DROP 0006.5 — local fracture ownership and scalable snapshots"
+
+          encode_card drop6_done 6 $'DROP 0006 COMPLETE\nPersistent fracture • native re-destruction\nsecondary contact damage • demolition capacity\nfixed-step deterministic contact scheduling\nbounded async collider rebuilds'
+
+          encode_card mechanics 6 $'MATERIAL MECHANICS + FANTASY PARTICIPATION\nMaterials can fail differently without making physics mandatory\nFloating/impossible authored worlds remain valid\nDROP 0005.8 participation matrix: 6 / 6 green'
+
+          encode_card chaos 6 $'DROP 0005.9 HEADLESS CHAOS PASS\n24 / 24 cases green\n24 identical full-collapse replays\nstale async capacity rejected safely\n2,048-cell fantasy stress-disabled world unchanged'
+
+          encode_card boundary 5 $'CURRENT BOUNDARY\nHeadless engine acceptance is green\nNext required evidence: current Windows / NVIDIA hardware validation\nNo DigitalOcean required'
+
+          cat > "$WORK/concat.txt" <<EOF
+          file '$WORK/intro.mp4'
+          file '$WORK/foundation_card.mp4'
+          file '$WORK/foundation.mp4'
+          file '$WORK/refracture_card.mp4'
+          file '$WORK/refracture.mp4'
+          file '$WORK/fracture_card.mp4'
+          file '$WORK/fracture.mp4'
+          file '$WORK/locality_card.mp4'
+          file '$WORK/locality.mp4'
+          file '$WORK/drop6_done.mp4'
+          file '$WORK/mechanics.mp4'
+          file '$WORK/chaos.mp4'
+          file '$WORK/boundary.mp4'
+          EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f concat -safe 0 -i "$WORK/concat.txt" \
+            -c copy -movflags +faststart \
+            "$OUTDIR/Micrology_Progress_Update_2026-10-03.mp4"
+
+          printf '%s\n' "MICROLOGY" "PROGRESS UPDATE" "OCTOBER 2026" > "$WORK/thumb.txt"
+          ffmpeg -hide_banner -loglevel error -y \
+            -i "docs/diagnostics/drop0006_perf_local_commit/thumbnail.png" \
+            -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,drawtext=fontfile=$FONT:textfile=$WORK/thumb.txt:fontcolor=white:fontsize=72:line_spacing=16:box=1:boxcolor=black@0.62:boxborderw=24:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -frames:v 1 "$OUTDIR/Micrology_Progress_Update_2026-10-03_thumbnail.png"
+
+          cat > "$OUTDIR/README.md" <<'EOF'
+          # Micrology progress video — 2026-10-03
+
+          Rendered entirely on GitHub Actions from committed Micrology diagnostic footage.
+
+          It intentionally distinguishes captured footage from newer headless-only milestones:
+          DROP 0006 completion, fixed-step deterministic contact scheduling, DROP 0005.8
+          participation/fantasy acceptance, and DROP 0005.9's 24/24 headless Chaos Pass.
+
+          The exact later local progress/stress capture was not available because the Windows
+          authoring PC was offline and that local file was not committed.
+          EOF
+
+      - name: Commit rendered video
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/progress_video_2026_10_03
+          git commit -m "video: render Micrology progress update 2026-10-03 [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
