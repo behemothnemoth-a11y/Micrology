@@ -22,6 +22,7 @@
 pub mod destruction_benchmark;
 pub mod destruction_replay;
 pub mod destruction_runner;
+pub mod fragment_distribution;
 pub mod granularity;
 pub mod report;
 pub mod rng;
