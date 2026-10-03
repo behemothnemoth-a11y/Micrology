@@ -127,7 +127,9 @@ impl StaticColliders {
         let camera_cell = camera.cell();
         world
             .volume_positions()
-            .filter(|volume| distance_to_bounds(camera_cell, volume_bounds(*volume)) <= PHYSICS_RADIUS_CELLS)
+            .filter(|volume| {
+                distance_to_bounds(camera_cell, volume_bounds(*volume)) <= PHYSICS_RADIUS_CELLS
+            })
             .filter(|volume| {
                 let fingerprint = StaticCollisionFingerprint::of(world, *volume);
                 !self
@@ -374,8 +376,7 @@ mod tests {
             index: 0,
         };
         let cells = BTreeSet::from([cell]);
-        let mut fragment =
-            Fragment::from_cells(id, &world, &cells).expect("one-cell fragment");
+        let mut fragment = Fragment::from_cells(id, &world, &cells).expect("one-cell fragment");
         fragment.pose.translation = camera;
 
         let mut fragments = DynamicFragments::default();
@@ -392,10 +393,7 @@ mod tests {
         // race. Treat it as ready so the replay cannot deadlock waiting for a
         // body the configured budget explicitly forbids.
         bodies.blocked.insert(id);
-        assert_eq!(
-            bodies.pending_for_fixed_step(&fragments, Some(camera)),
-            0
-        );
+        assert_eq!(bodies.pending_for_fixed_step(&fragments, Some(camera)), 0);
     }
 
     #[test]
