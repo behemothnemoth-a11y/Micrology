@@ -1,0 +1,17 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.16s
+     Running tests\reference_material_specimens.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\reference_material_specimens-2a1c7cbbaa24e213.exe)
+
+running 11 tests
+test all_sixteen_reference_pairs_are_symmetric_and_same_pairs_preserve_profiles ... ok
+test caller_chosen_ids_do_not_become_a_second_material_registry ... ok
+test explicit_presets_keep_fracture_tuning_separate_from_mechanical_toughness ... ok
+test every_material_uses_exactly_the_same_cells_and_authored_support ... ok
+test repeated_weak_glass_hits_show_damage_then_cracking_then_separation ... ok
+test uniform_control_has_identical_numeric_responses_despite_different_ids ... ok
+test repeated_static_hits_accumulate_without_restoring_destroyed_material ... ok
+test four_presets_produce_four_distinct_numeric_response_curves_on_both_routes ... ok
+test every_reference_has_a_sampled_static_break_before_cell_erasure ... ok
+test every_result_closes_cell_accounting_and_reports_actual_fragment_sizes ... ok
+test independent_worker_matrices_are_byte_identical_and_match_reviewed_baseline ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
