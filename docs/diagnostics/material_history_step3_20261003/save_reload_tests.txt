@@ -1,0 +1,8 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.13s
+     Running tests\fracture_material_edits.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\fracture_material_edits-18cc982d8a5bc6f0.exe)
+
+running 2 tests
+test no_op_repaint_neither_reports_nor_rewrites_a_damage_sidecar ... ok
+test upper_repaint_reports_unchanged_neighbor_owner_and_prevents_sidecar_resurrection ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

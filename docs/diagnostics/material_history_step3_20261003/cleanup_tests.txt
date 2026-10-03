@@ -1,0 +1,18 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.14s
+     Running tests\fracture_material_edits.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\fracture_material_edits-4c85100f4c655ec3.exe)
+
+running 12 tests
+test replacing_upper_endpoint_does_not_keep_incompatible_bond_history ... ok
+test only_the_changed_cells_six_incident_bonds_are_cleared ... ok
+test repaint_preserves_authored_support_and_normal_dirty_tracking ... ok
+test editing_both_endpoints_is_idempotent_and_insertion_order_independent ... ok
+test same_material_and_overlapping_final_noop_writes_preserve_exact_history ... ok
+test a_worker_captured_before_repaint_cannot_put_stale_fracture_back ... ok
+test either_endpoint_clears_partial_and_broken_bonds_on_every_axis_and_region_seam ... ok
+test removing_then_adding_a_cell_cannot_resurrect_its_previous_crack ... ok
+test the_next_impact_uses_fresh_joint_integrity_after_material_replacement ... ok
+test static_cleanup_and_fragment_local_cleanup_are_isolated_by_exact_space ... ok
+test cleaned_region_extraction_and_restoration_cannot_restore_the_old_joint ... ok
+test local_edit_leaves_one_hundred_thousand_unrelated_records_unchanged ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s

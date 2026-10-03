@@ -1,7 +1,7 @@
 //! Runtime editing: pick a cell, carve it, place against it, repaint it.
 //!
 //! The edit path is deliberately thin. Every action is one
-//! [`World::set`](engine_world::World::set) call; the world marks the right
+//! fracture-aware batch edit; the world marks the right
 //! volumes dirty and the renderer rebuilds exactly those sections. This is the
 //! smallest thing that proves the incremental pipeline works end to end — not
 //! the start of an editor.
@@ -17,6 +17,7 @@ use crate::fragment_streaming::{FragmentStreamRes, FragmentStreamTasks, finish_f
 use crate::physics::{DynamicFragments, FragmentBodies};
 use crate::render::SectionEntities;
 use crate::scene;
+use crate::sim_lab::SimulationLab;
 use crate::streaming::StreamRes;
 use crate::{GeometryRes, StatusLine, WorldRes};
 use bevy::ecs::system::SystemParam;
@@ -93,6 +94,7 @@ pub struct EditResources<'w> {
     mouse: Res<'w, ButtonInput<MouseButton>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     palette: Res<'w, Palette>,
+    lab: ResMut<'w, SimulationLab>,
     world: ResMut<'w, WorldRes>,
     destruction: ResMut<'w, DestructionHost>,
     status: ResMut<'w, StatusLine>,
@@ -108,6 +110,7 @@ pub fn edit_cells(
         mouse,
         keys,
         palette,
+        mut lab,
         mut world,
         mut destruction,
         mut status,
@@ -148,7 +151,10 @@ pub fn edit_cells(
         } else {
             batch.carve_sphere(hit.cell, radius);
         }
-        let outcome = world.apply(&batch);
+        let outcome = lab
+            .fracture_state
+            .apply_static_edit(&mut world.0, &batch)
+            .edit;
         destruction.enqueue_edit(&outcome);
         status.0 = if radius == 0 {
             format!(
@@ -165,10 +171,14 @@ pub fn edit_cells(
         };
     } else if place {
         let target = hit.cell.step(hit.face);
-        world.set(target, Some(palette.current()));
+        let mut batch = WorldEditBatch::new();
+        batch.set(target, Some(palette.current()));
+        lab.fracture_state.apply_static_edit(&mut world.0, &batch);
         status.0 = format!("placed {} at {:?}", palette.current_name(), target);
     } else if paint {
-        world.set(hit.cell, Some(palette.current()));
+        let mut batch = WorldEditBatch::new();
+        batch.set(hit.cell, Some(palette.current()));
+        lab.fracture_state.apply_static_edit(&mut world.0, &batch);
         status.0 = format!("painted {:?} {}", hit.cell, palette.current_name());
     }
 }

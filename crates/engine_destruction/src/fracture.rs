@@ -1606,6 +1606,23 @@ impl PartialEq for FractureState {
 
 impl Eq for FractureState {}
 
+/// Invalidation facts, separate from world geometry's dirty regions.
+/// A boundary bond can belong to the unchanged neighboring region. Flush every
+/// returned owner with its current (possibly empty) region_fracture snapshot;
+/// saving only nonempty state could otherwise leave an old sidecar on disk.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FractureEditCleanup {
+    pub records_removed: usize,
+    pub static_regions: BTreeSet<RegionPos>,
+}
+
+/// One authored world mutation and the material history it invalidated.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FractureEditOutcome {
+    pub edit: engine_world::EditOutcome,
+    pub cleanup: FractureEditCleanup,
+}
+
 impl FractureState {
     pub fn new() -> Self {
         Self::default()
@@ -1759,21 +1776,88 @@ impl FractureState {
     /// not a crack, it is a hole, and leaving the record would let stale
     /// integrity decide a later impact.
     pub fn forget_cell(&mut self, space: DamageSpace, cell: CellPos) -> usize {
+        self.forget_cell_reporting(space, cell, |_| {})
+    }
+
+    // One removal path keeps the derived index and revision behavior identical
+    // for old callers and material-edit cleanup. Notify with each record's
+    // ownership cell (the lower endpoint for bonds), never traversal direction.
+    fn forget_cell_reporting(
+        &mut self,
+        space: DamageSpace,
+        cell: CellPos,
+        mut removed_at: impl FnMut(CellPos),
+    ) -> usize {
         let mut removed = 0usize;
         if self.cells.remove(&DamageSite { space, cell }).is_some() {
             removed += 1;
+            removed_at(cell);
         }
         for dir in FaceDir::ALL {
             if let Some(bond) = BondKey::new(cell, dir)
                 && self.bonds.remove(&BondSite { space, bond }).is_some()
             {
                 removed += 1;
+                removed_at(bond.lower());
             }
         }
         if removed > 0 {
             self.revision.bump();
         }
         removed
+    }
+
+    /// Apply an authored static edit and invalidate its incompatible fracture
+    /// history before returning to the host. Uses the ordinary world mutation
+    /// path: dirty tracking, revisions, support and unresolved regions stay there.
+    ///
+    /// Material replacement is a new cell/interface, not a repair of neighboring
+    /// cells. No-op writes retain their existing damage. This does not enable
+    /// physics or detach anything; the host still decides what consumes the edit.
+    pub fn apply_static_edit(
+        &mut self,
+        world: &mut engine_world::World,
+        batch: &engine_world::WorldEditBatch,
+    ) -> FractureEditOutcome {
+        let edit = world.apply(batch);
+        let cleanup = self.forget_edit(DamageSpace::StaticWorld, &edit);
+        FractureEditOutcome { edit, cleanup }
+    }
+
+    /// Invalidate material history from an accepted edit in the supplied space.
+    /// Call immediately after mutation, before any fracture analysis or save.
+    /// Intended for authored changes (including editor undo/redo), not detachment:
+    /// detachment must transfer damage to native fragments before clearing it.
+    ///
+    /// Each actually changed cell probes one cell key and at most six bond keys;
+    /// no fracture-state sweep or world scan is required. The only new collection
+    /// is the deduplicated set of affected static sidecar owners.
+    /// Both positive and negative faces are visited, including cross-region bonds
+    /// canonically owned by the other endpoint. Unrelated cells/spaces stay intact.
+    /// The existing record/index removal path advances the revision when needed.
+    ///
+    /// An outcome has no effect twice until new history is written. Do not replay
+    /// a stale edit notification after subsequent damage. Direct World::set calls
+    /// bypass this boundary and require equivalent explicit local invalidation.
+    pub fn forget_edit(
+        &mut self,
+        space: DamageSpace,
+        edit: &engine_world::EditOutcome,
+    ) -> FractureEditCleanup {
+        let mut cleanup = FractureEditCleanup::default();
+        for &cell in edit
+            .removed_cells
+            .iter()
+            .chain(&edit.added_cells)
+            .chain(&edit.repainted_cells)
+        {
+            cleanup.records_removed += self.forget_cell_reporting(space, cell, |owner| {
+                if space == DamageSpace::StaticWorld {
+                    cleanup.static_regions.insert(owner.region());
+                }
+            });
+        }
+        cleanup
     }
 
     /// Which regions hold any static fracture state, in canonical order.
@@ -1909,6 +1993,10 @@ impl FractureState {
     ///
     /// A cell that is gone, or now made of something else, cannot carry the
     /// damage recorded for what used to be there.
+    ///
+    /// This legacy sweep cannot detect an upper-endpoint-only material change:
+    /// bond records store only the lower material. Use apply_static_edit or
+    /// forget_edit for authored edits; do not rely on this as repaint repair.
     pub fn prune_against(&mut self, space: DamageSpace, cells: &dyn CellSource) -> FracturePrune {
         let mut prune = FracturePrune::default();
         let mut stale_cells = Vec::new();
