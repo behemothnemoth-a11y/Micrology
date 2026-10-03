@@ -56,6 +56,18 @@ jobs:
         run: |
           cargo run -p engine_io --example make_fixtures
           git diff --exit-code -- fixtures/
+      - name: DROP 0005 mechanics chaos is deterministic
+        # Extend the existing DROP 4 chaos harness; never replace it. First prove
+        # the accepted 0004.9 report stayed byte-identical, then prove two fresh
+        # DROP 5 mechanics/fantasy abuse runs are byte-identical to each other.
+        run: |
+          set -euo pipefail
+          cargo run -q -p engine_stress --bin chaos4 -- /tmp/drop4-chaos.json
+          cmp -s /tmp/drop4-chaos.json docs/diagnostics/drop0004_9_chaos/report.json
+          cargo run -q -p engine_stress --bin chaos4 -- --drop5 /tmp/drop5-chaos-a.json
+          cargo run -q -p engine_stress --bin chaos4 -- --drop5 /tmp/drop5-chaos-b.json
+          cmp -s /tmp/drop5-chaos-a.json /tmp/drop5-chaos-b.json
+          cat /tmp/drop5-chaos-a.json
 
   sandbox:
     name: sandbox app
