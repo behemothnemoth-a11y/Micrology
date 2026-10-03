@@ -1,0 +1,250 @@
+{
+  "base_commit": "dfdc11c740b3926bfa1ed960611d2d39836919c5",
+  "started_utc": "2026-10-03T22:22:05.216210+00:00",
+  "platform": "win32",
+  "source_sha256_lf_normalized": {
+    "crates/engine_mechanics/src/lib.rs": "7d612e15c6202b8291c5f71fbb52faab77309a1de0076e5260d72ce0d847213e",
+    "crates/engine_mechanics/src/reference_fracture.rs": "0f2a6d2d52622105c62dc86766f0673c1fa4adc116118c69062300bf5faa25f8",
+    "crates/engine_stress/src/lib.rs": "a862b1fb881b164f84d0ee2cd4241a39ac1f6f04b05ac472b83c9266cb86cfdc",
+    "crates/engine_stress/src/material_specimens.rs": "27102d0180ea17ba96e3129ca6bd585e7351c374c6c50db38b18d42a95a47bee",
+    "crates/engine_stress/src/bin/material_specimen_bench.rs": "d1a82f43e83c495afb19920db979a202828a335ff9a2e02dfe9055f9d86af41b",
+    "crates/engine_stress/tests/reference_material_specimens.rs": "9759f0f21fc9827d775df7a387d83c44e6a9c864426d770b896cacbb7b5344b0",
+    "fixtures/destruction/reference-material-specimens-v1.json": "d36e29a3ef5a666140f6e124461afd53d0d2d2f26268bbe2f7cae05500b8041a"
+  },
+  "checks": [
+    {
+      "name": "specimen_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "reference_material_specimens"
+      ],
+      "exit_code": 0,
+      "tests_passed": 11,
+      "elapsed_seconds": 0.459,
+      "log_sha256": "69eb357d0b03bdaf4214dff08c1e64579fa1179acbf5c624594aa2013d514615"
+    },
+    {
+      "name": "specimen_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "material_specimen_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.319,
+      "log_sha256": "4f44d54bdea1ba30f8631ca70e19c3e89e9d850f04dc94a10f3c01b8a3577651"
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.61,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 835,
+      "elapsed_seconds": 70.571,
+      "log_sha256": "71155bcd81d458f6fb36000a72d5efc079624aaf40f7a42fa108d3ec96099818"
+    },
+    {
+      "name": "engine_doctests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "tests_passed": 1,
+      "elapsed_seconds": 2.536,
+      "log_sha256": "49f3ae1e3da10c85d114df070b3bbfb5b28d9635d36ad034da4571d7ae4b7a9f"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 5.319,
+      "log_sha256": "9816a20fbf69a37a379e24d914851a300fa6490f4dcf5798b2da74e0cc664c89"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.936,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.507,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.542,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 4.546,
+      "log_sha256": "e573041f5f49d4ec178d300c69cba73559ceccac53837b8aeec5c9efc3f19bbb"
+    },
+    {
+      "name": "sandbox_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 13.15,
+      "log_sha256": "327acd6749ded00ca9c6c32e8019de4738ba8cf733df82442e8e86b8b6436cef"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.039,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "old_goldens_unchanged",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "dfdc11c740b3926bfa1ed960611d2d39836919c5",
+        "--",
+        "fixtures",
+        ":(exclude)fixtures/destruction/reference-material-specimens-v1.json",
+        "docs/diagnostics"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.044,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_unchanged_during_run": true,
+  "all_ok": true,
+  "finished_utc": "2026-10-03T22:23:46.804762+00:00",
+  "new_baseline_overwrite_refused": {
+    "command": [
+      "cargo",
+      "run",
+      "--locked",
+      "-q",
+      "-p",
+      "engine_stress",
+      "--bin",
+      "material_specimen_bench",
+      "--",
+      "--write-new"
+    ],
+    "exit_code": 1,
+    "unchanged_sha256": "d36e29a3ef5a666140f6e124461afd53d0d2d2f26268bbe2f7cae05500b8041a",
+    "expected_nonzero": true
+  }
+}

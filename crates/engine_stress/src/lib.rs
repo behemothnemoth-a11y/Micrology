@@ -61,3 +61,5 @@ pub use structural::{
 pub const BASELINE_PATH: &str = "fixtures/stress/baseline.json";
 
 pub mod demolition;
+
+pub mod material_specimens;
