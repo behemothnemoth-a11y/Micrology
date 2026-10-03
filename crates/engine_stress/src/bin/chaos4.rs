@@ -1527,7 +1527,7 @@ fn drop5_stale_async_capacity_result(cases: &mut Vec<Case>) {
         |_| true,
         |_| true,
     );
-    let stale = commit == Err(JobRefusal::Stale);
+    let stale = matches!(commit, Err(JobRefusal::Stale));
     let unchanged = world.occupied_count() == after_mutation
         && state.revision() == state_revision
         && sequence == sequence_before
