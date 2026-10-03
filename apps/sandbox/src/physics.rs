@@ -380,9 +380,14 @@ pub fn sync_static_colliders(
         .stats
         .max_pending_volumes
         .max(colliders.stats.pending_volumes);
-    colliders.stats.max_active_jobs = colliders.stats.max_active_jobs.max(colliders.stats.active_jobs);
-    colliders.stats.max_ready_results =
-        colliders.stats.max_ready_results.max(colliders.stats.ready_results);
+    colliders.stats.max_active_jobs = colliders
+        .stats
+        .max_active_jobs
+        .max(colliders.stats.active_jobs);
+    colliders.stats.max_ready_results = colliders
+        .stats
+        .max_ready_results
+        .max(colliders.stats.ready_results);
     colliders.refresh_live_stats();
 }
 
@@ -1100,8 +1105,7 @@ pub fn sync_fragment_bodies(
         .saturating_add(bodies.ready.len() as u64);
     bodies.max_pending_spawn = bodies.max_pending_spawn.max(bodies.pending_spawn_current);
     bodies.max_active_collision_jobs = bodies.max_active_collision_jobs.max(bodies.jobs.len());
-    bodies.max_ready_collision_results =
-        bodies.max_ready_collision_results.max(bodies.ready.len());
+    bodies.max_ready_collision_results = bodies.max_ready_collision_results.max(bodies.ready.len());
     bodies.withheld_current = bodies
         .blocked
         .iter()
