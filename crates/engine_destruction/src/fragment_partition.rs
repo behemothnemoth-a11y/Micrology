@@ -196,7 +196,7 @@ pub fn partition(
         let mut sizes: Vec<u64> = atoms.iter().map(|a| a.len() as u64).collect();
         sizes.sort_unstable();
         let middle = sizes.len() / 2;
-        if sizes.len() % 2 == 0 {
+        if sizes.len().is_multiple_of(2) {
             // Average the two middle sizes without floating point. Multiplying
             // by 500 gives the exact median in the engine's milli convention.
             sizes[middle - 1]
