@@ -81,7 +81,8 @@ pub use damage::{
 };
 pub use derived_jobs::{
     FragmentCollisionJobInput, FragmentCollisionJobResult, FragmentGeometryFingerprint,
-    FragmentMeshJobInput, FragmentMeshJobResult,
+    FragmentMeshJobInput, FragmentMeshJobResult, StaticCollisionFingerprint,
+    StaticCollisionJobInput, StaticCollisionJobResult,
 };
 pub use detach::{DestructionSequence, DetachOutcome, DetachRefusal, detach, detach_if};
 pub use fracture::{
