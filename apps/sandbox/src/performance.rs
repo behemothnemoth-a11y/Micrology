@@ -127,3 +127,50 @@ pub fn capture_snapshot(
         ));
     *last = Some(path.clone());
 }
+
+/// Renderer-native frame sequence for continuous visual replays. This is a
+/// presentation/capture aid only: it never participates in simulation timing or
+/// deterministic decisions. At most one screenshot readback is outstanding.
+pub fn capture_video_frame(
+    mut commands: Commands,
+    lab: Res<SimulationLab>,
+    captures: Query<(), With<bevy::render::view::screenshot::Screenshot>>,
+    mut last_tick: Local<Option<u64>>,
+    mut frame: Local<u64>,
+) {
+    if !lab.enabled
+        || std::env::var_os("MICROLOGY_NATIVE_VIDEO_CAPTURE").is_none()
+        || !captures.is_empty()
+    {
+        return;
+    }
+
+    let stride = std::env::var("MICROLOGY_NATIVE_VIDEO_STRIDE")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(3);
+    if last_tick.is_some_and(|tick| lab.fixed_ticks.saturating_sub(tick) < stride) {
+        return;
+    }
+
+    let dir = std::env::var_os("MICROLOGY_NATIVE_VIDEO_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/diagnostics/destruction_video")
+        });
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        error!("native video capture directory failed: {error}");
+        return;
+    }
+    let path = dir.join(format!(
+        "frame_{:05}_tick{:06}.png",
+        *frame, lab.fixed_ticks
+    ));
+    commands
+        .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
+        .observe(bevy::render::view::screenshot::save_to_disk(path));
+    *last_tick = Some(lab.fixed_ticks);
+    *frame = frame.saturating_add(1);
+}

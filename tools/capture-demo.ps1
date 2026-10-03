@@ -65,6 +65,10 @@ param(
 
     [string]$ReplayScript = 'fixtures/destruction/replay-crack-separation.json',
 
+    # Keep virtual time running and interpret AdvanceFixed as a non-pausing tick
+    # barrier. Intended for progress/stress footage; acceptance mode remains the default.
+    [switch]$Continuous,
+
     [switch]$CheckOnly
 )
 
@@ -204,6 +208,7 @@ if (-not (Test-Path $exe)) { throw "Built binary not found at $exe" }
 $previous = [Environment]::GetEnvironmentVariable($envName)
 $previousScript = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT')
 $previousCapture = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE')
+$previousContinuous = [Environment]::GetEnvironmentVariable('MICROLOGY_REPLAY_CONTINUOUS')
 $previousCompact = [Environment]::GetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT')
 [Environment]::SetEnvironmentVariable($envName, '1')
 try {
@@ -213,6 +218,7 @@ try {
         if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw "Replay script not found: $scriptPath" }
         [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT', $scriptPath)
         [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', '1')
+        if ($Continuous) { [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CONTINUOUS', '1') }
     }
     # Hide the launcher's console; Winit creates the visible interactive render
     # window independently. No existing desktop window is changed.
@@ -223,6 +229,7 @@ try {
     [Environment]::SetEnvironmentVariable($envName, $previous)
     [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_SCRIPT', $previousScript)
     [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', $previousCapture)
+    [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CONTINUOUS', $previousContinuous)
     [Environment]::SetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT', $previousCompact)
 }
 

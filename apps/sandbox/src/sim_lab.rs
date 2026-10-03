@@ -92,6 +92,8 @@ pub struct SimulationLab {
     last_separation: Option<LabSeparation>,
     pub(crate) last_dump: Option<PathBuf>,
     capture_timer: Option<Timer>,
+    continuous_replay: bool,
+    continuous_wait_until: Option<u64>,
 }
 
 impl Default for SimulationLab {
@@ -112,6 +114,8 @@ impl Default for SimulationLab {
             last_separation: None,
             last_dump: None,
             capture_timer: None,
+            continuous_replay: false,
+            continuous_wait_until: None,
         }
     }
 }
@@ -423,8 +427,13 @@ pub fn seed(resources: LabSeedResources) {
     lab.fracture_policy = BaselineFracturePolicy::REFERENCE;
     lab.last_separation = None;
 
+    let continuous_replay = std::env::var_os("MICROLOGY_REPLAY_CONTINUOUS").is_some();
     virtual_time.set_relative_speed(1.0);
-    virtual_time.pause();
+    if continuous_replay {
+        virtual_time.unpause();
+    } else {
+        virtual_time.pause();
+    }
 
     lab.enabled = true;
     lab.background.enabled = building || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_none();
@@ -437,14 +446,24 @@ pub fn seed(resources: LabSeedResources) {
         blocked_case: None,
     });
     lab.last_dump = None;
-    // Wall time paces presentation only. Every action still uses the exact F11
-    // command path and explicit fixed steps; it never changes fracture inputs.
-    lab.capture_timer = std::env::var_os("MICROLOGY_REPLAY_CAPTURE")
+    lab.continuous_replay = continuous_replay;
+    lab.continuous_wait_until = None;
+    // Wall time paces the checkpoint-style acceptance replay only. Continuous
+    // visual replay instead leaves virtual time running and treats AdvanceFixed
+    // commands as non-pausing tick barriers.
+    lab.capture_timer = (!continuous_replay)
+        .then(|| std::env::var_os("MICROLOGY_REPLAY_CAPTURE"))
+        .flatten()
         .map(|_| Timer::from_seconds(2.0, TimerMode::Repeating));
 
     let digest = structural_state_digest(&world.0, fragments.store_ref());
     status.0 = format!(
-        "destruction lab ready + PAUSED | F6 run/pause F7 step F8 speed F10 dump F11 replay | {}",
+        "destruction lab ready + {} | F6 run/pause F7 step F8 speed F10 dump F11 replay | {}",
+        if continuous_replay {
+            "CONTINUOUS"
+        } else {
+            "PAUSED"
+        },
         digest.checksum_fnv1a64
     );
 }
@@ -924,9 +943,15 @@ fn execute_next_replay_command(
             Ok(format!("replay {index}: {result}"))
         }
         ReplayCommand::Pause => {
-            virtual_time.pause();
+            if !lab.continuous_replay {
+                virtual_time.pause();
+            }
             advance_replay_cursor(lab);
-            Ok(format!("replay {index}: paused"))
+            Ok(if lab.continuous_replay {
+                format!("replay {index}: continuous mode ignored pause marker")
+            } else {
+                format!("replay {index}: paused")
+            })
         }
         ReplayCommand::Resume => {
             virtual_time.unpause();
@@ -940,14 +965,22 @@ fn execute_next_replay_command(
             Ok(format!("replay {index}: speed {milli}/1000x"))
         }
         ReplayCommand::AdvanceFixed { steps } => {
-            if !virtual_time.is_paused() {
-                return Err(format!(
-                    "replay {index}: fixed-step command requires paused simulation"
-                ));
+            if lab.continuous_replay {
+                lab.continuous_wait_until = Some(lab.fixed_ticks.saturating_add(u64::from(steps)));
+                advance_replay_cursor(lab);
+                Ok(format!(
+                    "replay {index}: continuous wait for {steps} fixed tick(s)"
+                ))
+            } else {
+                if !virtual_time.is_paused() {
+                    return Err(format!(
+                        "replay {index}: fixed-step command requires paused simulation"
+                    ));
+                }
+                lab.pending_fixed_steps = lab.pending_fixed_steps.saturating_add(steps);
+                advance_replay_cursor(lab);
+                Ok(format!("replay {index}: queued {steps} fixed step(s)"))
             }
-            lab.pending_fixed_steps = lab.pending_fixed_steps.saturating_add(steps);
-            advance_replay_cursor(lab);
-            Ok(format!("replay {index}: queued {steps} fixed step(s)"))
         }
         ReplayCommand::Dump { label } => {
             let path = dump_state(&label, lab, virtual_time, world, fragments)?;
@@ -1070,6 +1103,42 @@ pub fn controls(
             }
             Err(error) => status.0 = format!("destruction lab dump FAILED: {error}"),
         }
+    }
+
+    if lab.continuous_replay {
+        if let Some(until) = lab.continuous_wait_until {
+            if lab.fixed_ticks < until {
+                return;
+            }
+            lab.continuous_wait_until = None;
+        }
+
+        let continuous_ready = !lab.background.busy()
+            && !lab.interaction.busy()
+            && lab.replay.as_ref().is_some_and(|replay| {
+                replay.cursor < replay.script.commands.len() && replay.blocked_case.is_none()
+            });
+        if continuous_ready {
+            let current_bytes = context
+                .budget
+                .account(&fragments, &context.bodies, context.renders.mesh_bytes())
+                .footprint
+                .tracked_bytes();
+            let available_bytes = context.budget.0.hard_bytes.saturating_sub(current_bytes);
+            status.0 = match execute_next_replay_command(
+                &mut lab,
+                &mut virtual_time,
+                &mut world,
+                &mut fragments,
+                &mut destruction,
+                available_bytes,
+            ) {
+                Ok(message) => message,
+                Err(error) => format!("continuous destruction replay held: {error}"),
+            };
+            info!("{}", status.0);
+        }
+        return;
     }
 
     let capture_ready = !lab.background.busy()

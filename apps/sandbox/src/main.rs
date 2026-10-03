@@ -290,6 +290,7 @@ fn main() {
             destruction::flush_fragments_on_exit.run_if(sim_lab::inactive),
             performance::record,
             performance::capture_snapshot,
+            performance::capture_video_frame,
         ),
     );
 
