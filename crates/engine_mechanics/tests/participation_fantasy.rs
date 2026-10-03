@@ -6,7 +6,7 @@
 //! fantasy/object policy can keep impossible authored geometry valid without a
 //! fake "infinite strength" material.
 
-use engine_core::{CellPos, MaterialId, REGION_EDGE_CELLS};
+use engine_core::{CellPos, CellSource, MaterialId, REGION_EDGE_CELLS};
 use engine_destruction::{
     AllResident, DamageAmount, DamageEvaluationLimits, DamageEvent, DamageEventId, DamageSource,
     DamageSpace, DamageVolume, ProgressiveDamageLimits, ProgressiveDamageStore, StructuralLimits,
