@@ -97,8 +97,14 @@ impl FractureJobInput {
         if known_regions.len() > 27 {
             return Err(JobRefusal::SnapshotBudget);
         }
+        // DROP 0006.5: bounded by the snapshot's own regions. This used to copy
+        // every static record in the world, which made a local hit cost work
+        // proportional to unrelated damage history and let `damage_records`
+        // refuse a capture because of cracks nowhere near the impact. The worker
+        // can only read the regions it was given, so those are the only records
+        // that can change its answer.
         let state_copy = state
-            .snapshot_space(space, limits.damage_records)
+            .snapshot_regions(space, &known_regions, limits.damage_records)
             .ok_or(JobRefusal::SnapshotBudget)?;
         let mut copy = World::new();
         let mut owned = FragmentStore::default();
@@ -164,6 +170,23 @@ impl FractureJobInput {
             limits,
         })
     }
+    /// Static records this snapshot actually copied.
+    ///
+    /// DROP 0006.5 measurement surface: the number the locality benchmark holds
+    /// constant while unrelated damage history grows around it.
+    pub fn state_records(&self) -> usize {
+        self.state.cell_entries() + self.state.bond_entries()
+    }
+
+    /// Bytes of fracture record this snapshot owns.
+    ///
+    /// Record counts times their in-memory size — the staged payload, not the
+    /// tree overhead around it, so it is a floor rather than a total.
+    pub fn state_bytes(&self) -> usize {
+        self.state.cell_entries() * size_of::<crate::CellFracture>()
+            + self.state.bond_entries() * size_of::<crate::BondFracture>()
+    }
+
     pub fn run(
         mut self,
         impact: FractureImpact,

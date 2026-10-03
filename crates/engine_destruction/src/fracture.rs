@@ -184,21 +184,215 @@ impl<'a, K: Ord + Copy, V> MapDelta<'a, K, V> {
     }
 }
 
-fn commit_edits<K: Ord, V>(
-    base: &mut BTreeMap<K, V>,
-    (edits, removed): (BTreeMap<K, V>, BTreeSet<K>),
-) {
-    if base.is_empty() {
-        // The first impact has no history to preserve: transfer the already
-        // allocated tree instead of allocating and inserting every record twice.
-        *base = edits;
-        return;
+/// A record key that static fracture state can be indexed by region.
+///
+/// DROP 0006.5. Fragment-local records answer with nothing: they are owned by
+/// an exact [`FragmentId`] and already sit contiguously under their space in
+/// the authoritative map, so a spatial index would only add bookkeeping.
+trait StaticSite: Ord + Copy {
+    /// Every region this record touches, `None` padding unused slots.
+    ///
+    /// A cell touches one region. A bond touches one or two: ownership for
+    /// persistence is its lower cell's region and nothing else, but a bond on a
+    /// region boundary is *readable* from both sides, and an analysis that saw
+    /// only one of them would be reading a crack that is half there.
+    fn touched_regions(self) -> [Option<RegionPos>; 2];
+}
+
+impl StaticSite for DamageSite {
+    fn touched_regions(self) -> [Option<RegionPos>; 2] {
+        match self.space {
+            DamageSpace::StaticWorld => [Some(self.cell.region()), None],
+            DamageSpace::FragmentLocal(_) => [None, None],
+        }
     }
-    for key in removed {
-        base.remove(&key);
+}
+
+impl StaticSite for BondSite {
+    fn touched_regions(self) -> [Option<RegionPos>; 2] {
+        match self.space {
+            DamageSpace::StaticWorld => {
+                let [lower, upper] = self.bond.cells();
+                let (a, b) = (lower.region(), upper.region());
+                if a == b {
+                    [Some(a), None]
+                } else {
+                    [Some(a), Some(b)]
+                }
+            }
+            DamageSpace::FragmentLocal(_) => [None, None],
+        }
     }
-    for (key, value) in edits {
-        base.insert(key, value);
+}
+
+/// The authoritative record map, and a region index over the static part of it.
+///
+/// The two live in one type on purpose. The map is private here, so every
+/// insertion and removal maintains the index by construction and the index
+/// cannot drift from the records it describes — there is no code path that can
+/// update one without the other.
+///
+/// **The index is not an authority.** It answers one question — "which records
+/// could lie in these regions" — and is only ever used to narrow a candidate
+/// set that is then read from `records`. Occupancy connectivity remains the
+/// topological oracle and the fracture-aware classifier remains the crack-cut
+/// classifier; neither consults this. Deleting the whole index and scanning
+/// instead would be slower and would change no result, which is the property
+/// `an_index_rebuilt_from_the_records_matches_the_maintained_one` pins.
+#[derive(Clone, Debug)]
+struct RegionIndexed<K, V> {
+    records: BTreeMap<K, V>,
+    by_region: BTreeMap<RegionPos, BTreeSet<K>>,
+}
+
+impl<K: Ord, V: PartialEq> PartialEq for RegionIndexed<K, V> {
+    /// Records only. The index is derived from them, so comparing it would at
+    /// best be redundant and at worst hide a drift bug behind a passing test.
+    fn eq(&self, other: &Self) -> bool {
+        self.records == other.records
+    }
+}
+
+impl<K: Ord, V: PartialEq> Eq for RegionIndexed<K, V> {}
+
+impl<K, V> Default for RegionIndexed<K, V> {
+    fn default() -> Self {
+        Self {
+            records: BTreeMap::new(),
+            by_region: BTreeMap::new(),
+        }
+    }
+}
+
+impl<K: StaticSite, V> RegionIndexed<K, V> {
+    fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    fn get(&self, key: &K) -> Option<&V> {
+        self.records.get(key)
+    }
+
+    fn contains_key(&self, key: &K) -> bool {
+        self.records.contains_key(key)
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.records.iter()
+    }
+
+    /// Read-only view of the authoritative records, for staging a delta against.
+    ///
+    /// Deliberately not `&mut`: staged edits come back through
+    /// [`commit_edits`](Self::commit_edits), which is what keeps the index true.
+    fn records(&self) -> &BTreeMap<K, V> {
+        &self.records
+    }
+
+    fn keys(&self) -> impl Iterator<Item = &K> {
+        self.records.keys()
+    }
+
+    fn values(&self) -> impl Iterator<Item = &V> {
+        self.records.values()
+    }
+
+    fn range<R: std::ops::RangeBounds<K>>(&self, range: R) -> impl Iterator<Item = (&K, &V)> {
+        self.records.range(range)
+    }
+
+    /// Regions holding any static record, in canonical order.
+    fn regions(&self) -> impl Iterator<Item = RegionPos> {
+        self.by_region.keys().copied()
+    }
+
+    /// Static record keys touching `region`, in canonical order.
+    fn in_region(&self, region: RegionPos) -> impl Iterator<Item = K> {
+        self.by_region
+            .get(&region)
+            .into_iter()
+            .flat_map(|keys| keys.iter().copied())
+    }
+
+    /// Index entries held: one per static cell, one or two per static bond.
+    ///
+    /// For measuring what the index costs, not for deciding anything.
+    fn index_entries(&self) -> usize {
+        self.by_region.values().map(BTreeSet::len).sum()
+    }
+
+    fn index(&mut self, key: K) {
+        for region in key.touched_regions().into_iter().flatten() {
+            self.by_region.entry(region).or_default().insert(key);
+        }
+    }
+
+    fn unindex(&mut self, key: K) {
+        for region in key.touched_regions().into_iter().flatten() {
+            if let Some(keys) = self.by_region.get_mut(&region) {
+                keys.remove(&key);
+                // An empty bucket is removed so that `regions()` stays exactly
+                // "regions that hold damage" and a save path cannot be handed a
+                // region with nothing in it.
+                if keys.is_empty() {
+                    self.by_region.remove(&region);
+                }
+            }
+        }
+    }
+
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        let previous = self.records.insert(key, value);
+        if previous.is_none() {
+            self.index(key);
+        }
+        previous
+    }
+
+    fn remove(&mut self, key: &K) -> Option<V> {
+        let previous = self.records.remove(key);
+        if previous.is_some() {
+            self.unindex(*key);
+        }
+        previous
+    }
+
+    fn commit_edits(&mut self, (edits, removed): (BTreeMap<K, V>, BTreeSet<K>)) {
+        if self.records.is_empty() {
+            // Same shortcut the flat map had: the first impact has no history to
+            // preserve, so transfer the tree rather than reinserting every
+            // record. The index still has to be built for what arrives.
+            self.records = edits;
+            for key in self.records.keys().copied().collect::<Vec<_>>() {
+                self.index(key);
+            }
+            return;
+        }
+        for key in removed {
+            self.remove(&key);
+        }
+        for (key, value) in edits {
+            self.insert(key, value);
+        }
+    }
+
+    /// Rebuild the index from the records alone.
+    ///
+    /// The definition of correct, used by tests to prove the maintained index
+    /// is the same thing the records imply.
+    #[cfg(test)]
+    fn rebuilt_index(&self) -> BTreeMap<RegionPos, BTreeSet<K>> {
+        let mut fresh: BTreeMap<RegionPos, BTreeSet<K>> = BTreeMap::new();
+        for key in self.records.keys().copied() {
+            for region in key.touched_regions().into_iter().flatten() {
+                fresh.entry(region).or_default().insert(key);
+            }
+        }
+        fresh
     }
 }
 
@@ -621,6 +815,77 @@ impl FractureState {
             result.bonds.insert(r.site, r);
         }
         Some(result)
+    }
+
+    /// Snapshot only the records a bounded set of regions can reach.
+    ///
+    /// DROP 0006.5, and the reason the region index exists. The whole-space
+    /// version above copies every static record in the world, so a hit on one
+    /// wall cost work proportional to the damage history of everything else —
+    /// and, worse, could be refused outright by `max` because of damage nowhere
+    /// near it. A worker only ever reads the regions its snapshot holds, so
+    /// those are the only records that can change its answer.
+    ///
+    /// Bonds come in by the *touching* rule, not the ownership rule: a bond
+    /// across a region boundary is readable from either side, and omitting it
+    /// because its lower cell sits in the region next door would hand the worker
+    /// an intact bond where there is a crack. Persistence still uses sole
+    /// ownership — see [`region_fracture`](Self::region_fracture) — because
+    /// there the question is who saves it, and two owners would duplicate it.
+    ///
+    /// Fragment-local state is not region-indexed and does not need to be: it is
+    /// owned by an exact [`FragmentId`] and already contiguous under its space,
+    /// so it falls through to the bounded whole-space path.
+    pub(crate) fn snapshot_regions(
+        &self,
+        space: DamageSpace,
+        regions: &BTreeSet<RegionPos>,
+        max: usize,
+    ) -> Option<Self> {
+        if space != DamageSpace::StaticWorld {
+            return self.snapshot_space(space, max);
+        }
+        let mut result = Self {
+            revision: self.revision,
+            ..Self::new()
+        };
+        // Ascending region order, and each bucket ascending by site, so the
+        // collected set is the same whatever order the caller's set iterates in.
+        // The result is a `BTreeMap` regardless, so canonical output does not
+        // depend on this — it is here so the *budget* trips deterministically.
+        for region in regions {
+            for site in self.cells.in_region(*region) {
+                if let Some(record) = self.cells.get(&site) {
+                    if result.cells.len() + result.bonds.len() >= max {
+                        return None;
+                    }
+                    result.cells.insert(site, *record);
+                }
+            }
+            for site in self.bonds.in_region(*region) {
+                if let Some(record) = self.bonds.get(&site) {
+                    if result.cells.len() + result.bonds.len() >= max {
+                        return None;
+                    }
+                    result.bonds.insert(site, *record);
+                }
+            }
+        }
+        Some(result)
+    }
+
+    /// How many static records the given regions hold, without copying them.
+    ///
+    /// For measurement: it is what the scaling benchmark reports as the number
+    /// of local records a capture had to look at.
+    pub fn records_in_regions(&self, regions: &BTreeSet<RegionPos>) -> (usize, usize) {
+        let mut cells = 0usize;
+        let mut bonds = 0usize;
+        for region in regions {
+            cells += self.cells.in_region(*region).count();
+            bonds += self.bonds.in_region(*region).count();
+        }
+        (cells, bonds)
     }
     pub(crate) fn patch_from(&self, before: &Self) -> FracturePatch {
         let cells = before
@@ -1280,8 +1545,8 @@ fn owns_bond(region: RegionPos, site: BondSite) -> bool {
 /// entry, and an intact bond has no entry. What is stored is exactly the damage.
 #[derive(Clone, Default, Debug)]
 pub struct FractureState {
-    cells: BTreeMap<DamageSite, CellFracture>,
-    bonds: BTreeMap<BondSite, BondFracture>,
+    cells: RegionIndexed<DamageSite, CellFracture>,
+    bonds: RegionIndexed<BondSite, BondFracture>,
     revision: Revision,
 }
 
@@ -1318,6 +1583,25 @@ impl FractureState {
 
     pub fn bond_entries(&self) -> usize {
         self.bonds.len()
+    }
+
+    /// Region-index entries held across both record maps.
+    ///
+    /// DROP 0006.5 measurement surface. One entry per static cell record and
+    /// one or two per static bond record — two when the bond crosses a region
+    /// boundary, because both sides can read it. Fragment-local records are not
+    /// indexed and contribute nothing.
+    pub fn index_entries(&self) -> usize {
+        self.cells.index_entries() + self.bonds.index_entries()
+    }
+
+    /// Regions the index holds a bucket for, across both record maps.
+    pub fn index_regions(&self) -> usize {
+        self.cells
+            .regions()
+            .chain(self.bonds.regions())
+            .collect::<BTreeSet<_>>()
+            .len()
     }
 
     pub fn broken_bonds(&self) -> usize {
@@ -1453,18 +1737,12 @@ impl FractureState {
     ///
     /// What a streaming host iterates when deciding what to save.
     pub fn static_regions(&self) -> BTreeSet<RegionPos> {
-        let mut regions = BTreeSet::new();
-        for site in self.cells.keys() {
-            if site.space == DamageSpace::StaticWorld {
-                regions.insert(site.cell.region());
-            }
-        }
-        for site in self.bonds.keys() {
-            if site.space == DamageSpace::StaticWorld {
-                regions.insert(site.bond.lower().region());
-            }
-        }
-        regions
+        // The index already groups static records by the regions they touch, so
+        // this is a walk of its keys rather than of every record in the world.
+        // A bond on a boundary is listed under both sides here, which is right
+        // for "which regions hold damage" — the save path then asks
+        // `region_fracture` for the ones that region actually owns.
+        self.cells.regions().chain(self.bonds.regions()).collect()
     }
 
     /// Read one region's static fracture state without removing it.
@@ -1472,19 +1750,24 @@ impl FractureState {
     /// For saving a region that stays resident. Canonical order, so the same
     /// damage always serialises to the same bytes.
     pub fn region_fracture(&self, region: RegionPos) -> RegionFracture {
+        // Narrowed by the index, then filtered by the same ownership rule as
+        // before. `in_region` yields keys ascending, which for static records is
+        // the order the old full-map scan produced, so the serialised bytes are
+        // unchanged. The filters stay: a cell touches only its own region, but a
+        // boundary bond is indexed under both and exactly one of them owns it.
         RegionFracture {
             region,
             cells: self
                 .cells
-                .values()
-                .filter(|record| owns_cell(region, record.site))
-                .copied()
+                .in_region(region)
+                .filter(|site| owns_cell(region, *site))
+                .filter_map(|site| self.cells.get(&site).copied())
                 .collect(),
             bonds: self
                 .bonds
-                .values()
-                .filter(|record| owns_bond(region, record.site))
-                .copied()
+                .in_region(region)
+                .filter(|site| owns_bond(region, *site))
+                .filter_map(|site| self.bonds.get(&site).copied())
                 .collect(),
         }
     }
@@ -1520,8 +1803,8 @@ impl FractureState {
         records: RegionFracture,
         limits: FractureLimits,
     ) -> Result<(), FractureRefusal> {
-        let mut staged_cells = MapDelta::new(&self.cells);
-        let mut staged_bonds = MapDelta::new(&self.bonds);
+        let mut staged_cells = MapDelta::new(self.cells.records());
+        let mut staged_bonds = MapDelta::new(self.bonds.records());
         for record in records.cells {
             if record.energy == DamageAmount::ZERO {
                 staged_cells.remove(&record.site);
@@ -1550,8 +1833,8 @@ impl FractureState {
         }
         let cells = staged_cells.into_edits();
         let bonds = staged_bonds.into_edits();
-        commit_edits(&mut self.cells, cells);
-        commit_edits(&mut self.bonds, bonds);
+        self.cells.commit_edits(cells);
+        self.bonds.commit_edits(bonds);
         self.revision.bump();
         Ok(())
     }
@@ -1586,7 +1869,7 @@ impl FractureState {
     pub fn prune_against(&mut self, space: DamageSpace, cells: &dyn CellSource) -> FracturePrune {
         let mut prune = FracturePrune::default();
         let mut stale_cells = Vec::new();
-        for (site, record) in &self.cells {
+        for (site, record) in self.cells.iter() {
             prune.records_examined += 1;
             if site.space != space {
                 continue;
@@ -1596,7 +1879,7 @@ impl FractureState {
             }
         }
         let mut stale_bonds = Vec::new();
-        for (site, record) in &self.bonds {
+        for (site, record) in self.bonds.iter() {
             prune.records_examined += 1;
             if site.space != space {
                 continue;
@@ -1820,8 +2103,8 @@ impl FractureState {
         }
 
         let space = load.space;
-        let mut staged_cells = MapDelta::new(&self.cells);
-        let mut staged_bonds = MapDelta::new(&self.bonds);
+        let mut staged_cells = MapDelta::new(self.cells.records());
+        let mut staged_bonds = MapDelta::new(self.bonds.records());
         let mut crushed: BTreeSet<CellPos> = BTreeSet::new();
         let mut broken: Vec<BondSite> = Vec::new();
 
@@ -2014,8 +2297,8 @@ impl FractureState {
                 found: self.revision,
             });
         }
-        commit_edits(&mut self.cells, prepared.cells);
-        commit_edits(&mut self.bonds, prepared.bonds);
+        self.cells.commit_edits(prepared.cells);
+        self.bonds.commit_edits(prepared.bonds);
         self.revision.bump();
         Ok(prepared.outcome)
     }
@@ -2547,4 +2830,134 @@ fn scale_milli_div(value: i64, numerator: i64, denominator: i64) -> i64 {
 
 fn clamp_amount(value: i64) -> DamageAmount {
     DamageAmount(value.clamp(0, i64::from(u32::MAX)) as u32)
+}
+
+#[cfg(test)]
+mod region_index_tests {
+    use super::*;
+    use engine_core::{Axis, REGION_EDGE_CELLS};
+
+    const SOLID: MaterialId = MaterialId(1);
+
+    fn cell_record(cell: CellPos) -> CellFracture {
+        CellFracture {
+            site: DamageSite {
+                space: DamageSpace::StaticWorld,
+                cell,
+            },
+            material: SOLID,
+            energy: DamageAmount(42),
+        }
+    }
+
+    fn bond_record(lower: CellPos, axis: Axis) -> BondFracture {
+        BondFracture {
+            site: BondSite {
+                space: DamageSpace::StaticWorld,
+                bond: BondKey::along(lower, axis).expect("a positive neighbour"),
+            },
+            material: SOLID,
+            integrity: DamageAmount(BOND_INTEGRITY.0 / 2),
+        }
+    }
+
+    fn fragment_cell(id: FragmentId, cell: CellPos) -> CellFracture {
+        CellFracture {
+            site: DamageSite {
+                space: DamageSpace::FragmentLocal(id),
+                cell,
+            },
+            material: SOLID,
+            energy: DamageAmount(7),
+        }
+    }
+
+    /// The index is derived data, so the only definition of correct is "what the
+    /// records imply". Anything that mutates state has to leave those equal.
+    fn assert_index_is_derived(state: &FractureState, label: &str) {
+        assert_eq!(
+            state.cells.by_region,
+            state.cells.rebuilt_index(),
+            "{label}: cell index drifted from the records"
+        );
+        assert_eq!(
+            state.bonds.by_region,
+            state.bonds.rebuilt_index(),
+            "{label}: bond index drifted from the records"
+        );
+    }
+
+    #[test]
+    fn an_index_rebuilt_from_the_records_matches_the_maintained_one() {
+        let mut state = FractureState::new();
+        assert_index_is_derived(&state, "empty");
+
+        // Insertions, including a bond that straddles a region boundary and one
+        // that does not, and fragment-local records that must not be indexed.
+        let inside = CellPos::new(4, 4, 4);
+        let edge = CellPos::new(REGION_EDGE_CELLS - 1, 4, 4);
+        state
+            .cells
+            .insert(cell_record(inside).site, cell_record(inside));
+        state
+            .cells
+            .insert(cell_record(edge).site, cell_record(edge));
+        let straddle = bond_record(edge, Axis::X);
+        let interior = bond_record(inside, Axis::Y);
+        state.bonds.insert(straddle.site, straddle);
+        state.bonds.insert(interior.site, interior);
+        let id = FragmentId {
+            sequence: 1,
+            index: 0,
+        };
+        let local = fragment_cell(id, inside);
+        state.cells.insert(local.site, local);
+        assert_index_is_derived(&state, "after inserts");
+
+        // The straddling bond is readable from both sides; the interior one from
+        // one. Fragment-local records are owned by id and contribute nothing.
+        assert_eq!(state.bonds.index_entries(), 3, "1 interior + 2 straddle");
+        assert_eq!(
+            state.cells.index_entries(),
+            2,
+            "the fragment cell is not indexed"
+        );
+
+        // Removals, including re-removal, must leave the same equality.
+        state.cells.remove(&cell_record(edge).site);
+        state.bonds.remove(&straddle.site);
+        state.bonds.remove(&straddle.site);
+        assert_index_is_derived(&state, "after removes");
+
+        // And emptying it must leave no stale buckets behind.
+        state.cells.remove(&cell_record(inside).site);
+        state.cells.remove(&local.site);
+        state.bonds.remove(&interior.site);
+        assert_index_is_derived(&state, "after draining");
+        assert_eq!(state.index_entries(), 0);
+        assert!(state.cells.by_region.is_empty() && state.bonds.by_region.is_empty());
+    }
+
+    #[test]
+    fn a_boundary_bond_is_readable_from_both_regions_but_owned_by_one() {
+        // The distinction DROP 0006.5 turns on. Analysis must see a crack from
+        // either side of the seam; persistence must save it exactly once, or an
+        // extract/restore cycle would duplicate or drop it.
+        let mut state = FractureState::new();
+        let edge = CellPos::new(REGION_EDGE_CELLS - 1, 4, 4);
+        let straddle = bond_record(edge, Axis::X);
+        state.bonds.insert(straddle.site, straddle);
+
+        let left = RegionPos::new(0, 0, 0);
+        let right = RegionPos::new(1, 0, 0);
+        assert_eq!(straddle.site.bond.lower().region(), left);
+        assert_eq!(straddle.site.bond.upper().region(), right);
+
+        // Readable from both.
+        assert_eq!(state.bonds.in_region(left).count(), 1);
+        assert_eq!(state.bonds.in_region(right).count(), 1);
+        // Owned by the lower cell's region alone.
+        assert_eq!(state.region_fracture(left).bonds.len(), 1);
+        assert_eq!(state.region_fracture(right).bonds.len(), 0);
+    }
 }
