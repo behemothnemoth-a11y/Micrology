@@ -86,6 +86,9 @@ pub struct StaticColliderStats {
     pub jobs_started_total: u64,
     pub superseded_jobs: u64,
     pub stale_results: u64,
+    pub max_pending_volumes: usize,
+    pub max_active_jobs: usize,
+    pub max_ready_results: usize,
 }
 
 /// Static physics bodies keyed by the host's current collision unit.
@@ -373,6 +376,13 @@ pub fn sync_static_colliders(
         .count();
     colliders.stats.active_jobs = colliders.jobs.len();
     colliders.stats.ready_results = colliders.ready.len();
+    colliders.stats.max_pending_volumes = colliders
+        .stats
+        .max_pending_volumes
+        .max(colliders.stats.pending_volumes);
+    colliders.stats.max_active_jobs = colliders.stats.max_active_jobs.max(colliders.stats.active_jobs);
+    colliders.stats.max_ready_results =
+        colliders.stats.max_ready_results.max(colliders.stats.ready_results);
     colliders.refresh_live_stats();
 }
 
@@ -662,6 +672,9 @@ pub struct FragmentBodies {
     withheld_total: u64,
     pending_spawn_current: u64,
     stale_results: u64,
+    max_pending_spawn: u64,
+    max_active_collision_jobs: usize,
+    max_ready_collision_results: usize,
 }
 
 impl FragmentBodies {
@@ -685,6 +698,22 @@ impl FragmentBodies {
 
     pub fn pending_spawn_current(&self) -> u64 {
         self.pending_spawn_current
+    }
+
+    pub fn max_pending_spawn(&self) -> u64 {
+        self.max_pending_spawn
+    }
+
+    pub fn max_active_collision_jobs(&self) -> usize {
+        self.max_active_collision_jobs
+    }
+
+    pub fn max_ready_collision_results(&self) -> usize {
+        self.max_ready_collision_results
+    }
+
+    pub fn stale_collision_results(&self) -> u64 {
+        self.stale_results
     }
 
     /// Fragments inside physics residency that do not yet have current
@@ -721,6 +750,9 @@ impl FragmentBodies {
         self.last_capacity = None;
         self.withheld_current = 0;
         self.pending_spawn_current = 0;
+        self.max_pending_spawn = 0;
+        self.max_active_collision_jobs = 0;
+        self.max_ready_collision_results = 0;
     }
 
     pub fn derived_footprint(&self) -> FragmentDerivedFootprint {
@@ -1053,6 +1085,10 @@ pub fn sync_fragment_bodies(
         .pending_spawn_current
         .saturating_add(bodies.jobs.len() as u64)
         .saturating_add(bodies.ready.len() as u64);
+    bodies.max_pending_spawn = bodies.max_pending_spawn.max(bodies.pending_spawn_current);
+    bodies.max_active_collision_jobs = bodies.max_active_collision_jobs.max(bodies.jobs.len());
+    bodies.max_ready_collision_results =
+        bodies.max_ready_collision_results.max(bodies.ready.len());
     bodies.withheld_current = bodies
         .blocked
         .iter()
