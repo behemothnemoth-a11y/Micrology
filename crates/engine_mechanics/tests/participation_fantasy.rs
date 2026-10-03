@@ -328,10 +328,7 @@ fn floating_island_object_override_can_take_local_damage_without_becoming_physic
 fn adjacent_regions_can_choose_different_mechanics_without_fake_materials() {
     let mut world = World::new();
     let left_root = add_overloaded_wall(&mut world, CellPos::new(4, 4, 5));
-    let right_root = add_overloaded_wall(
-        &mut world,
-        CellPos::new(REGION_EDGE_CELLS + 4, 4, 5),
-    );
+    let right_root = add_overloaded_wall(&mut world, CellPos::new(REGION_EDGE_CELLS + 4, 4, 5));
     world.take_dirty();
 
     assert_eq!(
