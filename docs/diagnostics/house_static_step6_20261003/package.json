@@ -1,0 +1,19 @@
+{
+  "filename": "Micrology_Static_Reference_House_v1.zip",
+  "bytes": 279840,
+  "sha256": "5e2fd748765e6ba532960c7853d69781fd438593dcdde7a8dd56450191918e86",
+  "entries": [
+    "README.txt",
+    "cutaway-preview.png",
+    "cutaway-surfaces.json",
+    "intact-preview.png",
+    "intact-surfaces.json",
+    "manifest.json",
+    "native-world/regions/r.0.0.-1.json",
+    "native-world/regions/r.0.0.0.json",
+    "native-world/world.json",
+    "preview-provenance.json",
+    "verification.json"
+  ],
+  "zip_integrity_passed": true
+}

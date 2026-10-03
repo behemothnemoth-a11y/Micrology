@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "cell_mm_annotation": 50,
+  "wall_footprint_mm": [
+    6000,
+    5000
+  ],
+  "slab_mm": [
+    6400,
+    200,
+    5400
+  ],
+  "entrance_clear_mm": [
+    900,
+    2100
+  ],
+  "wall_height_mm": 2500,
+  "timber_post_section_mm": [
+    100,
+    150
+  ],
+  "glazing_proxy_thickness_mm": 50,
+  "roof_top_mm": 4350,
+  "chimney_top_mm": 4850,
+  "occupied_cells": 167192,
+  "anchored_cells": 14528,
+  "cells_by_material": {
+    "concrete": 57216,
+    "glass_proxy": 2640,
+    "masonry": 26260,
+    "wood": 81076
+  },
+  "occupied_bounds_cells": [
+    [
+      0,
+      0,
+      -24
+    ],
+    [
+      127,
+      96,
+      107
+    ]
+  ],
+  "volumes": 229,
+  "exposed_unit_faces": 145460,
+  "greedy_quads": 5935,
+  "structural_checksum": "0914c4bcec7ce205"
+}

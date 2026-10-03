@@ -1,0 +1,2 @@
+    Checking engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-house-static-step6\crates\engine_stress)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 1.94s

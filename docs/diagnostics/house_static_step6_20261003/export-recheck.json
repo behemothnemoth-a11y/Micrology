@@ -1,0 +1,25 @@
+{
+  "export_command": [
+    "cargo",
+    "run",
+    "--locked",
+    "-q",
+    "-p",
+    "engine_stress",
+    "--bin",
+    "reference_house_fixture",
+    "--",
+    "--export",
+    "C:\\Users\\behem\\.chatgpt-worktrees\\Micrology-house-static-step6\\target\\reference-house-static-reverified"
+  ],
+  "exit_code": 0,
+  "files_compared_byte_exact": [
+    "cutaway-surfaces.json",
+    "intact-surfaces.json",
+    "manifest.json",
+    "native-world/regions/r.0.0.-1.json",
+    "native-world/regions/r.0.0.0.json",
+    "native-world/world.json"
+  ],
+  "all_identical": true
+}
