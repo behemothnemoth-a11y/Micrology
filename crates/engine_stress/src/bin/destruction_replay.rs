@@ -113,6 +113,10 @@ fn print_plan(script: &ReplayScript) {
     for (index, command) in script.commands.iter().enumerate() {
         let description = match command {
             ReplayCommand::DemolitionBuilding => "one-material demolition building".into(),
+            ReplayCommand::ReferenceHouse => "four-material reference house".into(),
+            ReplayCommand::HouseScenario { scenario } => {
+                format!("reference-house scenario {}", scenario.name())
+            }
             ReplayCommand::StructuralCapacity { enabled } => {
                 format!("structural capacity {enabled}")
             }

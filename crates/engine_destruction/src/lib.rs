@@ -154,3 +154,5 @@ pub use connectivity::{
 pub use support_witness::{
     SupportWitness, SupportWitnessLimits, SupportWitnessStats, prove_all_roots_supported,
 };
+
+pub mod fracture_witness;

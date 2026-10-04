@@ -10,6 +10,8 @@ use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FractureTransactionLimits {
+    /// Opt-in STATIC support paths; complete detached closure is still required.
+    pub support_witnesses: bool,
     pub fracture: FractureLimits,
     pub structure: StructuralLimits,
     /// How detached material is grouped into fragments. DROP 0006.6.
@@ -24,6 +26,7 @@ pub struct FractureTransactionLimits {
 impl Default for FractureTransactionLimits {
     fn default() -> Self {
         Self {
+            support_witnesses: false,
             fracture: FractureLimits::new(16_384, 49_152, 1 << 20, 1 << 21),
             structure: StructuralLimits::tight(65_536),
             partition: FragmentPartitionPolicy::default(),
@@ -82,7 +85,10 @@ impl CellSource for AfterFailures<'_> {
 pub struct StaticFractureCommit {
     pub fracture: FractureOutcome,
     pub measurement: FractureMeasurement,
+    /// Legacy full classification, or complete DETACHED components only when
+    /// witness_work is Some. Supported paths never become partial components.
     pub separation: FractureSeparation,
+    pub witness_work: Option<crate::fracture_witness::WitnessWork>,
     pub edits: Vec<EditOutcome>,
     pub fragments: Vec<FragmentId>,
 }
@@ -116,14 +122,27 @@ pub fn fracture_static_if(
             .map(|target| target.cell())
             .collect(),
     };
-    let separation = separation_from_cracks(
-        &cells,
-        world,
-        residency,
-        &prepared.gate(state, DamageSpace::StaticWorld),
-        separation_roots(&prepared.outcome),
-        limits.structure,
-    );
+    let (separation, witness_work) = {
+        let roots = separation_roots(&prepared.outcome);
+        let gate = prepared.gate(state, DamageSpace::StaticWorld);
+        if limits.support_witnesses {
+            let result = crate::fracture_witness::separation_with_support_witnesses(
+                &cells,
+                world,
+                residency,
+                &gate,
+                roots,
+                limits.structure,
+            )
+            .map_err(|_| FractureTransactionRefusal::StructureInconclusive)?;
+            (result.separation, Some(result.work))
+        } else {
+            (
+                separation_from_cracks(&cells, world, residency, &gate, roots, limits.structure),
+                None,
+            )
+        }
+    };
     if !separation.is_settled() {
         return Err(FractureTransactionRefusal::StructureInconclusive);
     }
@@ -174,6 +193,7 @@ pub fn fracture_static_if(
         fracture,
         measurement: load.measurement,
         separation,
+        witness_work,
         edits,
         fragments,
     })

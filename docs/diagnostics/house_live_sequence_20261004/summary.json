@@ -1,0 +1,1066 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5050 Laptop GPU",
+    "driver": "581.34",
+    "backend": "Vulkan"
+  },
+  "house_physics_convention": {
+    "cell_mm": 50,
+    "cell_units_per_metre": 20.0,
+    "gravity_cell_units_per_s2": 196.2,
+    "collision_focus_radius_cells": 160,
+    "density_kg_per_m3": {
+      "wood": 600,
+      "masonry": 2000,
+      "concrete": 2400,
+      "glass": 2500
+    },
+    "limits": "diagnostic convention, not global physical calibration"
+  },
+  "window_live": {
+    "intact": {
+      "fixed_ticks": 0,
+      "fragments": 0,
+      "fragment_cells": 0,
+      "largest_cells": 0,
+      "structural": {
+        "checksum_fnv1a64": "0914c4bcec7ce205",
+        "fragment_cells": 0,
+        "fragments": 0,
+        "static_anchors": 14528,
+        "static_cells": 167192
+      },
+      "fracture": {
+        "bond_entries": 0,
+        "broken_bonds": 0,
+        "cell_entries": 0,
+        "checksum_fnv1a64": "cbf29ce484222325",
+        "revision": 0
+      },
+      "background": {
+        "accepted": 0,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 0,
+        "cut_failed": 0,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": null
+    },
+    "after_fracture": {
+      "fixed_ticks": 0,
+      "fragments": 14,
+      "fragment_cells": 37,
+      "largest_cells": 8,
+      "structural": {
+        "checksum_fnv1a64": "e977441e15d08144",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      },
+      "fracture": {
+        "bond_entries": 40,
+        "broken_bonds": 0,
+        "cell_entries": 45,
+        "checksum_fnv1a64": "3f9f582bd8c7c878",
+        "revision": 1
+      },
+      "background": {
+        "accepted": 1,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 0,
+        "cut_failed": 0,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "y_range": [
+        32.0,
+        32.0
+      ],
+      "vy_range": [
+        -14.177397727966309,
+        14.177397727966309
+      ]
+    },
+    "after_20": {
+      "fixed_ticks": 20,
+      "fragments": 14,
+      "fragment_cells": 37,
+      "largest_cells": 8,
+      "structural": {
+        "checksum_fnv1a64": "e977441e15d08144",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      },
+      "fracture": {
+        "bond_entries": 40,
+        "broken_bonds": 0,
+        "cell_entries": 45,
+        "checksum_fnv1a64": "3f9f582bd8c7c878",
+        "revision": 1
+      },
+      "background": {
+        "accepted": 1,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 0,
+        "cut_failed": 0,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "y_range": [
+        31.95210808318137,
+        32.43957764955124
+      ],
+      "vy_range": [
+        -0.03873955458402634,
+        0.025296013802289963
+      ],
+      "same_id_displacement_cells": {
+        "max": 0.8557740220643235,
+        "median": 0.0622616363974644
+      }
+    },
+    "after_60": {
+      "fixed_ticks": 60,
+      "fragments": 14,
+      "fragment_cells": 37,
+      "largest_cells": 8,
+      "structural": {
+        "checksum_fnv1a64": "e977441e15d08144",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      },
+      "fracture": {
+        "bond_entries": 40,
+        "broken_bonds": 0,
+        "cell_entries": 45,
+        "checksum_fnv1a64": "3f9f582bd8c7c878",
+        "revision": 1
+      },
+      "background": {
+        "accepted": 1,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 0,
+        "cut_failed": 0,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "y_range": [
+        31.96523914405431,
+        32.591852801684
+      ],
+      "vy_range": [
+        -0.01696447655558586,
+        0.00035141719854436815
+      ],
+      "same_id_displacement_cells": {
+        "max": 0.9008166288093808,
+        "median": 0.036027535845720576
+      }
+    }
+  },
+  "support_live": {
+    "intact": {
+      "fixed_ticks": 0,
+      "fragments": 0,
+      "fragment_cells": 0,
+      "largest_cells": 0,
+      "structural": {
+        "checksum_fnv1a64": "0914c4bcec7ce205",
+        "fragment_cells": 0,
+        "fragments": 0,
+        "static_anchors": 14528,
+        "static_cells": 167192
+      },
+      "fracture": {
+        "bond_entries": 0,
+        "broken_bonds": 0,
+        "cell_entries": 0,
+        "checksum_fnv1a64": "cbf29ce484222325",
+        "revision": 0
+      },
+      "background": {
+        "accepted": 0,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 0,
+        "cut_failed": 0,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": null
+    },
+    "after_cut": {
+      "fixed_ticks": 0,
+      "fragments": 11,
+      "fragment_cells": 43636,
+      "largest_cells": 43576,
+      "structural": {
+        "checksum_fnv1a64": "0fcae30465d10370",
+        "fragment_cells": 43636,
+        "fragments": 11,
+        "static_anchors": 14528,
+        "static_cells": 120300
+      },
+      "fracture": {
+        "bond_entries": 0,
+        "broken_bonds": 0,
+        "cell_entries": 0,
+        "checksum_fnv1a64": "cbf29ce484222325",
+        "revision": 1
+      },
+      "background": {
+        "accepted": 1,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 3256,
+        "cut_failed": 3256,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "y_range": [
+        48.0,
+        48.0
+      ],
+      "vy_range": [
+        0.0,
+        0.0
+      ]
+    },
+    "after_5": {
+      "fixed_ticks": 5,
+      "fragments": 11,
+      "fragment_cells": 43636,
+      "largest_cells": 43576,
+      "structural": {
+        "checksum_fnv1a64": "0fcae30465d10370",
+        "fragment_cells": 43636,
+        "fragments": 11,
+        "static_anchors": 14528,
+        "static_cells": 120300
+      },
+      "fracture": {
+        "bond_entries": 0,
+        "broken_bonds": 0,
+        "cell_entries": 0,
+        "checksum_fnv1a64": "cbf29ce484222325",
+        "revision": 1
+      },
+      "background": {
+        "accepted": 1,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 3256,
+        "cut_failed": 3256,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "y_range": [
+        47.381286462703116,
+        47.381286462703116
+      ],
+      "vy_range": [
+        -15.328126907348633,
+        -15.328126907348633
+      ],
+      "same_id_displacement_cells": {
+        "max": 0.6187135372968839,
+        "median": 0.6187135372968839
+      }
+    },
+    "after_25": {
+      "fixed_ticks": 25,
+      "fragments": 22,
+      "fragment_cells": 43646,
+      "largest_cells": 43564,
+      "structural": {
+        "checksum_fnv1a64": "c79060e9ff14a5e5",
+        "fragment_cells": 43646,
+        "fragments": 22,
+        "static_anchors": 14528,
+        "static_cells": 120290
+      },
+      "fracture": {
+        "bond_entries": 527,
+        "broken_bonds": 170,
+        "cell_entries": 218,
+        "checksum_fnv1a64": "0cef29f82b76b54f",
+        "revision": 3
+      },
+      "background": {
+        "accepted": 3,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 3256,
+        "cut_failed": 3256,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 220,
+        "capped": 0,
+        "enqueued": 2,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 12,
+        "pending": 0,
+        "processed": 2,
+        "refused": 0,
+        "samples": 1,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 939
+      },
+      "y_range": [
+        32.93133161725821,
+        48.004144018640204
+      ],
+      "vy_range": [
+        -76.64063262939453,
+        0.015480690635740757
+      ],
+      "same_id_displacement_cells": {
+        "max": 15.06866838274179,
+        "median": 15.06866838274179
+      }
+    },
+    "after_120": {
+      "fixed_ticks": 120,
+      "fragments": 22,
+      "fragment_cells": 43646,
+      "largest_cells": 43564,
+      "structural": {
+        "checksum_fnv1a64": "c79060e9ff14a5e5",
+        "fragment_cells": 43646,
+        "fragments": 22,
+        "static_anchors": 14528,
+        "static_cells": 120290
+      },
+      "fracture": {
+        "bond_entries": 527,
+        "broken_bonds": 170,
+        "cell_entries": 218,
+        "checksum_fnv1a64": "0cef29f82b76b54f",
+        "revision": 3
+      },
+      "background": {
+        "accepted": 3,
+        "refused": 0,
+        "stale": 0,
+        "failed_cells": 3256,
+        "cut_failed": 3256,
+        "job_volume_cap": 256,
+        "support_witnesses": true
+      },
+      "contacts": {
+        "broken_bonds": 220,
+        "capped": 0,
+        "enqueued": 2,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 12,
+        "pending": 0,
+        "processed": 2,
+        "refused": 0,
+        "samples": 1,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 939
+      },
+      "y_range": [
+        0.9977994764684954,
+        48.00644568213886
+      ],
+      "vy_range": [
+        -0.000405868049710989,
+        0.008506806567311287
+      ],
+      "same_id_displacement_cells": {
+        "max": 47.00395931839253,
+        "median": 47.00100101101848
+      }
+    }
+  },
+  "cpu_scenarios": {
+    "scope": "fresh-house pulses and explicitly labeled support-band cut; no physics stepping or calibrated overload calculation",
+    "cases": [
+      {
+        "name": "window",
+        "initial": 167192,
+        "static_cells": 167155,
+        "fragment_cells": 37,
+        "erased": 0,
+        "broken": 64,
+        "objects": 14,
+        "sizes": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          8
+        ],
+        "histogram": [
+          [
+            "singleton",
+            5
+          ],
+          [
+            "b2_3",
+            8
+          ],
+          [
+            "b4_7",
+            0
+          ],
+          [
+            "b8_15",
+            1
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            0
+          ]
+        ],
+        "touched_materials": {
+          "104": 37
+        },
+        "loaded_material_pairs": {
+          "104:104": 104
+        },
+        "fracture_work": 173,
+        "crack_topology_cells": 3801,
+        "occupancy_topology_cells": 3917,
+        "structural_checksum": "3acd719d72e7e680",
+        "fracture_checksum": "92c898539e6068cd"
+      },
+      {
+        "name": "frame_joint",
+        "initial": 167192,
+        "static_cells": 167177,
+        "fragment_cells": 14,
+        "erased": 1,
+        "broken": 41,
+        "objects": 14,
+        "sizes": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "histogram": [
+          [
+            "singleton",
+            14
+          ],
+          [
+            "b2_3",
+            0
+          ],
+          [
+            "b4_7",
+            0
+          ],
+          [
+            "b8_15",
+            0
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            0
+          ]
+        ],
+        "touched_materials": {
+          "104": 15
+        },
+        "loaded_material_pairs": {
+          "101:101": 127,
+          "101:104": 7,
+          "104:104": 41
+        },
+        "fracture_work": 286,
+        "crack_topology_cells": 3503,
+        "occupancy_topology_cells": 3514,
+        "structural_checksum": "899e26b256351d9a",
+        "fracture_checksum": "9f7fc91a759726e6"
+      },
+      {
+        "name": "wall_breach",
+        "initial": 167192,
+        "static_cells": 166997,
+        "fragment_cells": 139,
+        "erased": 56,
+        "broken": 415,
+        "objects": 77,
+        "sizes": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5
+        ],
+        "histogram": [
+          [
+            "singleton",
+            46
+          ],
+          [
+            "b2_3",
+            27
+          ],
+          [
+            "b4_7",
+            4
+          ],
+          [
+            "b8_15",
+            0
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            0
+          ]
+        ],
+        "touched_materials": {
+          "102": 195
+        },
+        "loaded_material_pairs": {
+          "101:101": 145,
+          "101:102": 64,
+          "102:102": 703
+        },
+        "fracture_work": 1335,
+        "crack_topology_cells": 841,
+        "occupancy_topology_cells": 747,
+        "structural_checksum": "34d9bc9677d29a9b",
+        "fracture_checksum": "db90d5190f923b47"
+      },
+      {
+        "name": "chimney",
+        "initial": 167192,
+        "static_cells": 167053,
+        "fragment_cells": 97,
+        "erased": 42,
+        "broken": 227,
+        "objects": 65,
+        "sizes": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          6,
+          6,
+          6,
+          6
+        ],
+        "histogram": [
+          [
+            "singleton",
+            50
+          ],
+          [
+            "b2_3",
+            11
+          ],
+          [
+            "b4_7",
+            4
+          ],
+          [
+            "b8_15",
+            0
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            0
+          ]
+        ],
+        "touched_materials": {
+          "102": 139
+        },
+        "loaded_material_pairs": {
+          "102:102": 402
+        },
+        "fracture_work": 613,
+        "crack_topology_cells": 23195,
+        "occupancy_topology_cells": 23155,
+        "structural_checksum": "1ce473ef5f90f7ce",
+        "fracture_checksum": "8e7863f8ec541dc3"
+      },
+      {
+        "name": "roof_hit",
+        "initial": 167192,
+        "static_cells": 167192,
+        "fragment_cells": 0,
+        "erased": 0,
+        "broken": 97,
+        "objects": 0,
+        "sizes": [],
+        "histogram": [
+          [
+            "singleton",
+            0
+          ],
+          [
+            "b2_3",
+            0
+          ],
+          [
+            "b4_7",
+            0
+          ],
+          [
+            "b8_15",
+            0
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            0
+          ]
+        ],
+        "touched_materials": {},
+        "loaded_material_pairs": {
+          "101:101": 655
+        },
+        "fracture_work": 985,
+        "crack_topology_cells": 66459,
+        "occupancy_topology_cells": 0,
+        "structural_checksum": "0914c4bcec7ce205",
+        "fracture_checksum": "27f46e4908ce24aa"
+      },
+      {
+        "name": "support_band",
+        "initial": 167192,
+        "static_cells": 120300,
+        "fragment_cells": 43636,
+        "erased": 3256,
+        "broken": 0,
+        "objects": 11,
+        "sizes": [
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          43576
+        ],
+        "histogram": [
+          [
+            "singleton",
+            0
+          ],
+          [
+            "b2_3",
+            0
+          ],
+          [
+            "b4_7",
+            10
+          ],
+          [
+            "b8_15",
+            0
+          ],
+          [
+            "b16_31",
+            0
+          ],
+          [
+            "b32_63",
+            0
+          ],
+          [
+            "b64_plus",
+            1
+          ]
+        ],
+        "touched_materials": {
+          "101": 42760,
+          "102": 4132
+        },
+        "loaded_material_pairs": {},
+        "fracture_work": 0,
+        "crack_topology_cells": 59719,
+        "occupancy_topology_cells": 43636,
+        "structural_checksum": "e08a41487c7025d2",
+        "fracture_checksum": "cbf29ce484222325"
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "house_scenarios",
+      "exit": 0,
+      "seconds": 12.922,
+      "tests": 4
+    },
+    {
+      "name": "house_witnesses",
+      "exit": 0,
+      "seconds": 1.882,
+      "tests": 5
+    },
+    {
+      "name": "window_baseline",
+      "exit": 0,
+      "seconds": 1.517,
+      "tests": 0
+    },
+    {
+      "name": "material_baseline",
+      "exit": 0,
+      "seconds": 0.527,
+      "tests": 0
+    },
+    {
+      "name": "fmt",
+      "exit": 0,
+      "seconds": 0.693,
+      "tests": 0
+    },
+    {
+      "name": "engine_tests",
+      "exit": 0,
+      "seconds": 59.777,
+      "tests": 868
+    },
+    {
+      "name": "engine_docs",
+      "exit": 0,
+      "seconds": 2.645,
+      "tests": 1
+    },
+    {
+      "name": "engine_clippy",
+      "exit": 0,
+      "seconds": 5.616,
+      "tests": 0
+    },
+    {
+      "name": "sandbox_tests",
+      "exit": 0,
+      "seconds": 29.511,
+      "tests": 13
+    },
+    {
+      "name": "sandbox_clippy",
+      "exit": 0,
+      "seconds": 6.941,
+      "tests": 0
+    },
+    {
+      "name": "destruction_bench",
+      "exit": 0,
+      "seconds": 0.833,
+      "tests": 0
+    },
+    {
+      "name": "destruction_replay",
+      "exit": 0,
+      "seconds": 0.822,
+      "tests": 0
+    },
+    {
+      "name": "fragment_distribution",
+      "exit": 0,
+      "seconds": 1.496,
+      "tests": 0
+    },
+    {
+      "name": "fracture_locality",
+      "exit": 0,
+      "seconds": 4.405,
+      "tests": 0
+    },
+    {
+      "name": "whitespace",
+      "exit": 0,
+      "seconds": 0.055,
+      "tests": 0
+    },
+    {
+      "name": "old_fixtures",
+      "exit": 0,
+      "seconds": 0.033,
+      "tests": 0
+    }
+  ]
+}

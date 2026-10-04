@@ -19,6 +19,7 @@
                     and steel, where only the brick one falls
       fracture    - DROP 0006 one-material fracture wall and persistent crack field
       replay      - deterministic lab script, paced through the existing F11 path
+      house       - four-material reference house and canonical window-hit replay
 
 .PARAMETER Section
     Diagnostics folder to write into, e.g. drop0004_9_hardware.
@@ -46,7 +47,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('impact', 'progressive', 'collapse', 'fracture', 'replay')]
+    [ValidateSet('impact', 'progressive', 'collapse', 'fracture', 'replay', 'house')]
     [string]$Demo = 'impact',
 
     [string]$Section = 'drop0004_9_hardware',
@@ -80,6 +81,10 @@ if ($Demo -eq 'fracture') {
 if ($Demo -eq 'replay') {
     if (-not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 1 }
     if (-not $PSBoundParameters.ContainsKey('Seconds')) { $Seconds = 30 }
+}
+if ($Demo -eq 'house') {
+    if (-not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 4 }
+    if (-not $PSBoundParameters.ContainsKey('Seconds')) { $Seconds = 32 }
 }
 
 # --- Preflight -------------------------------------------------------------
@@ -128,6 +133,7 @@ $envName = switch ($Demo) {
     'collapse'    { 'MICROLOGY_COLLAPSE_DEMO' }
     'fracture'    { 'MICROLOGY_FRACTURE_DEMO' }
     'replay'      { 'MICROLOGY_DESTRUCTION_LAB' }
+    'house'       { 'MICROLOGY_REFERENCE_HOUSE' }
 }
 
 $outDir = Join-Path $repo "docs/diagnostics/$Section"
@@ -208,6 +214,7 @@ $previousCompact = [Environment]::GetEnvironmentVariable('MICROLOGY_CAPTURE_COMP
 [Environment]::SetEnvironmentVariable($envName, '1')
 try {
     if ($Compact) { [Environment]::SetEnvironmentVariable('MICROLOGY_CAPTURE_COMPACT', '1') }
+    if ($Demo -eq 'house') { [Environment]::SetEnvironmentVariable('MICROLOGY_REPLAY_CAPTURE', '1') }
     if ($Demo -eq 'replay') {
         $scriptPath = if ([IO.Path]::IsPathRooted($ReplayScript)) { $ReplayScript } else { Join-Path $repo $ReplayScript }
         if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { throw "Replay script not found: $scriptPath" }

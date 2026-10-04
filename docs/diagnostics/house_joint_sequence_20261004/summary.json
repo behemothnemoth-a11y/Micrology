@@ -1,0 +1,331 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "scope": "Reference-house construction-joint diagnostic. Explicit release only; not an automatic load-failure model.",
+  "cell_mm_annotation": 50,
+  "normal_house_startup": "No seeded joint damage. Existing material/fracture defaults remain unchanged.",
+  "welded_control_120": {
+    "structural": {
+      "checksum_fnv1a64": "c79060e9ff14a5e5",
+      "fragment_cells": 43646,
+      "fragments": 22,
+      "static_anchors": 14528,
+      "static_cells": 120290
+    },
+    "fracture": {
+      "bond_entries": 527,
+      "broken_bonds": 170,
+      "cell_entries": 218,
+      "checksum_fnv1a64": "0cef29f82b76b54f",
+      "revision": 3
+    },
+    "contacts": {
+      "broken_bonds": 220,
+      "capped": 0,
+      "enqueued": 2,
+      "fragment_failed": 0,
+      "fragment_fragment_pairs": 0,
+      "fragments_created": 12,
+      "pending": 0,
+      "processed": 2,
+      "refused": 0,
+      "samples": 1,
+      "stale": 0,
+      "static_failed": 0,
+      "work": 939
+    },
+    "distribution": {
+      "pieces": 22,
+      "cells": 43646,
+      "largest": 43564,
+      "median": 6.0,
+      "mean": 1983.909,
+      "buckets": {
+        "1": 4,
+        "1024_plus": 1,
+        "2_3": 6,
+        "4_7": 11
+      },
+      "top20": [
+        43564,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        1
+      ]
+    }
+  },
+  "explicit_joint_release": {
+    "after_cut": {
+      "structural": {
+        "checksum_fnv1a64": "9fee985c3f5a0b8b",
+        "fragment_cells": 46302,
+        "fragments": 72,
+        "static_anchors": 14528,
+        "static_cells": 117634
+      },
+      "fracture": {
+        "bond_entries": 5891,
+        "broken_bonds": 5891,
+        "cell_entries": 0,
+        "checksum_fnv1a64": "af49f7df95966c89",
+        "revision": 2
+      },
+      "contacts": {
+        "broken_bonds": 0,
+        "capped": 0,
+        "enqueued": 0,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 0,
+        "fragments_created": 0,
+        "pending": 0,
+        "processed": 0,
+        "refused": 0,
+        "samples": 0,
+        "stale": 0,
+        "static_failed": 0,
+        "work": 0
+      },
+      "distribution": {
+        "pieces": 72,
+        "cells": 46302,
+        "largest": 2274,
+        "median": 546.0,
+        "mean": 643.083,
+        "buckets": {
+          "1024_plus": 20,
+          "16_31": 2,
+          "256_1023": 22,
+          "2_3": 8,
+          "32_63": 2,
+          "4_7": 8,
+          "64_255": 10
+        },
+        "top20": [
+          2274,
+          2014,
+          1884,
+          1840,
+          1840,
+          1690,
+          1622,
+          1602,
+          1560,
+          1458,
+          1414,
+          1308,
+          1256,
+          1256,
+          1155,
+          1155,
+          1134,
+          1114,
+          1104,
+          1088
+        ]
+      }
+    },
+    "after_25": {
+      "structural": {
+        "checksum_fnv1a64": "794464b1db5ae913",
+        "fragment_cells": 61139,
+        "fragments": 180,
+        "static_anchors": 14528,
+        "static_cells": 102789
+      },
+      "fracture": {
+        "bond_entries": 34341,
+        "broken_bonds": 6620,
+        "cell_entries": 11006,
+        "checksum_fnv1a64": "285881b09e4d0396",
+        "revision": 133
+      },
+      "contacts": {
+        "broken_bonds": 3101,
+        "capped": 57,
+        "enqueued": 142,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 38,
+        "fragments_created": 109,
+        "pending": 0,
+        "processed": 142,
+        "refused": 0,
+        "samples": 128,
+        "stale": 11,
+        "static_failed": 8,
+        "work": 58598
+      },
+      "distribution": {
+        "pieces": 180,
+        "cells": 61139,
+        "largest": 2274,
+        "median": 3.0,
+        "mean": 339.661,
+        "buckets": {
+          "1": 66,
+          "1024_plus": 26,
+          "16_31": 3,
+          "256_1023": 33,
+          "2_3": 26,
+          "32_63": 2,
+          "4_7": 10,
+          "64_255": 14
+        },
+        "top20": [
+          2274,
+          2061,
+          2014,
+          1884,
+          1840,
+          1840,
+          1690,
+          1622,
+          1602,
+          1560,
+          1458,
+          1414,
+          1368,
+          1308,
+          1304,
+          1264,
+          1256,
+          1256,
+          1195,
+          1155
+        ]
+      }
+    },
+    "after_120": {
+      "structural": {
+        "checksum_fnv1a64": "e9f90702a827c630",
+        "fragment_cells": 61142,
+        "fragments": 183,
+        "static_anchors": 14528,
+        "static_cells": 102786
+      },
+      "fracture": {
+        "bond_entries": 40487,
+        "broken_bonds": 6913,
+        "cell_entries": 12798,
+        "checksum_fnv1a64": "99129ef968d2b99a",
+        "revision": 151
+      },
+      "contacts": {
+        "broken_bonds": 3425,
+        "capped": 62,
+        "enqueued": 160,
+        "fragment_failed": 0,
+        "fragment_fragment_pairs": 42,
+        "fragments_created": 113,
+        "pending": 0,
+        "processed": 160,
+        "refused": 0,
+        "samples": 142,
+        "stale": 11,
+        "static_failed": 8,
+        "work": 69936
+      },
+      "distribution": {
+        "pieces": 183,
+        "cells": 61142,
+        "largest": 2274,
+        "median": 3,
+        "mean": 334.109,
+        "buckets": {
+          "1": 67,
+          "1024_plus": 26,
+          "16_31": 3,
+          "256_1023": 33,
+          "2_3": 27,
+          "32_63": 3,
+          "4_7": 10,
+          "64_255": 14
+        },
+        "top20": [
+          2274,
+          2061,
+          2014,
+          1884,
+          1840,
+          1840,
+          1690,
+          1622,
+          1602,
+          1560,
+          1458,
+          1414,
+          1368,
+          1308,
+          1304,
+          1264,
+          1256,
+          1256,
+          1195,
+          1155
+        ]
+      },
+      "materials": {
+        "single_material": {
+          "wood": {
+            "2_3": 10,
+            "pieces": 79,
+            "cells": 41000,
+            "4_7": 9,
+            "1024_plus": 15,
+            "256_1023": 26,
+            "64_255": 12,
+            "32_63": 2,
+            "1": 5
+          },
+          "masonry": {
+            "1024_plus": 11,
+            "pieces": 43,
+            "cells": 19030,
+            "256_1023": 4,
+            "16_31": 3,
+            "4_7": 1,
+            "1": 18,
+            "2_3": 5,
+            "64_255": 1
+          },
+          "concrete": {},
+          "glass": {
+            "256_1023": 3,
+            "pieces": 61,
+            "cells": 1112,
+            "1": 44,
+            "2_3": 12,
+            "64_255": 1,
+            "32_63": 1
+          }
+        },
+        "mixed_pieces": []
+      }
+    }
+  },
+  "interpretation": {
+    "largest_piece_cells_welded": 43564,
+    "largest_piece_cells_released": 2274,
+    "largest_piece_reduction_milli": 948,
+    "singletons_total_released": 67,
+    "singletons_glass": 44,
+    "singletons_masonry": 18,
+    "singletons_wood": 5,
+    "conclusion": "Construction connectivity, not one global fragment-size target, caused the giant collapse body. Most remaining single-cell debris is brittle glass/masonry."
+  }
+}

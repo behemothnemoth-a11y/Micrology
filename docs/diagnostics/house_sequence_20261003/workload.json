@@ -1,0 +1,225 @@
+{
+  "rows": [
+    {
+      "analysis_ms": 349.6553,
+      "broken": 64,
+      "capture_ms": 0.7065,
+      "commit_ms": 0.057,
+      "crack_topology_cells": 167192,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "legacy_full",
+      "occupancy_topology_cells": 167192,
+      "sample": 0,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 353.8711,
+      "broken": 64,
+      "capture_ms": 0.584,
+      "commit_ms": 0.049499999999999995,
+      "crack_topology_cells": 167192,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "legacy_full",
+      "occupancy_topology_cells": 167192,
+      "sample": 1,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 351.0617,
+      "broken": 64,
+      "capture_ms": 0.579,
+      "commit_ms": 0.052,
+      "crack_topology_cells": 167192,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "legacy_full",
+      "occupancy_topology_cells": 167192,
+      "sample": 2,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 356.9701,
+      "broken": 64,
+      "capture_ms": 0.6275999999999999,
+      "commit_ms": 0.0511,
+      "crack_topology_cells": 167192,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "legacy_full",
+      "occupancy_topology_cells": 167192,
+      "sample": 3,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 351.8015,
+      "broken": 64,
+      "capture_ms": 0.6016,
+      "commit_ms": 0.0554,
+      "crack_topology_cells": 167192,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "legacy_full",
+      "occupancy_topology_cells": 167192,
+      "sample": 4,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 5.9094999999999995,
+      "broken": 64,
+      "capture_ms": 0.6029,
+      "commit_ms": 0.07239999999999999,
+      "crack_topology_cells": 3801,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "support_paths",
+      "occupancy_topology_cells": 3917,
+      "sample": 0,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 6.159999999999999,
+      "broken": 64,
+      "capture_ms": 0.7333,
+      "commit_ms": 0.0517,
+      "crack_topology_cells": 3801,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "support_paths",
+      "occupancy_topology_cells": 3917,
+      "sample": 1,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 6.4519,
+      "broken": 64,
+      "capture_ms": 0.5857,
+      "commit_ms": 0.0457,
+      "crack_topology_cells": 3801,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "support_paths",
+      "occupancy_topology_cells": 3917,
+      "sample": 2,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 6.480600000000001,
+      "broken": 64,
+      "capture_ms": 0.5884,
+      "commit_ms": 0.0457,
+      "crack_topology_cells": 3801,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "support_paths",
+      "occupancy_topology_cells": 3917,
+      "sample": 3,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    },
+    {
+      "analysis_ms": 6.2193,
+      "broken": 64,
+      "capture_ms": 0.5636,
+      "commit_ms": 0.0471,
+      "crack_topology_cells": 3801,
+      "created": 14,
+      "erased": 0,
+      "fracture_work": 173,
+      "mode": "support_paths",
+      "occupancy_topology_cells": 3917,
+      "sample": 4,
+      "snapshot_geometry_bytes": 1908192,
+      "snapshot_volumes": 229,
+      "structural": {
+        "checksum_fnv1a64": "3acd719d72e7e680",
+        "fragment_cells": 37,
+        "fragments": 14,
+        "static_anchors": 14528,
+        "static_cells": 167155
+      }
+    }
+  ],
+  "scope": "CPU diagnostic; unchanged complete geometry snapshot, timings not assertions; same output at both modes"
+}
