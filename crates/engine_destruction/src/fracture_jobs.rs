@@ -64,6 +64,10 @@ pub struct JobSummary {
     pub broken: u64,
     pub created: u64,
     pub work: u64,
+    /// Topology work, separate from impact propagation.
+    pub structure_cells: u64,
+    pub occupancy_cross_check_cells: u64,
+    pub witness_work: Option<crate::fracture_witness::WitnessWork>,
     pub ids: Vec<FragmentId>,
     /// What the DROP 0006.6 grouping pass cost and produced, so a host can see
     /// partition cost separately from damage analysis.
@@ -242,6 +246,9 @@ impl FractureJobInput {
                     broken: c.fracture.broken.len() as u64,
                     created: c.fragments.len() as u64,
                     work: c.measurement.cells_visited + c.measurement.bonds_considered,
+                    structure_cells: c.separation.components.cells_visited,
+                    occupancy_cross_check_cells: c.separation.cross_check_cells_visited,
+                    witness_work: c.witness_work,
                     ids: c.fragments,
                     // The static path groups through `detach_if`, which is one
                     // fragment per occupancy component already; no grouping
@@ -272,6 +279,7 @@ impl FractureJobInput {
                     work: c.measurement.cells_visited + c.measurement.bonds_considered,
                     ids,
                     partition_work: c.partition_work,
+                    ..Default::default()
                 }
             }
         };
