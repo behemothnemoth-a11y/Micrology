@@ -140,3 +140,197 @@ jobs:
             target/replay-determinism/run1 \
             target/replay-determinism/run2 \
             target/replay-determinism/run3
+
+
+  fresh-showcase:
+    name: fresh runtime showcase
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'chatgpt/fresh-runtime-showcase-2026-10-03' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install graphics and capture dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-0 mesa-vulkan-drivers xvfb openbox xdotool \
+            ffmpeg fonts-dejavu-core
+      - name: Build current sandbox
+        run: cargo build --release -p sandbox
+      - name: Capture fresh demolition showcase
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTDIR="docs/diagnostics/fresh_runtime_showcase_2026_10_03"
+          WORK="${RUNNER_TEMP}/micrology-fresh-showcase"
+          rm -rf "$OUTDIR" "$WORK"
+          mkdir -p "$OUTDIR" "$WORK"
+
+          Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset >"$WORK/xvfb.log" 2>&1 &
+          XVFB_PID=$!
+          trap 'kill "$XVFB_PID" 2>/dev/null || true' EXIT
+          export DISPLAY=:99
+
+          x_ready=0
+          for _ in $(seq 1 100); do
+            if [ -S /tmp/.X11-unix/X99 ] && kill -0 "$XVFB_PID" 2>/dev/null; then
+              x_ready=1
+              break
+            fi
+            sleep 0.1
+          done
+          if [ "$x_ready" -ne 1 ]; then
+            cat "$WORK/xvfb.log"
+            echo "Xvfb did not become ready" >&2
+            exit 1
+          fi
+
+          openbox >"$WORK/openbox.log" 2>&1 &
+          export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)"
+          test -n "$VK_ICD_FILENAMES"
+          export WGPU_BACKEND=vulkan
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export MICROLOGY_DESTRUCTION_LAB=1
+          export MICROLOGY_REPLAY_SCRIPT="$PWD/fixtures/destruction/replay-demolition-building.json"
+          export MICROLOGY_REPLAY_CAPTURE=1
+          export RUST_BACKTRACE=1
+          export RUST_LOG=info
+
+          rm -rf target/diagnostics/destruction_lab
+          ./target/release/sandbox >"$OUTDIR/sandbox.stdout.log" 2>"$OUTDIR/sandbox.stderr.log" &
+          APP_PID=$!
+
+          WINDOW_ID=""
+          for _ in $(seq 1 200); do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              cat "$OUTDIR/sandbox.stderr.log"
+              echo "Micrology exited before its render window appeared" >&2
+              exit 1
+            fi
+            WINDOW_ID="$(xdotool search --onlyvisible --pid "$APP_PID" 2>/dev/null | head -n 1 || true)"
+            [ -n "$WINDOW_ID" ] && break
+            sleep 0.1
+          done
+          if [ -z "$WINDOW_ID" ]; then
+            echo "No Micrology render window found" >&2
+            exit 1
+          fi
+
+          xdotool windowmove "$WINDOW_ID" 0 0 || true
+          xdotool windowsize "$WINDOW_ID" 1280 720 || true
+          sleep 0.4
+
+          ffmpeg -hide_banner -loglevel warning -y \
+            -f x11grab -framerate 30 -video_size 1280x720 -i :99.0+0,0 \
+            -an -c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p \
+            "$WORK/runtime.mp4" >"$WORK/ffmpeg.log" 2>&1 &
+          FFMPEG_PID=$!
+
+          complete=0
+          for _ in $(seq 1 1800); do
+            if compgen -G 'target/diagnostics/destruction_lab/demolition_systems_off-tick*.json' >/dev/null; then
+              complete=1
+              break
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              cat "$OUTDIR/sandbox.stderr.log"
+              echo "Micrology exited before demolition replay completion" >&2
+              exit 1
+            fi
+            sleep 0.1
+          done
+          if [ "$complete" -ne 1 ]; then
+            cat "$OUTDIR/sandbox.stderr.log" || true
+            echo "Demolition replay did not complete within 180 seconds" >&2
+            exit 1
+          fi
+
+          sleep 3
+          kill -INT "$FFMPEG_PID" 2>/dev/null || true
+          wait "$FFMPEG_PID" 2>/dev/null || true
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+
+          test -s "$WORK/runtime.mp4"
+          cp target/diagnostics/destruction_lab/demolition_systems_off-tick*.json "$OUTDIR/"
+
+          FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          if [ ! -f "$FONT" ]; then FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; fi
+
+          cat >"$WORK/intro.txt" <<'EOF'
+          MICROLOGY
+          CURRENT RUNTIME SHOWCASE
+          Fresh capture — October 3, 2026
+
+          Structural collapse • native fragments
+          contact fracture • grab / move / slam • blast
+          EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=4" \
+            -vf "drawtext=fontfile=$FONT:textfile=$WORK/intro.txt:fontcolor=white:fontsize=40:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p "$WORK/intro.mp4"
+
+          cat >"$WORK/outro.txt" <<'EOF'
+          FRESH CURRENT-CODE CAPTURE
+
+          No older Micrology video was used.
+          Functional cloud render — not Windows/NVIDIA performance evidence.
+          EOF
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=0x0d0d11:s=1280x720:r=30:d=5" \
+            -vf "drawtext=fontfile=$FONT:textfile=$WORK/outro.txt:fontcolor=white:fontsize=36:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p "$WORK/outro.mp4"
+
+          printf "file '%s'\nfile '%s'\nfile '%s'\n" \
+            "$WORK/intro.mp4" "$WORK/runtime.mp4" "$WORK/outro.mp4" >"$WORK/concat.txt"
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f concat -safe 0 -i "$WORK/concat.txt" \
+            -an -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart \
+            "$OUTDIR/Micrology_Fresh_Runtime_Showcase_2026-10-03.mp4"
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 35 -i "$WORK/runtime.mp4" -frames:v 1 "$OUTDIR/thumbnail.png" || true
+
+          cat >"$OUTDIR/README.md" <<EOF
+          # Fresh Micrology runtime showcase — 2026-10-03
+
+          Built and captured directly from commit `${GITHUB_SHA}`.
+
+          Source scenario: `fixtures/destruction/replay-demolition-building.json`.
+
+          The runtime sequence exercises structural-capacity support failure,
+          roof release/collapse, contact fracture, native volumetric fragments,
+          grab/move/release/slam interaction, and a blast. No previously committed
+          MP4 was used as source footage.
+
+          Environment: GitHub Actions Ubuntu, Xvfb, Mesa lavapipe Vulkan.
+          This is visual functional evidence, not production GPU performance evidence.
+          EOF
+
+      - name: Upload fresh showcase artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: micrology-fresh-runtime-showcase
+          path: docs/diagnostics/fresh_runtime_showcase_2026_10_03/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Commit fresh showcase to the video branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/fresh_runtime_showcase_2026_10_03
+          git commit -m "video: add fresh Micrology current-runtime showcase [skip fresh video]"
+          git push origin "HEAD:chatgpt/fresh-runtime-showcase-2026-10-03"
