@@ -314,30 +314,49 @@ impl FractureJobInput {
             .iter()
             .flat_map(|p| FaceDir::ALL.into_iter().filter_map(|d| p.checked_step(d)))
             .collect();
-        let separation = separation_from_cracks(
-            &self.world,
-            &self.world,
-            &self.residency,
-            &CrackedBonds::new(&self.state, DamageSpace::StaticWorld),
-            roots.iter().copied(),
-            self.limits.transaction.structure,
-        );
-        let covered: BTreeSet<_> = separation
-            .components
-            .components
-            .iter()
-            .flat_map(|c| c.cells.iter().copied())
-            .collect();
-        if !separation.is_settled()
-            || roots.iter().any(|p| {
-                !self.residency.is_resident(*p)
-                    || (self.world.get(*p).is_some() && !covered.contains(p))
-            })
-        {
-            return Err(JobRefusal::Analysis(
-                FractureTransactionRefusal::StructureInconclusive,
-            ));
-        }
+        let (separation, witness_work) = if self.limits.transaction.support_witnesses {
+            let result = crate::fracture_witness::separation_with_support_witnesses(
+                &self.world,
+                &self.world,
+                &self.residency,
+                &CrackedBonds::new(&self.state, DamageSpace::StaticWorld),
+                roots.iter().copied(),
+                self.limits.transaction.structure,
+            )
+            .map_err(|_| JobRefusal::Analysis(FractureTransactionRefusal::StructureInconclusive))?;
+            // Success explicitly accounts for every root by support proof or
+            // fully closed detached component. Supported paths are NOT partial
+            // Component sets and must not be passed to detachment as such.
+            (result.separation, Some(result.work))
+        } else {
+            let separation = separation_from_cracks(
+                &self.world,
+                &self.world,
+                &self.residency,
+                &CrackedBonds::new(&self.state, DamageSpace::StaticWorld),
+                roots.iter().copied(),
+                self.limits.transaction.structure,
+            );
+            let covered: BTreeSet<_> = separation
+                .components
+                .components
+                .iter()
+                .flat_map(|c| c.cells.iter().copied())
+                .collect();
+            if !separation.is_settled()
+                || roots.iter().any(|p| {
+                    !self.residency.is_resident(*p)
+                        || (self.world.get(*p).is_some() && !covered.contains(p))
+                })
+            {
+                return Err(JobRefusal::Analysis(
+                    FractureTransactionRefusal::StructureInconclusive,
+                ));
+            }
+            (separation, None)
+        };
+        let structure_cells = separation.components.cells_visited;
+        let occupancy_cross_check_cells = separation.cross_check_cells_visited;
         let mut ids = Vec::new();
         if !separation.separated.is_empty() {
             if next.peek() == u64::MAX {
@@ -355,6 +374,9 @@ impl FractureJobInput {
         }
         let summary = JobSummary {
             failed: edit.removed_cells.len() as u64,
+            structure_cells,
+            occupancy_cross_check_cells,
+            witness_work,
             created: ids.len() as u64,
             ids,
             ..Default::default()

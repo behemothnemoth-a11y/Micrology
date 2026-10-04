@@ -151,16 +151,17 @@ pub fn separation_with_support_witnesses(
     };
     let mut cracked = WalkState::new(limits);
     let mut detached = Vec::new();
-    let mut searches = 0;
     for root in roots {
         if cracked.supported.contains(&root) || cracked.closed.contains(&root) {
             continue;
         }
-        if searches >= limits.max_components {
-            return Err(WitnessRefusal::Budget);
-        }
-        searches += 1;
         if let Some(component) = walk(&context, &mut cracked, root)? {
+            // Positive support paths and empty roots are bounded by cell work,
+            // not counted as fictitious full components. Only complete outputs
+            // consume the component cap.
+            if detached.len() >= limits.max_components {
+                return Err(WitnessRefusal::Budget);
+            }
             detached.push(component)
         }
     }

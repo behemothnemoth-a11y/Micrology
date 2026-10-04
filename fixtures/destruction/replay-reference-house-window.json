@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "reference_house_window_live",
+  "fixture_checksum_fnv1a64": "0914c4bcec7ce205",
+  "commands": [
+    {
+      "op": "reference_house"
+    },
+    {
+      "op": "pause"
+    },
+    {
+      "op": "dump",
+      "label": "house_intact"
+    },
+    {
+      "op": "blast",
+      "center_milli": [
+        98500,
+        35500,
+        4500
+      ],
+      "radius": 4,
+      "energy": 2400
+    },
+    {
+      "op": "dump",
+      "label": "house_after_fracture"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 20
+    },
+    {
+      "op": "dump",
+      "label": "house_falling_20"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 40
+    },
+    {
+      "op": "dump",
+      "label": "house_after_60"
+    }
+  ]
+}

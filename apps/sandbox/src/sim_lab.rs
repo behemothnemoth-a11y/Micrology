@@ -50,7 +50,8 @@ use engine_destruction::{
 
 use engine_stress::{
     DestructionBenchmarkCase, ReplayCommand, ReplayScript, baseline_wall, case_stimulus,
-    is_implemented, structural_state_digest, validate_replay, weak_repeat_replay,
+    is_implemented, reference_house_replay, structural_state_digest, validate_replay,
+    weak_repeat_replay,
 };
 use std::path::{Path, PathBuf};
 
@@ -150,6 +151,7 @@ pub fn requested() -> bool {
     std::env::var_os("MICROLOGY_DESTRUCTION_LAB").is_some()
         || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_some()
         || std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some()
+        || std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_some()
 }
 
 pub fn inactive(lab: Res<SimulationLab>) -> bool {
@@ -325,6 +327,40 @@ pub fn strike(
     };
     status.0 = result.unwrap_or_else(|e| format!("strike held: {e:?}"));
 }
+fn queue_house_scenario(
+    lab: &mut SimulationLab,
+    world: &WorldRes,
+    scenario: engine_stress::house_scenarios::HouseScenario,
+) -> Result<String, String> {
+    use engine_stress::house_scenarios::{HouseAction, action, impact_spec};
+    let (work, effect) = match action(scenario, &world.0) {
+        HouseAction::Impact(impact) => {
+            let (center, radius, _) = impact_spec(scenario).expect("impact scenario has a spec");
+            (
+                crate::fracture_worker::Work::Impact(impact),
+                crate::fracture_worker::Effect::Blast(
+                    engine_core::GlobalPos::new(center[0], center[1], center[2]),
+                    radius,
+                ),
+            )
+        }
+        HouseAction::Remove(targets) => (
+            crate::fracture_worker::Work::Remove(targets),
+            crate::fracture_worker::Effect::Cut,
+        ),
+    };
+    if !lab.background.enqueue(crate::fracture_worker::Request {
+        work,
+        effect,
+        space: DamageSpace::StaticWorld,
+        geometry: None,
+        static_volume: None,
+    }) {
+        return Err("house scenario held: queue full".into());
+    }
+    Ok(format!("house scenario {} queued", scenario.name()))
+}
+
 fn replay_from_environment() -> Result<ReplayScript, String> {
     let script = if let Some(path) = std::env::var_os("MICROLOGY_REPLAY_SCRIPT") {
         let path = PathBuf::from(path);
@@ -332,6 +368,8 @@ fn replay_from_environment() -> Result<ReplayScript, String> {
             .map_err(|error| format!("read replay {}: {error}", path.display()))?;
         serde_json::from_str(&text)
             .map_err(|error| format!("parse replay {}: {error}", path.display()))?
+    } else if std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_some() {
+        reference_house_replay()
     } else if std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some() {
         serde_json::from_str(include_str!(
             "../../../fixtures/destruction/replay-demolition-building.json"
@@ -389,17 +427,30 @@ pub fn seed(resources: LabSeedResources) {
         replay.commands.first(),
         Some(ReplayCommand::DemolitionBuilding)
     ) || std::env::var_os("MICROLOGY_DEMOLITION_BUILDING").is_some();
-    world.0 = if building {
+    let house = matches!(replay.commands.first(), Some(ReplayCommand::ReferenceHouse))
+        || std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_some();
+    world.0 = if house {
+        engine_stress::reference_house::build()
+    } else if building {
         engine_stress::demolition::building()
     } else {
         baseline_wall()
     };
     lab.background.building = building;
     contacts.clear();
-    palette.entries = vec![(
-        engine_destruction::REFERENCE_FRACTURE_MATERIAL,
-        "reference solid",
-    )];
+    palette.entries = if house {
+        vec![
+            (engine_stress::reference_house::WOOD, "wood"),
+            (engine_stress::reference_house::MASONRY, "masonry"),
+            (engine_stress::reference_house::CONCRETE, "concrete"),
+            (engine_stress::reference_house::GLASS, "glass"),
+        ]
+    } else {
+        vec![(
+            engine_destruction::REFERENCE_FRACTURE_MATERIAL,
+            "reference solid",
+        )]
+    };
     palette.selected = 0;
     world.0.mark_all_dirty();
 
@@ -407,16 +458,22 @@ pub fn seed(resources: LabSeedResources) {
     stream.enabled = false;
     stream.scheduler.clear();
     stream.streamer.clear();
-    stream.meta.spawn = if building {
-        [88.0, 24.0, 98.0]
+    if house {
+        let meta = engine_stress::reference_house::meta();
+        stream.meta.spawn = meta.spawn;
+        stream.meta.look_at = meta.look_at;
     } else {
-        [64.0, 11.0, 95.0]
-    };
-    stream.meta.look_at = Some(if building {
-        [64.0, 5.0, 66.0]
-    } else {
-        [64.0, 10.5, 64.0]
-    });
+        stream.meta.spawn = if building {
+            [88.0, 24.0, 98.0]
+        } else {
+            [64.0, 11.0, 95.0]
+        };
+        stream.meta.look_at = Some(if building {
+            [64.0, 5.0, 66.0]
+        } else {
+            [64.0, 10.5, 64.0]
+        });
+    }
 
     fragments.replace_store(Default::default());
     fragment_stream.reset(engine_io::FragmentIndex::default());
@@ -425,13 +482,20 @@ pub fn seed(resources: LabSeedResources) {
     lab.fracture_sequence = DamageSequence::default();
     lab.fracture_state = FractureState::new();
     lab.fracture_policy = BaselineFracturePolicy::REFERENCE;
+    lab.background.impact_policy = house.then(engine_stress::material_specimens::specimen_policy);
+    lab.background.job_limits = engine_destruction::fracture_jobs::FractureJobLimits::default();
+    if house {
+        lab.background.job_limits.volumes = 256;
+        lab.background.job_limits.transaction.support_witnesses = true;
+    }
     lab.last_separation = None;
 
     virtual_time.set_relative_speed(1.0);
     virtual_time.pause();
 
     lab.enabled = true;
-    lab.background.enabled = building || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_none();
+    lab.background.enabled =
+        house || building || std::env::var_os("MICROLOGY_REPLAY_SCRIPT").is_none();
     lab.speed_milli = 1000;
     lab.pending_fixed_steps = 0;
     lab.fixed_ticks = 0;
@@ -873,6 +937,15 @@ fn execute_next_replay_command(
             advance_replay_cursor(lab);
             Ok("demolition building ready; J capacity, 1–4 cut supports".into())
         }
+        ReplayCommand::ReferenceHouse => {
+            advance_replay_cursor(lab);
+            Ok("reference house ready; four-material worker active".into())
+        }
+        ReplayCommand::HouseScenario { scenario } => {
+            let result = queue_house_scenario(lab, world, scenario)?;
+            advance_replay_cursor(lab);
+            Ok(format!("replay {index}: {result}"))
+        }
         ReplayCommand::StructuralCapacity { enabled } => {
             lab.background.capacity_enabled = enabled;
             lab.background.capacity(0);
@@ -1122,6 +1195,7 @@ pub struct FixedStepReadiness<'w, 's> {
     bodies: Res<'w, FragmentBodies>,
     statics: Res<'w, StaticColliders>,
     camera: Option<Single<'w, 's, &'static FlyCamera>>,
+    focus: Option<Res<'w, crate::physics::HousePhysicsFocus>>,
 }
 
 pub fn apply_pending_fixed_step(
@@ -1136,6 +1210,7 @@ pub fn apply_pending_fixed_step(
         bodies,
         statics,
         camera,
+        focus,
     } = readiness;
     if !lab.enabled
         || lab.background.busy()
@@ -1150,8 +1225,16 @@ pub fn apply_pending_fixed_step(
     // for the renderer retiring another frame. Wait until collision derived
     // from the current cells/fragments is installed. Mesh uploads are
     // intentionally irrelevant: they may lag without changing physics.
-    let camera = camera.map(|camera| camera.global);
-    if pending_fixed_step_collision_work(&world.0, &fragments, &bodies, &statics, camera) > 0 {
+    let radius = focus
+        .as_ref()
+        .map_or(crate::physics::PHYSICS_RADIUS_CELLS, |f| f.radius);
+    let camera = focus
+        .as_ref()
+        .map(|f| f.center)
+        .or_else(|| camera.map(|c| c.global));
+    if pending_fixed_step_collision_work(&world.0, &fragments, &bodies, &statics, camera, radius)
+        > 0
+    {
         return;
     }
 

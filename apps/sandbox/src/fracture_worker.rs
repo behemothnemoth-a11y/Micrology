@@ -50,6 +50,8 @@ pub struct FractureWorker {
     /// Pending requests capture the current value at launch; active impacts
     /// reject before commit if this value changes to different contents.
     pub impact_policy: Option<OwnedFracturePolicy>,
+    /// Host-specific finite snapshot/transaction limits. Default is unchanged.
+    pub job_limits: FractureJobLimits,
     capacity_due: Option<u8>,
     pending: VecDeque<(Request, std::time::Instant)>,
     active: Option<(Task<Answer>, Request, std::time::Instant)>,
@@ -114,6 +116,8 @@ impl FractureWorker {
             "accepted":self.accepted,"failed_cells":self.failed,"stale":self.stale,"refused":self.refused,"capped":self.capped,
             "cut_failed":self.cut_failed,"capacity_failed":self.capacity_failed,"capacity_enabled":self.capacity_enabled,
             "capacity_status":self.capacity_status,"generation":self.generation,"max_queue":self.max_queue,
+            "job_volume_cap":self.job_limits.volumes,
+            "support_witnesses":self.job_limits.transaction.support_witnesses,
             "capture_ms":self.capture_ms,"commit_ms":self.commit_ms,"worker_ms":self.worker_ms,"queue_wait_ms":self.queue_wait_ms,"response_ms":self.response_ms})
     }
 }
@@ -347,7 +351,7 @@ pub fn drive(resources: Resources) {
         destruction.sequence,
         request.space,
         known,
-        FractureJobLimits::default(),
+        lab.background.job_limits,
     );
     sample(
         &mut lab.background.capture_ms,

@@ -41,6 +41,41 @@ use std::collections::{BTreeMap, BTreeSet};
 /// change the physical simulation radius.
 pub const PHYSICS_RADIUS_CELLS: u64 = 48;
 
+/// Opt-in diagnostic scope. The house camera is NOT the physics focus: an
+/// overview must not unload the floor underneath debris. All other scenes
+/// keep their camera-centered 48-cell neighborhood.
+#[derive(Resource)]
+pub struct HousePhysicsFocus {
+    pub center: engine_core::GlobalPos,
+    pub radius: u64,
+}
+impl Default for HousePhysicsFocus {
+    fn default() -> Self {
+        Self {
+            center: engine_core::GlobalPos::new(64., 40., 48.),
+            radius: 160,
+        }
+    }
+}
+/// Authored house convention: 50 mm cells, provisional density in kg/m^3.
+/// Average collider density gives the right total mass, but NOT a calibrated
+/// heterogeneous inertia tensor. No existing engine mass policy is replaced.
+pub(crate) fn house_collider_density(fragment: &Fragment) -> Option<f32> {
+    use engine_core::CellSource;
+    let mut sum = 0.;
+    for cell in fragment.occupied_cells() {
+        sum += match fragment.material_at(cell)?.0 {
+            101 => 600.,
+            102 => 2000.,
+            103 => 2400.,
+            104 => 2500.,
+            _ => return None,
+        };
+    }
+    (fragment.cell_count() > 0)
+        .then(|| (sum * 0.05f64.powi(3) / fragment.cell_count() as f64) as f32)
+}
+
 /// Bound backend collider publication work per rendered frame.
 ///
 /// CPU occupancy compilation runs on workers; Avian compound-collider creation
@@ -56,7 +91,15 @@ const MAX_ACTIVE_FRAGMENT_COLLISION_JOBS: usize = 8;
 /// Avian stays a host dependency. Returning the plugin group from here keeps
 /// even the application root from needing to know its types.
 pub fn physics_plugins() -> PhysicsPlugins {
-    PhysicsPlugins::default()
+    let plugins = PhysicsPlugins::default();
+    if std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_some() {
+        // One authored cell is 50 mm in the reference-house diagnostic, so
+        // twenty simulation units correspond to one metre for Avian's internal
+        // length-based tolerances. User-facing positions/forces are not scaled.
+        plugins.with_length_unit(20.0)
+    } else {
+        plugins
+    }
 }
 
 #[derive(Debug)]
@@ -114,17 +157,24 @@ impl StaticColliders {
     /// authoritative. This is derived from live cells and collider
     /// fingerprints, not from render state or from how many Update frames have
     /// happened to retire.
+    #[cfg(test)]
     pub(crate) fn pending_for_fixed_step(
         &self,
         world: &engine_world::World,
         camera: engine_core::GlobalPos,
     ) -> usize {
+        self.pending_in_scope(world, camera, PHYSICS_RADIUS_CELLS)
+    }
+    pub(crate) fn pending_in_scope(
+        &self,
+        world: &engine_world::World,
+        camera: engine_core::GlobalPos,
+        radius: u64,
+    ) -> usize {
         let camera_cell = camera.cell();
         world
             .volume_positions()
-            .filter(|volume| {
-                distance_to_bounds(camera_cell, volume_bounds(*volume)) <= PHYSICS_RADIUS_CELLS
-            })
+            .filter(|volume| distance_to_bounds(camera_cell, volume_bounds(*volume)) <= radius)
             .filter(|volume| {
                 let fingerprint = StaticCollisionFingerprint::of(world, *volume);
                 !self
@@ -223,13 +273,19 @@ pub fn sync_static_colliders(
     world: Res<WorldRes>,
     camera: Option<Single<&FlyCamera>>,
     mut colliders: ResMut<StaticColliders>,
+    focus: Option<Res<HousePhysicsFocus>>,
 ) {
     colliders.stats.rebuilt_this_frame = 0;
 
-    let Some(camera) = camera else {
+    let radius = focus.as_ref().map_or(PHYSICS_RADIUS_CELLS, |f| f.radius);
+    let Some(camera) = focus
+        .as_ref()
+        .map(|f| f.center)
+        .or_else(|| camera.map(|c| c.global))
+    else {
         return;
     };
-    let camera_cell = camera.global.cell();
+    let camera_cell = camera.cell();
 
     // Populate from world storage rather than the mesh cache. A completely
     // enclosed solid volume can legitimately have no visible mesh and must
@@ -237,7 +293,7 @@ pub fn sync_static_colliders(
     let mut desired = BTreeMap::<VolumePos, u64>::new();
     for volume in world.volume_positions() {
         let distance = distance_to_bounds(camera_cell, volume_bounds(volume));
-        if distance <= PHYSICS_RADIUS_CELLS {
+        if distance <= radius {
             desired.insert(volume, distance);
         }
     }
@@ -724,16 +780,26 @@ impl FragmentBodies {
     /// Fragments inside physics residency that do not yet have current
     /// collision. A budget-withheld fragment is a settled host-policy decision,
     /// so it does not deadlock deterministic stepping; jobs/ready results do.
+    #[cfg(test)]
     pub(crate) fn pending_for_fixed_step(
         &self,
         fragments: &DynamicFragments,
         camera: Option<engine_core::GlobalPos>,
     ) -> usize {
+        self.pending_in_scope(fragments, camera, PHYSICS_RADIUS_CELLS)
+    }
+    pub(crate) fn pending_in_scope(
+        &self,
+        fragments: &DynamicFragments,
+        camera: Option<engine_core::GlobalPos>,
+        radius: u64,
+    ) -> usize {
         fragments
             .iter()
             .filter(|(id, fragment)| {
                 *id == SMOKE_FRAGMENT_ID
-                    || camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera))
+                    || camera
+                        .is_some_and(|camera| fragment_in_physics_range(fragment, camera, radius))
             })
             .filter(|(id, fragment)| {
                 !self.blocked.contains(id)
@@ -852,10 +918,19 @@ type FragmentBodyQuery<'w, 's> = Query<
     With<DynamicFragmentBody>,
 >;
 
+#[cfg(test)]
 fn bounds_in_physics_range(
     min: engine_core::GlobalPos,
     max: engine_core::GlobalPos,
     camera: engine_core::GlobalPos,
+) -> bool {
+    bounds_in_scope(min, max, camera, PHYSICS_RADIUS_CELLS)
+}
+fn bounds_in_scope(
+    min: engine_core::GlobalPos,
+    max: engine_core::GlobalPos,
+    camera: engine_core::GlobalPos,
+    radius: u64,
 ) -> bool {
     fn axis(value: f64, min: f64, max: f64) -> f64 {
         if value < min {
@@ -870,12 +945,16 @@ fn bounds_in_physics_range(
     let dx = axis(camera.x, min.x, max.x);
     let dy = axis(camera.y, min.y, max.y);
     let dz = axis(camera.z, min.z, max.z);
-    dx.max(dy).max(dz) <= PHYSICS_RADIUS_CELLS as f64
+    dx.max(dy).max(dz) <= radius as f64
 }
 
-fn fragment_in_physics_range(fragment: &Fragment, camera: engine_core::GlobalPos) -> bool {
+fn fragment_in_physics_range(
+    fragment: &Fragment,
+    camera: engine_core::GlobalPos,
+    radius: u64,
+) -> bool {
     let (min, max) = fragment.world_bounds();
-    bounds_in_physics_range(min, max, camera)
+    bounds_in_scope(min, max, camera, radius)
 }
 
 /// Reconcile engine-owned fragments with Avian bodies.
@@ -891,6 +970,7 @@ pub struct FragmentBodySources<'w, 's> {
     renders: Res<'w, crate::fragment_render::FragmentEntities>,
     budget: Res<'w, FragmentBudgetRes>,
     camera: Option<Single<'w, 's, &'static FlyCamera>>,
+    focus: Option<Res<'w, HousePhysicsFocus>>,
 }
 
 pub fn sync_fragment_bodies(
@@ -905,18 +985,24 @@ pub fn sync_fragment_bodies(
         renders,
         budget,
         camera,
+        focus,
     } = sources;
     bodies.withheld_current = 0;
     bodies.pending_spawn_current = 0;
-    let camera = camera.map(|camera| camera.global);
+    let radius = focus.as_ref().map_or(PHYSICS_RADIUS_CELLS, |f| f.radius);
+    let camera = focus
+        .as_ref()
+        .map(|f| f.center)
+        .or_else(|| camera.map(|c| c.global));
     let static_collision_ready =
-        camera.is_none_or(|camera| statics.pending_for_fixed_step(&world.0, camera) == 0);
+        camera.is_none_or(|camera| statics.pending_in_scope(&world.0, camera, radius) == 0);
     let wanted: BTreeSet<_> = fragments
         .iter()
         .filter(|(id, fragment)| {
             *id == SMOKE_FRAGMENT_ID
                 || (static_collision_ready
-                    && camera.is_some_and(|camera| fragment_in_physics_range(fragment, camera)))
+                    && camera
+                        .is_some_and(|camera| fragment_in_physics_range(fragment, camera, radius)))
         })
         .map(|(id, _)| id)
         .collect();
@@ -1083,6 +1169,11 @@ pub fn sync_fragment_bodies(
             collider,
             DynamicFragmentBody(id),
         ));
+        if focus.is_some()
+            && let Some(density) = house_collider_density(fragment)
+        {
+            entity.insert(avian3d::prelude::ColliderDensity(density));
+        }
         if descriptor.sleeping {
             entity.insert(Sleeping);
         }
@@ -1128,9 +1219,10 @@ pub(crate) fn pending_fixed_step_collision_work(
     bodies: &FragmentBodies,
     statics: &StaticColliders,
     camera: Option<engine_core::GlobalPos>,
+    radius: u64,
 ) -> usize {
-    let static_pending = camera.map_or(0, |camera| statics.pending_for_fixed_step(world, camera));
-    static_pending.saturating_add(bodies.pending_for_fixed_step(fragments, camera))
+    let static_pending = camera.map_or(0, |camera| statics.pending_in_scope(world, camera, radius));
+    static_pending.saturating_add(bodies.pending_in_scope(fragments, camera, radius))
 }
 
 /// Copy backend simulation state back into Micrology fragments.

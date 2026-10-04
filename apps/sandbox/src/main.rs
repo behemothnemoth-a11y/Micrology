@@ -116,6 +116,15 @@ pub struct StatusLine(pub String);
 fn main() {
     let mut app = App::new();
 
+    if std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_some() {
+        // The reference-house convention is 20 cells/metre. Avian gravity is a
+        // user-space acceleration, so scale 9.81 m/s² into cell-units/s².
+        app.insert_resource(avian3d::prelude::Gravity(avian3d::math::Vector::new(
+            0.0, -196.2, 0.0,
+        )));
+        app.insert_resource(physics::HousePhysicsFocus::default());
+    }
+
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             // Configure only this newly created capture window; never move or

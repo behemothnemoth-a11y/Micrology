@@ -13,11 +13,17 @@ use serde::{Deserialize, Serialize};
 pub const DESTRUCTION_REPLAY_VERSION: u32 = 1;
 pub const WEAK_REPEAT_REPLAY_PATH: &str = "fixtures/destruction/replay-weak-repeat.json";
 pub const DAMAGED_AREA_REPLAY_PATH: &str = "fixtures/destruction/replay-damaged-area.json";
+pub const REFERENCE_HOUSE_REPLAY_PATH: &str =
+    "fixtures/destruction/replay-reference-house-window.json";
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum ReplayCommand {
     DemolitionBuilding,
+    ReferenceHouse,
+    HouseScenario {
+        scenario: crate::house_scenarios::HouseScenario,
+    },
     StructuralCapacity {
         enabled: bool,
     },
@@ -145,6 +151,43 @@ pub fn structural_state_digest(world: &World, fragments: &FragmentStore) -> Stru
         fragment_cells,
         checksum_fnv1a64: format!("{hash:016x}"),
     }
+}
+
+pub fn reference_house_replay() -> ReplayScript {
+    let world = crate::reference_house::build();
+    ReplayScript {
+        version: DESTRUCTION_REPLAY_VERSION,
+        name: "reference_house_window_live".into(),
+        fixture_checksum_fnv1a64: structural_state_digest(&world, &FragmentStore::default())
+            .checksum_fnv1a64,
+        commands: vec![
+            ReplayCommand::ReferenceHouse,
+            ReplayCommand::Pause,
+            ReplayCommand::Dump {
+                label: "house_intact".into(),
+            },
+            ReplayCommand::Blast {
+                center_milli: [98_500, 35_500, 4_500],
+                radius: 4,
+                energy: 2_400,
+            },
+            ReplayCommand::Dump {
+                label: "house_after_fracture".into(),
+            },
+            ReplayCommand::AdvanceFixed { steps: 20 },
+            ReplayCommand::Dump {
+                label: "house_falling_20".into(),
+            },
+            ReplayCommand::AdvanceFixed { steps: 40 },
+            ReplayCommand::Dump {
+                label: "house_after_60".into(),
+            },
+        ],
+    }
+}
+
+pub fn reference_house_replay_json() -> serde_json::Result<String> {
+    replay_to_json(&reference_house_replay())
 }
 
 pub fn weak_repeat_replay() -> ReplayScript {
@@ -317,7 +360,11 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
         script.commands.first(),
         Some(ReplayCommand::DemolitionBuilding)
     );
-    let expected = if building {
+    let house = matches!(script.commands.first(), Some(ReplayCommand::ReferenceHouse));
+    let expected = if house {
+        structural_state_digest(&crate::reference_house::build(), &FragmentStore::default())
+            .checksum_fnv1a64
+    } else if building {
         structural_state_digest(&crate::demolition::building(), &FragmentStore::default())
             .checksum_fnv1a64
     } else {
@@ -339,10 +386,16 @@ pub fn validate_replay(script: &ReplayScript) -> Result<(), ReplayValidationErro
 
     for (index, command) in script.commands.iter().enumerate() {
         match command {
-            ReplayCommand::BenchmarkCase { .. } if building => {
+            ReplayCommand::BenchmarkCase { .. } if building || house => {
                 return Err(ReplayValidationError::InvalidInteraction { index });
             }
             ReplayCommand::DemolitionBuilding if index != 0 => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::ReferenceHouse if index != 0 => {
+                return Err(ReplayValidationError::InvalidInteraction { index });
+            }
+            ReplayCommand::HouseScenario { .. } if !house => {
                 return Err(ReplayValidationError::InvalidInteraction { index });
             }
             ReplayCommand::CutSupport { index: support } if !building || *support >= 4 => {
@@ -462,6 +515,29 @@ mod tests {
                 Err(ReplayValidationError::InvalidLaunch { .. })
             ));
         }
+    }
+
+    #[test]
+    fn reference_house_replay_is_valid_and_pinned_to_the_static_house() {
+        let replay = reference_house_replay();
+        validate_replay(&replay).unwrap();
+        assert!(matches!(
+            replay.commands.first(),
+            Some(ReplayCommand::ReferenceHouse)
+        ));
+        assert_eq!(
+            replay.fixture_checksum_fnv1a64,
+            structural_state_digest(&crate::reference_house::build(), &FragmentStore::default())
+                .checksum_fnv1a64
+        );
+    }
+
+    #[test]
+    fn committed_reference_house_replay_is_canonical() {
+        let generated = reference_house_replay_json().unwrap();
+        let committed =
+            include_str!("../../../fixtures/destruction/replay-reference-house-window.json");
+        assert_eq!(generated, committed);
     }
 
     #[test]
