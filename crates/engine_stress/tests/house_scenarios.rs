@@ -9,6 +9,14 @@ fn controlled_house_scenarios_keep_their_measured_material_character() {
         (HouseScenario::Chimney, 227, 42, 65, 97, 6),
         (HouseScenario::RoofHit, 97, 0, 0, 0, 0),
         (HouseScenario::SupportBand, 0, 3256, 11, 43636, 43576),
+        (
+            HouseScenario::SupportBandReleasedJoints,
+            0,
+            3256,
+            72,
+            46302,
+            2274,
+        ),
     ];
     for (scenario, broken, erased, objects, fragment_cells, largest) in expected {
         let (_, report) = house_scenarios::run(scenario).unwrap();
@@ -77,6 +85,24 @@ fn support_cut_is_an_explicit_large_component_diagnostic_not_fake_pulverization(
     assert_eq!(report.broken, 0, "this scenario cuts occupancy explicitly");
     assert!(report.crack_topology_cells > 0);
     assert!(report.occupancy_topology_cells > 0);
+}
+
+#[test]
+fn explicit_authored_joint_release_reduces_the_catastrophic_weld_without_changing_the_control() {
+    let (_, welded) = house_scenarios::run(HouseScenario::SupportBand).unwrap();
+    let (_, jointed) = house_scenarios::run(HouseScenario::SupportBandReleasedJoints).unwrap();
+    assert_eq!(welded.sizes.last().copied(), Some(43_576));
+    assert_eq!(jointed.sizes.last().copied(), Some(2_274));
+    assert_eq!(jointed.objects, 72);
+    assert_eq!(jointed.erased, welded.erased);
+    assert_eq!(
+        jointed.broken, 0,
+        "explicit authored release predates the occupancy cut"
+    );
+    assert!(
+        jointed.fragment_cells > welded.fragment_cells,
+        "joint cuts expose more unsupported construction"
+    );
 }
 
 #[test]

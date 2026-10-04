@@ -5,11 +5,12 @@ use crate::{
     fragment_distribution::{BUCKETS, measure_shape},
     house_impact,
     material_specimens::specimen_policy,
-    reference_house, structural_state_digest,
+    reference_house, reference_house_joints, structural_state_digest,
 };
 use engine_core::{CellPos, CellSource, GlobalPos, MaterialId};
 use engine_destruction::{
     fracture_jobs::{FractureJobLimits, JobSummary},
+    fragment_partition::FragmentPartitionPolicy,
     *,
 };
 use engine_world::World;
@@ -25,15 +26,17 @@ pub enum HouseScenario {
     Chimney,
     RoofHit,
     SupportBand,
+    SupportBandReleasedJoints,
 }
 impl HouseScenario {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Window,
         Self::FrameJoint,
         Self::WallBreach,
         Self::Chimney,
         Self::RoofHit,
         Self::SupportBand,
+        Self::SupportBandReleasedJoints,
     ];
     pub const fn name(self) -> &'static str {
         match self {
@@ -43,6 +46,7 @@ impl HouseScenario {
             Self::Chimney => "chimney",
             Self::RoofHit => "roof_hit",
             Self::SupportBand => "support_band",
+            Self::SupportBandReleasedJoints => "support_band_released_joints",
         }
     }
 }
@@ -58,16 +62,22 @@ pub fn impact_spec(scenario: HouseScenario) -> Option<([f64; 3], u32, u32)> {
         HouseScenario::WallBreach => Some(([4.5, 16.5, 50.5], 6, 12000)),
         HouseScenario::Chimney => Some(([13.5, 81.5, 80.5], 5, 12000)),
         HouseScenario::RoofHit => Some(([64.5, 85.5, 54.5], 5, 12000)),
-        HouseScenario::SupportBand => None,
+        HouseScenario::SupportBand | HouseScenario::SupportBandReleasedJoints => None,
     }
 }
 pub fn limits() -> FractureJobLimits {
     let mut caps = house_impact::limits();
     caps.transaction.support_witnesses = true;
+    // House diagnostic only. Contact re-fracture may merge tiny adjacent crack
+    // components; topology still comes from the exact fracture-aware classifier.
+    caps.transaction.partition = FragmentPartitionPolicy::CONSERVATIVE;
     caps
 }
 pub fn action(scenario: HouseScenario, world: &World) -> HouseAction {
-    if scenario == HouseScenario::SupportBand {
+    if matches!(
+        scenario,
+        HouseScenario::SupportBand | HouseScenario::SupportBandReleasedJoints
+    ) {
         // A labeled diagnostic severing plane, including infill and chimney paths.
         // Not a claim that cutting a single timber post makes an entire roof fall.
         let targets = house_impact::world_cells(world)
@@ -122,6 +132,13 @@ pub fn execute(
     caps: FractureJobLimits,
 ) -> Result<JobSummary, String> {
     let policy = specimen_policy();
+    if scenario == HouseScenario::SupportBandReleasedJoints {
+        // Explicit catastrophic diagnostic: authored construction interfaces are
+        // released before the severing cut. This is not normal house startup and
+        // not a claim that partial joints fail from gravity automatically.
+        reference_house_joints::seed(&mut state.fracture, &state.world, 0)
+            .map_err(|e| format!("joint release: {e:?}"))?;
+    }
     let work = action(scenario, &state.world);
     let input = state
         .capture(house_impact::known(), caps)

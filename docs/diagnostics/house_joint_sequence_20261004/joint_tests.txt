@@ -1,0 +1,10 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+     Running tests\reference_house_joints.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\reference_house_joints-db76435441f4165c.exe)
+
+running 4 tests
+test semantic_labels_are_local_to_reference_house_construction_zones ... ok
+test ordinary_unseeded_house_still_has_full_integrity_everywhere ... ok
+test joint_map_is_deterministic_nonempty_and_keeps_concrete_out_of_the_prototype ... ok
+test explicit_release_changes_only_authored_joint_state_and_not_geometry ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s

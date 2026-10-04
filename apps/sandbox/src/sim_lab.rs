@@ -332,7 +332,16 @@ fn queue_house_scenario(
     world: &WorldRes,
     scenario: engine_stress::house_scenarios::HouseScenario,
 ) -> Result<String, String> {
-    use engine_stress::house_scenarios::{HouseAction, action, impact_spec};
+    use engine_stress::house_scenarios::{HouseAction, HouseScenario, action, impact_spec};
+    if scenario == HouseScenario::SupportBandReleasedJoints {
+        let released =
+            engine_stress::reference_house_joints::seed(&mut lab.fracture_state, &world.0, 0)
+                .map_err(|error| format!("house joint release refused: {error:?}"))?;
+        info!(
+            "catastrophic support diagnostic released {} authored joints",
+            released.bonds
+        );
+    }
     let (work, effect) = match action(scenario, &world.0) {
         HouseAction::Impact(impact) => {
             let (center, radius, _) = impact_spec(scenario).expect("impact scenario has a spec");
@@ -437,6 +446,8 @@ pub fn seed(resources: LabSeedResources) {
         baseline_wall()
     };
     lab.background.building = building;
+    // Contact fracture keeps its global 32-hit pending bound. The host ranks
+    // simultaneous pairs strongest-first before that bound is applied.
     contacts.clear();
     palette.entries = if house {
         vec![
@@ -481,12 +492,24 @@ pub fn seed(resources: LabSeedResources) {
     destruction.sequence = DestructionSequence::new(0);
     lab.fracture_sequence = DamageSequence::default();
     lab.fracture_state = FractureState::new();
+    // Authored construction interfaces remain metadata until an explicit
+    // diagnostic releases them. Normal house startup has no pre-damaged bonds.
     lab.fracture_policy = BaselineFracturePolicy::REFERENCE;
     lab.background.impact_policy = house.then(engine_stress::material_specimens::specimen_policy);
     lab.background.job_limits = engine_destruction::fracture_jobs::FractureJobLimits::default();
     if house {
         lab.background.job_limits.volumes = 256;
         lab.background.job_limits.transaction.support_witnesses = true;
+        lab.background.job_limits.transaction.partition =
+            engine_destruction::fragment_partition::FragmentPartitionPolicy::CONSERVATIVE;
+        // Catastrophic authored-joint release has a measured 70,465-cell
+        // occupancy cross-check. Keep a finite diagnostic ceiling above that;
+        // ordinary sandbox defaults and local-house witness work stay unchanged.
+        lab.background.job_limits.transaction.structure = StructuralLimits {
+            max_cells_per_component: 131_072,
+            max_cells_total: 131_072,
+            max_components: 512,
+        };
     }
     lab.last_separation = None;
 
@@ -554,9 +577,16 @@ fn dump_state(
     let dynamics: Vec<_> = fragments
         .iter()
         .map(|(id, fragment)| {
+            let mut material_cells = std::collections::BTreeMap::<u32, u64>::new();
+            for (_, volume) in fragment.volumes() {
+                for (_, material) in volume.iter_occupied() {
+                    *material_cells.entry(material.0).or_default() += 1;
+                }
+            }
             serde_json::json!({
                 "id": id.to_string(),
                 "cells": fragment.cell_count(),
+                "material_cells": material_cells,
                 "source_origin": [
                     fragment.source_origin.x,
                     fragment.source_origin.y,

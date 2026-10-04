@@ -1,0 +1,11 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.14s
+     Running tests\house_scenarios.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\house_scenarios-63b4f5b05039f3f5.exe)
+
+running 5 tests
+test support_cut_is_an_explicit_large_component_diagnostic_not_fake_pulverization ... ok
+test boundary_and_material_specific_cases_touch_only_the_expected_materials ... ok
+test explicit_authored_joint_release_reduces_the_catastrophic_weld_without_changing_the_control ... ok
+test controlled_house_scenarios_keep_their_measured_material_character ... ok
+test independent_runs_are_identical_for_each_controlled_house_case ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.75s
