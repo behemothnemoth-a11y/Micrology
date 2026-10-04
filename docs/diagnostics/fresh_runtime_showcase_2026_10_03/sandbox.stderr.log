@@ -1,8 +1,8 @@
-[2m2026-10-03T12:01:03.437254Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "Linux (Ubuntu 24.04)", kernel: "6.17.0-1022-azure", cpu: "AMD EPYC 7763 64-Core Processor", core_count: "2", memory: "15.6 GiB" }
-[2m2026-10-03T12:01:03.437714Z[0m [32m INFO[0m [2mbevy_app::terminal_ctrl_c_handler[0m[2m:[0m Skipping installing `Ctrl+C` handler as one was already installed. Please call `TerminalCtrlCHandlerPlugin::gracefully_exit` in your own `Ctrl+C` handler if you want Bevy to gracefully exit on `Ctrl+C`.
-[2m2026-10-03T12:01:03.622427Z[0m [33m WARN[0m [2mwinit::platform_impl::linux::x11::xdisplay[0m[2m:[0m error setting XSETTINGS; Xft options won't reload automatically
-[2m2026-10-03T12:01:05.741331Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "llvmpipe (LLVM 20.1.2, 256 bits)", vendor: 65541, device: 0, device_type: Cpu, device_pci_bus_id: "", driver: "llvmpipe", driver_info: "Mesa 25.2.8-0ubuntu0.24.04.4 (LLVM 20.1.2)", backend: Vulkan, subgroup_min_size: 8, subgroup_max_size: 8, transient_saves_memory: false }
-[2m2026-10-03T12:01:05.741366Z[0m [33m WARN[0m [2mbevy_render::renderer[0m[2m:[0m The selected adapter is using a driver that only supports software rendering. This is likely to be very slow. See https://bevy.org/learn/errors/b0006/
+[2m2026-10-04T22:09:24.439430Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "Linux (Ubuntu 24.04)", kernel: "6.17.0-1022-azure", cpu: "Intel(R) Xeon(R) 6973P-C", core_count: "2", memory: "15.6 GiB" }
+[2m2026-10-04T22:09:24.439796Z[0m [32m INFO[0m [2mbevy_app::terminal_ctrl_c_handler[0m[2m:[0m Skipping installing `Ctrl+C` handler as one was already installed. Please call `TerminalCtrlCHandlerPlugin::gracefully_exit` in your own `Ctrl+C` handler if you want Bevy to gracefully exit on `Ctrl+C`.
+[2m2026-10-04T22:09:24.576069Z[0m [33m WARN[0m [2mwinit::platform_impl::linux::x11::xdisplay[0m[2m:[0m error setting XSETTINGS; Xft options won't reload automatically
+[2m2026-10-04T22:09:27.070686Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "llvmpipe (LLVM 20.1.2, 256 bits)", vendor: 65541, device: 0, device_type: Cpu, device_pci_bus_id: "", driver: "llvmpipe", driver_info: "Mesa 25.2.8-0ubuntu0.24.04.4 (LLVM 20.1.2)", backend: Vulkan, subgroup_min_size: 8, subgroup_max_size: 8, transient_saves_memory: false }
+[2m2026-10-04T22:09:27.070713Z[0m [33m WARN[0m [2mbevy_render::renderer[0m[2m:[0m The selected adapter is using a driver that only supports software rendering. This is likely to be very slow. See https://bevy.org/learn/errors/b0006/
 ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
 ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
 ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
@@ -11,39 +11,39 @@ ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
 ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
 ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
 ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
-[2m2026-10-03T12:01:06.670254Z[0m [33m WARN[0m [2mbevy_audio::audio_output[0m[2m:[0m No audio device found.
-[2m2026-10-03T12:01:06.687839Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
-[2m2026-10-03T12:01:06.687872Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
-[2m2026-10-03T12:01:06.688469Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window Micrology — volumetric destruction lab (65v0)
-[2m2026-10-03T12:01:06.688690Z[0m [33m WARN[0m [2mwinit::platform_impl::linux::x11::util::randr[0m[2m:[0m XRandR reported that the display's 0mm in size, which is certifiably insane
-[2m2026-10-03T12:01:06.688747Z[0m [32m INFO[0m [2mwinit::platform_impl::linux::x11::window[0m[2m:[0m Guessed window scale factor: 1
-[2m2026-10-03T12:01:08.884193Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m demolition building ready; J capacity, 1–4 cut supports
-[2m2026-10-03T12:01:10.747670Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 1: paused
-[2m2026-10-03T12:01:12.711882Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity true
-[2m2026-10-03T12:01:14.826581Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 3: saved demolition_intact
-[2m2026-10-03T12:01:16.803248Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m support 0 cut queued
-[2m2026-10-03T12:01:18.938379Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 5: saved demolition_one_support
-[2m2026-10-03T12:01:20.998651Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity false
-[2m2026-10-03T12:01:22.942476Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m support 1 cut queued
-[2m2026-10-03T12:01:25.041723Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 8: saved demolition_overloaded_off
-[2m2026-10-03T12:01:27.038407Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity true
-[2m2026-10-03T12:01:29.140297Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 10: saved demolition_roof_released
-[2m2026-10-03T12:01:31.101398Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 11: contact fracture true
-[2m2026-10-03T12:01:33.087641Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 12: queued 120 fixed step(s)
-[2m2026-10-03T12:01:43.018636Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 13: saved demolition_roof_impact
-[2m2026-10-03T12:01:44.987104Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m holding native fragment f0.0
-[2m2026-10-03T12:01:47.041899Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 15: queued 90 fixed step(s)
-[2m2026-10-03T12:01:55.590294Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 16: saved demolition_lifted
-[2m2026-10-03T12:01:57.659079Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m hold target moved
-[2m2026-10-03T12:01:59.657267Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 18: queued 90 fixed step(s)
-[2m2026-10-03T12:02:08.820020Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 19: saved demolition_pulled
-[2m2026-10-03T12:02:10.747287Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m fragment released
-[2m2026-10-03T12:02:12.802815Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 21: queued 90 fixed step(s)
-[2m2026-10-03T12:02:21.662166Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 22: saved demolition_slammed
-[2m2026-10-03T12:02:23.669087Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m blast queued: 2 bounded targets
-[2m2026-10-03T12:02:25.785635Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 24: queued 180 fixed step(s)
-[2m2026-10-03T12:02:40.262237Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 25: saved demolition_settled
-[2m2026-10-03T12:02:42.277038Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity false
-[2m2026-10-03T12:02:44.268395Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 27: contact fracture false
-[2m2026-10-03T12:02:46.235271Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 28: queued 120 fixed step(s)
-[2m2026-10-03T12:02:55.302917Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 29: saved demolition_systems_off
+[2m2026-10-04T22:09:28.165643Z[0m [33m WARN[0m [2mbevy_audio::audio_output[0m[2m:[0m No audio device found.
+[2m2026-10-04T22:09:28.180056Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-04T22:09:28.180089Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+[2m2026-10-04T22:09:28.180675Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window Micrology — volumetric destruction lab (65v0)
+[2m2026-10-04T22:09:28.180820Z[0m [33m WARN[0m [2mwinit::platform_impl::linux::x11::util::randr[0m[2m:[0m XRandR reported that the display's 0mm in size, which is certifiably insane
+[2m2026-10-04T22:09:28.180862Z[0m [32m INFO[0m [2mwinit::platform_impl::linux::x11::window[0m[2m:[0m Guessed window scale factor: 1
+[2m2026-10-04T22:09:30.205033Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m demolition building ready; J capacity, 1–4 cut supports
+[2m2026-10-04T22:09:32.210104Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 1: paused
+[2m2026-10-04T22:09:34.192923Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity true
+[2m2026-10-04T22:09:36.226839Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 3: saved demolition_intact
+[2m2026-10-04T22:09:38.233097Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m support 0 cut queued
+[2m2026-10-04T22:09:40.301328Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 5: saved demolition_one_support
+[2m2026-10-04T22:09:42.328473Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity false
+[2m2026-10-04T22:09:44.303108Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m support 1 cut queued
+[2m2026-10-04T22:09:46.347648Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 8: saved demolition_overloaded_off
+[2m2026-10-04T22:09:48.333038Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity true
+[2m2026-10-04T22:09:50.393727Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 10: saved demolition_roof_released
+[2m2026-10-04T22:09:52.375125Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 11: contact fracture true
+[2m2026-10-04T22:09:54.367937Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 12: queued 120 fixed step(s)
+[2m2026-10-04T22:10:01.082325Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 13: saved demolition_roof_impact
+[2m2026-10-04T22:10:03.082007Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m holding native fragment f0.0
+[2m2026-10-04T22:10:05.114230Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 15: queued 90 fixed step(s)
+[2m2026-10-04T22:10:10.985807Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 16: saved demolition_lifted
+[2m2026-10-04T22:10:13.010751Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m hold target moved
+[2m2026-10-04T22:10:14.977482Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 18: queued 90 fixed step(s)
+[2m2026-10-04T22:10:21.065200Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 19: saved demolition_pulled
+[2m2026-10-04T22:10:23.086840Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m fragment released
+[2m2026-10-04T22:10:25.097373Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 21: queued 90 fixed step(s)
+[2m2026-10-04T22:10:31.172801Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 22: saved demolition_slammed
+[2m2026-10-04T22:10:33.186586Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m blast queued: 2 bounded targets
+[2m2026-10-04T22:10:35.276853Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 24: queued 180 fixed step(s)
+[2m2026-10-04T22:10:44.400413Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 25: saved demolition_settled
+[2m2026-10-04T22:10:46.414690Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m structural capacity false
+[2m2026-10-04T22:10:48.390763Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 27: contact fracture false
+[2m2026-10-04T22:10:50.401482Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 28: queued 120 fixed step(s)
+[2m2026-10-04T22:10:56.614308Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 29: saved demolition_systems_off
