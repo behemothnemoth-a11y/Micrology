@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "scope": "Why the Step 9 automatic authored-joint result leaves one 87,188-cell body. Diagnosis only; the size goal is not met and the evidence says it is not reachable by tuning the static solver.",
+  "base": "9127764",
+  "environment": {
+    "os": "Ubuntu 24.04.4 LTS",
+    "rustc": "1.97.0",
+    "gpu": null,
+    "note": "No Vulkan device. No live GPU validation performed or claimed."
+  },
+  "controls": {
+    "welded_support_band_largest": 43564,
+    "explicit_all_joints_released_largest": 2274,
+    "automatic_step9_largest": 87188,
+    "goal": "materially smaller than 43564",
+    "goal_met": false
+  },
+  "largest_body_anatomy": {
+    "cells": 87188,
+    "materials": {
+      "wood": 67930,
+      "masonry": 19258
+    },
+    "distinct_authored_parts_inside": 131,
+    "interior_authored_joint_faces": 10393,
+    "interior_faces_broken_by_cut": 0,
+    "interior_welded_part_pairs": 326,
+    "cross_part_faces_not_represented_as_joints": 0,
+    "reading": "One legitimate static assembly. Its interior joints are not overloaded while it stands."
+  },
+  "minimum_cut": {
+    "part_pairs": 54,
+    "bonds": 1048,
+    "rigid_non_authored": 0,
+    "bonds_by_material_pair": {
+      "wood:wood": 324,
+      "wood:glass": 486,
+      "masonry:masonry": 238
+    },
+    "load_bearing_bonds": 562,
+    "note": "The 486 wood/glass faces are zero-capacity glazing, free for the cut to pass through."
+  },
+  "graph": {
+    "parts": 175,
+    "interfaces": 462,
+    "authored_interfaces": 447,
+    "augmentations": 249
+  },
+  "anchoring": {
+    "anchored_graph_parts": 1,
+    "anchored_part_cells": 29568,
+    "world_anchor_cells": 7616,
+    "world_anchor_materials": [
+      "concrete"
+    ],
+    "anchor_x_range": [
+      0,
+      79
+    ]
+  },
+  "hypotheses": [
+    {
+      "id": "B",
+      "name": "authored interface representation incomplete",
+      "verdict": "refuted",
+      "evidence": "0 cross-part faces inside the large body are unrepresented as authored joints."
+    },
+    {
+      "id": "C",
+      "name": "monolithic concrete foundation hides spatial support",
+      "verdict": "refuted",
+      "evidence": "Foundation decomposed into bays of 128/64/32/24/16 cells giving 1/3/9/16/29 anchored parts. Cut identical in every case: 54 pairs, 1048 bonds, 0 rigid. Concrete internal interfaces are not authored joints, so the slab keeps full capacity and still distributes load."
+    },
+    {
+      "id": "A",
+      "name": "one generation is not enough",
+      "verdict": "refuted",
+      "evidence": "Re-solve of the attached remainder returns Satisfied. Bounded per-generation failure stalls after generation 1 and detaches nothing.",
+      "per_generation_trials": [
+        {
+          "interfaces_per_generation": 1,
+          "gen1_bonds": 24,
+          "fragments": 0,
+          "outcome": "gen 2 holds"
+        },
+        {
+          "interfaces_per_generation": 4,
+          "gen1_bonds": 74,
+          "fragments": 0,
+          "outcome": "gen 2 holds"
+        },
+        {
+          "interfaces_per_generation": 8,
+          "gen1_bonds": 129,
+          "fragments": 0,
+          "outcome": "gen 2 holds"
+        },
+        {
+          "interfaces_per_generation": 16,
+          "gen1_bonds": 287,
+          "fragments": 0,
+          "outcome": "gen 2 holds"
+        },
+        {
+          "interfaces_per_generation": 54,
+          "gen1_bonds": 1048,
+          "fragments": 5,
+          "largest": 87188,
+          "outcome": "settles"
+        }
+      ],
+      "why": "A partial cut neither separates the body topologically nor leaves live authored bonds in the next minimum cut: a dead interface has zero capacity, so the cut degenerates onto the already-dead set."
+    },
+    {
+      "id": "tributary",
+      "name": "per-interface sole-load-path overload test",
+      "verdict": "refuted",
+      "evidence": "0 overloaded interfaces on both the intact and the half-foundation house. The part graph is too redundant for any single joint to be a sole load path; the shortfall is collective, which is what minimum cut already measures."
+    },
+    {
+      "id": "E",
+      "name": "static self-weight cannot express multi-surface failure",
+      "verdict": "confirmed",
+      "evidence": "Minimum cut yields exactly one bipartition per solve. Interior joints of a standing assembly are carrying their load successfully. collapse.rs doctrine forbids loading detached geometry, and correctly: a free-falling body has no internal gravity stress."
+    }
+  ],
+  "fix_applied": {
+    "name": "fracture-aware assembly capacity",
+    "change": "build() now takes the FractureState; a face whose bond has zero integrity contributes no capacity and is not a failure candidate.",
+    "why": "The solver credited dead joints with full capacity, so a damaged house read sounder than it is, and a second generation re-nominated spent bonds and could never advance.",
+    "behaviour_change_for_committed_scenario": "none",
+    "committed_scenario_after_fix": {
+      "broken_bonds": 1048,
+      "erased_cells": 27648,
+      "fragments": 5,
+      "fragment_cells": 88508,
+      "largest_fragment": 87188,
+      "static_cells": 51036
+    }
+  },
+  "next_architectures_not_implemented": [
+    "Impact-driven interior failure through the existing contact path. The explicit-release live run produced 3425 contact-broken bonds and 113 contact-created fragments; the Step 9 live run recorded zero contact jobs because the detached assembly rested instead of falling. Needs a live run.",
+    "A bounded construction-level bending/torque approximation for a detached assembly, loading interior joints from its own span and support footprint. New physics; must not ship without interpretable measurements."
+  ],
+  "gate": {
+    "fmt_all_check": "pass",
+    "engine_clippy_deny_warnings": "pass",
+    "engine_all_target_tests": {
+      "passed": 893,
+      "failed": 0
+    },
+    "engine_doc_tests": {
+      "passed": 1,
+      "failed": 0
+    },
+    "solver_tests": {
+      "passed": 9,
+      "failed": 0
+    },
+    "worker_tests": {
+      "passed": 10,
+      "failed": 0
+    },
+    "house_scenario_tests": {
+      "passed": 5,
+      "failed": 0
+    },
+    "sandbox_tests": {
+      "passed": 13,
+      "failed": 0
+    },
+    "sandbox_clippy_deny_warnings": "pass",
+    "baselines": {
+      "material_specimen": "pass",
+      "house_window_step7": "pass",
+      "destruction_benchmark": "pass",
+      "destruction_replay": "pass",
+      "fragment_distribution": "pass",
+      "fracture_locality": "ran"
+    },
+    "old_fixtures_modified": 0,
+    "git_diff_check": "clean"
+  }
+}
