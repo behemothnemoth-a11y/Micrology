@@ -14,6 +14,7 @@ fn main() -> Result<(), String> {
     );
     let bonds = house_scenarios::automatic_joint_breaks(
         &engine_stress::reference_house::build(),
+        &engine_destruction::FractureState::default(),
         HouseScenario::FoundationHalfAutoJoints,
     )?;
     println!("planned_bonds={}", bonds.len());

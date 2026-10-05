@@ -132,6 +132,7 @@ pub fn action(scenario: HouseScenario, world: &World) -> HouseAction {
 
 pub fn automatic_joint_breaks(
     world: &World,
+    fracture: &FractureState,
     scenario: HouseScenario,
 ) -> Result<Vec<BondKey>, String> {
     if scenario != HouseScenario::FoundationHalfAutoJoints {
@@ -144,6 +145,7 @@ pub fn automatic_joint_breaks(
     staged.apply(&static_failure_batch(&targets));
     let graph = reference_house_joint_load::build(
         &staged,
+        fracture,
         AUTO_JOINT_STRENGTH_MILLI,
         HOUSE_CELL_LENGTH_MILLI,
         reference_house_joint_load::AssemblyLimits::default(),
@@ -218,7 +220,7 @@ pub fn execute(
         reference_house_joints::seed(&mut state.fracture, &state.world, 0)
             .map_err(|e| format!("joint release: {e:?}"))?;
     }
-    let automatic_bonds = automatic_joint_breaks(&state.world, scenario)?;
+    let automatic_bonds = automatic_joint_breaks(&state.world, &state.fracture, scenario)?;
     let work = action(scenario, &state.world);
     let input = state
         .capture(house_impact::known(), caps)

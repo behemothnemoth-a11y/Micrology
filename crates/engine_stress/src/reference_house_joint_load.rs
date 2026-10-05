@@ -2,7 +2,7 @@
 //! Diagnostic prototype only: no save schema or global joint law.
 use crate::{reference_house, reference_house_joints};
 use engine_core::{CellPos, CellSource, FaceDir, MaterialId};
-use engine_destruction::BondKey;
+use engine_destruction::{BondKey, BondSite, DamageSpace, FractureState};
 use engine_mechanics::{MechanicalRegistry, ReferenceMaterial, load_mode, reference_registry};
 use engine_world::World;
 use serde::Serialize;
@@ -104,8 +104,15 @@ fn scaled(raw: i64, milli: u32) -> i64 {
         as i64
 }
 
+/// Build the bounded part graph for `world` as currently damaged.
+///
+/// `fracture` matters: an authored face whose bond is already broken carries no
+/// load and is not a candidate for failing again. Reading the live world while
+/// ignoring its damage would credit dead joints with full capacity, so a house
+/// that has already lost joints would be reported sounder than it is.
 pub fn build(
     world: &World,
+    fracture: &FractureState,
     joint_strength_milli: u32,
     cell_length_milli: u32,
     limits: AssemblyLimits,
@@ -182,6 +189,13 @@ pub fn build(
                 let pair = if ka < kb { (ka, kb) } else { (kb, ka) };
                 let pb = registry.get(other_material).ok_or("profile b")?;
                 let is_authored = authored.contains(&bond);
+                let broken = fracture
+                    .integrity(BondSite {
+                        space: DamageSpace::StaticWorld,
+                        bond,
+                    })
+                    .0
+                    == 0;
                 let factor = if is_authored {
                     joint_strength_milli
                 } else {
@@ -192,6 +206,7 @@ pub fn build(
                 // and carries no construction load in this diagnostic.
                 let (ab, ba) = if material == reference_house::GLASS
                     || other_material == reference_house::GLASS
+                    || broken
                 {
                     (0, 0)
                 } else {
@@ -228,7 +243,9 @@ pub fn build(
                     e.capacity_b_to_a_raw = e.capacity_b_to_a_raw.saturating_add(ab);
                     e.capacity_a_to_b_raw = e.capacity_a_to_b_raw.saturating_add(ba);
                 }
-                if is_authored {
+                // Only a live authored bond can still be failed by a later
+                // generation; a dead one is already spent.
+                if is_authored && !broken {
                     authored_bonds.entry(pair).or_default().insert(bond);
                     e.authored_bonds += 1;
                 }

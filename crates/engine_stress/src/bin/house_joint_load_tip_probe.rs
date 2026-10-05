@@ -1,4 +1,5 @@
 use engine_core::CellPos;
+use engine_destruction::FractureState;
 use engine_stress::{house_scenarios, reference_house, reference_house_joint_load as load};
 fn remove_from(mut w: engine_world::World, min_x: i32) -> engine_world::World {
     w.fill_box(CellPos::new(min_x, 0, 0), CellPos::new(127, 3, 107), None);
@@ -11,6 +12,7 @@ fn main() -> Result<(), String> {
         let w = remove_from(intact.clone(), min_x);
         let g = load::build(
             &w,
+            &FractureState::default(),
             house_scenarios::AUTO_JOINT_STRENGTH_MILLI,
             house_scenarios::HOUSE_CELL_LENGTH_MILLI,
             Default::default(),

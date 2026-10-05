@@ -1,4 +1,5 @@
 use engine_core::CellPos;
+use engine_destruction::FractureState;
 use engine_stress::{reference_house, reference_house_joint_load as load};
 
 fn cut_foundation(mut world: engine_world::World, min_x: i32) -> engine_world::World {
@@ -16,7 +17,13 @@ fn main() -> Result<(), String> {
     ] {
         println!("CASE {name}");
         for strength in [1000u32, 750, 500, 350, 250, 150, 100, 75, 50, 25] {
-            let graph = load::build(&world, strength, 50, Default::default())?;
+            let graph = load::build(
+                &world,
+                &FractureState::default(),
+                strength,
+                50,
+                Default::default(),
+            )?;
             let result = load::evaluate(&graph, Default::default());
             match result {
                 load::AssemblyOutcome::Satisfied {

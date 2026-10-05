@@ -21,6 +21,7 @@ fn planned() -> (
     };
     let bonds = house_scenarios::automatic_joint_breaks(
         &state.world,
+        &state.fracture,
         HouseScenario::FoundationHalfAutoJoints,
     )
     .unwrap();

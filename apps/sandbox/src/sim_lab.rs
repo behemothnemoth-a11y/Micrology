@@ -358,7 +358,7 @@ fn queue_house_scenario(
             )
         }
         HouseAction::Remove(targets) => {
-            let bonds = automatic_joint_breaks(&world.0, scenario)?;
+            let bonds = automatic_joint_breaks(&world.0, &lab.fracture_state, scenario)?;
             let work = if bonds.is_empty() {
                 crate::fracture_worker::Work::Remove(targets)
             } else {
