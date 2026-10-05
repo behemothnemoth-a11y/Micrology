@@ -1,0 +1,17 @@
+[2m2026-10-05T10:36:10.356333Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "Windows 11 Home", kernel: "26200", cpu: "Intel(R) Core(TM) 7 240H", core_count: "10", memory: "31.7 GiB" }
+[2m2026-10-05T10:36:10.779724Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "NVIDIA GeForce RTX 5050 Laptop GPU", vendor: 4318, device: 11672, device_type: DiscreteGpu, device_pci_bus_id: "0000:01:00.0", driver: "NVIDIA", driver_info: "581.34", backend: Vulkan, subgroup_min_size: 32, subgroup_max_size: 32, transient_saves_memory: false }
+[2m2026-10-05T10:36:12.227754Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-05T10:36:12.227918Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+[2m2026-10-05T10:36:12.231884Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window Micrology — volumetric destruction lab (67v0)
+[2m2026-10-05T10:36:14.394060Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m reference house ready; four-material worker active
+[2m2026-10-05T10:36:16.392744Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 1: paused
+[2m2026-10-05T10:36:18.393167Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 2: contact fracture false
+[2m2026-10-05T10:36:20.465074Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 3: house scenario foundation_half_auto_joints queued
+[2m2026-10-05T10:36:22.662476Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 4: saved dyn_after_failure
+[2m2026-10-05T10:36:24.643480Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m holding native fragment f0.0
+[2m2026-10-05T10:36:26.642693Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 6: contact fracture true
+[2m2026-10-05T10:36:28.645093Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m fragment released
+[2m2026-10-05T10:36:30.627523Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 8: queued 60 fixed step(s)
+[2m2026-10-05T10:36:34.082492Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 9: saved dyn_after_60
+[2m2026-10-05T10:36:36.059809Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 10: queued 120 fixed step(s)
+[2m2026-10-05T10:36:40.052270Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 11: saved dyn_after_180

@@ -1,0 +1,295 @@
+{
+  "background": {
+    "accepted": 1,
+    "active": false,
+    "capacity_enabled": false,
+    "capacity_failed": 0,
+    "capacity_pending": false,
+    "capacity_status": "",
+    "capped": 0,
+    "capture_ms": [
+      1.4046
+    ],
+    "commit_ms": [
+      28.346300000000003
+    ],
+    "cut_failed": 27648,
+    "enabled": true,
+    "failed_cells": 27648,
+    "generation": 0,
+    "job_volume_cap": 256,
+    "max_queue": 1,
+    "pending": 0,
+    "queue_wait_ms": [
+      0.2641
+    ],
+    "refused": 0,
+    "response_ms": [
+      177.1538
+    ],
+    "stale": 0,
+    "support_witnesses": true,
+    "worker_ms": [
+      171.2484
+    ]
+  },
+  "contact_fracture_enabled": false,
+  "contacts": {
+    "broken_bonds": 0,
+    "capped": 0,
+    "enqueued": 0,
+    "fragment_failed": 0,
+    "fragment_fragment_pairs": 0,
+    "fragments_created": 0,
+    "pending": 0,
+    "processed": 0,
+    "refused": 0,
+    "samples": 0,
+    "stale": 0,
+    "static_failed": 0,
+    "work": 0
+  },
+  "fixed_ticks": 0,
+  "fracture": {
+    "bond_entries": 0,
+    "broken_bonds": 0,
+    "cell_entries": 0,
+    "checksum_fnv1a64": "cbf29ce484222325",
+    "revision": 1
+  },
+  "fragment_dynamics": [
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 87188,
+      "id": "f0.0",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material_cells": {
+        "101": 67930,
+        "102": 19258
+      },
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        0,
+        0,
+        0
+      ],
+      "state": "Dynamic",
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "world_center": [
+        64.0,
+        50.5,
+        54.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 400,
+      "id": "f0.1",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material_cells": {
+        "104": 400
+      },
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        80,
+        16,
+        96
+      ],
+      "state": "Dynamic",
+      "translation": [
+        80.0,
+        16.0,
+        96.0
+      ],
+      "world_center": [
+        92.0,
+        35.0,
+        102.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 280,
+      "id": "f0.2",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material_cells": {
+        "104": 280
+      },
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        80,
+        16,
+        0
+      ],
+      "state": "Dynamic",
+      "translation": [
+        80.0,
+        16.0,
+        0.0
+      ],
+      "world_center": [
+        99.0,
+        35.0,
+        5.5
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 320,
+      "id": "f0.3",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material_cells": {
+        "104": 320
+      },
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        112,
+        16,
+        16
+      ],
+      "state": "Dynamic",
+      "translation": [
+        112.0,
+        16.0,
+        16.0
+      ],
+      "world_center": [
+        122.5,
+        35.0,
+        34.0
+      ]
+    },
+    {
+      "angular_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cells": 320,
+      "id": "f0.4",
+      "linear_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material_cells": {
+        "104": 320
+      },
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "source_origin": [
+        112,
+        16,
+        64
+      ],
+      "state": "Dynamic",
+      "translation": [
+        112.0,
+        16.0,
+        64.0
+      ],
+      "world_center": [
+        122.5,
+        35.0,
+        76.0
+      ]
+    }
+  ],
+  "interaction": {
+    "applied": 0,
+    "batch_ms": [],
+    "blasts": 0,
+    "broken_bonds": 0,
+    "capped": 0,
+    "failed_cells": 0,
+    "floor_added": false,
+    "fragments_created": 0,
+    "held": null,
+    "held_target": null,
+    "hold_steps": 0,
+    "holds": 0,
+    "kicks": 0,
+    "pending": 0,
+    "refused": 0,
+    "releases": 0,
+    "stale": 0,
+    "throws": 0
+  },
+  "label": "dyn_after_failure",
+  "last_separation": null,
+  "paused": true,
+  "replay": {
+    "blocked_case": null,
+    "commands": 12,
+    "cursor": 4,
+    "name": "reference_house_auto_joint_forced_motion_probe"
+  },
+  "speed_milli": 1000,
+  "structural": {
+    "checksum_fnv1a64": "7ee9e682a37ce771",
+    "fragment_cells": 88508,
+    "fragments": 5,
+    "static_anchors": 7616,
+    "static_cells": 51036
+  }
+}

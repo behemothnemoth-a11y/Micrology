@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "reference_house_auto_joint_forced_motion_probe",
+  "fixture_checksum_fnv1a64": "0914c4bcec7ce205",
+  "commands": [
+    {"op":"reference_house"},
+    {"op":"pause"},
+    {"op":"contact_fracture","enabled":false},
+    {"op":"house_scenario","scenario":"foundation_half_auto_joints"},
+    {"op":"dump","label":"dyn_after_failure"},
+    {"op":"grab_largest","target_milli":[64000,50500,54000]},
+    {"op":"contact_fracture","enabled":true},
+    {"op":"release","velocity_milli":[0,-24000,0]},
+    {"op":"advance_fixed","steps":60},
+    {"op":"dump","label":"dyn_after_60"},
+    {"op":"advance_fixed","steps":120},
+    {"op":"dump","label":"dyn_after_180"}
+  ]
+}
