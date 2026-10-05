@@ -1,0 +1,19 @@
+[2m2026-10-05T13:35:22.854793Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "Windows 11 Home", kernel: "26200", cpu: "Intel(R) Core(TM) 7 240H", core_count: "10", memory: "31.7 GiB" }
+[2m2026-10-05T13:35:23.453832Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "NVIDIA GeForce RTX 5050 Laptop GPU", vendor: 4318, device: 11672, device_type: DiscreteGpu, device_pci_bus_id: "0000:01:00.0", driver: "NVIDIA", driver_info: "581.34", backend: Vulkan, subgroup_min_size: 32, subgroup_max_size: 32, transient_saves_memory: false }
+[2m2026-10-05T13:35:24.795778Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-05T13:35:24.796114Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+[2m2026-10-05T13:35:24.797731Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window Micrology — volumetric destruction lab (67v0)
+[2m2026-10-05T13:35:26.931302Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m reference house ready; four-material worker active
+[2m2026-10-05T13:35:28.930761Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 1: paused
+[2m2026-10-05T13:35:30.930488Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 2: contact fracture false
+[2m2026-10-05T13:35:33.012231Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 3: house scenario foundation_half_auto_joints queued
+[2m2026-10-05T13:35:35.326762Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 4: saved dyn_after_failure
+[2m2026-10-05T13:35:37.264419Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m holding native fragment f0.0
+[2m2026-10-05T13:35:39.264413Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 6: contact fracture true
+[2m2026-10-05T13:35:41.264713Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m fragment released
+[2m2026-10-05T13:35:43.263856Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 8: queued 60 fixed step(s)
+[2m2026-10-05T13:35:46.964734Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 9: saved dyn_after_60
+[2m2026-10-05T13:35:48.897903Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 10: queued 120 fixed step(s)
+[2m2026-10-05T13:35:52.942540Z[0m [32m INFO[0m [2msandbox::sim_lab[0m[2m:[0m replay 11: saved dyn_after_180
+[2m2026-10-05T13:35:53.418498Z[0m [32m INFO[0m [2mbevy_window::system[0m[2m:[0m No windows are open, exiting
+[2m2026-10-05T13:35:53.418685Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Closing window 67v0

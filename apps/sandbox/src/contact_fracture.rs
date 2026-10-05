@@ -71,6 +71,8 @@ pub struct ContactFractureHost {
     active: BTreeSet<(DamageSpace, DamageSpace)>,
     pending: VecDeque<PendingHit>,
     generations: BTreeMap<FragmentId, u8>,
+    static_broken_bonds: u64,
+    broken_bonds_by_fragment: BTreeMap<FragmentId, u64>,
     pub stats: ContactFractureStats,
 }
 impl ContactFractureHost {
@@ -83,18 +85,36 @@ impl ContactFractureHost {
             _ => 0,
         }
     }
+    fn record_broken(&mut self, space: DamageSpace, broken: u64) {
+        self.stats.broken_bonds += broken;
+        match space {
+            DamageSpace::StaticWorld => self.static_broken_bonds += broken,
+            DamageSpace::FragmentLocal(id) => {
+                *self.broken_bonds_by_fragment.entry(id).or_default() += broken;
+            }
+        }
+    }
     pub fn clear(&mut self) {
         self.active.clear();
         self.pending.clear();
         self.generations.clear();
+        self.static_broken_bonds = 0;
+        self.broken_bonds_by_fragment.clear();
         self.stats = ContactFractureStats::default();
     }
     pub fn snapshot(&self) -> serde_json::Value {
         let s = self.stats;
+        let broken_bonds_by_fragment: BTreeMap<String, u64> = self
+            .broken_bonds_by_fragment
+            .iter()
+            .map(|(id, broken)| (id.to_string(), *broken))
+            .collect();
         serde_json::json!({ "samples": s.samples, "enqueued": s.enqueued, "processed": s.processed,
             "refused": s.refused, "stale": s.stale, "capped": s.capped, "pending": self.pending(),
             "static_failed": s.static_failed, "fragment_failed": s.fragment_failed,
-            "broken_bonds":s.broken_bonds, "fragments_created": s.fragments_created, "fragment_fragment_pairs": s.pairs_between_fragments, "work": s.total_work })
+            "broken_bonds":s.broken_bonds, "static_broken_bonds": self.static_broken_bonds,
+            "broken_bonds_by_fragment": broken_bonds_by_fragment,
+            "fragments_created": s.fragments_created, "fragment_fragment_pairs": s.pairs_between_fragments, "work": s.total_work })
     }
 }
 
@@ -381,6 +401,10 @@ pub fn process(resources: ProcessResources) {
                 ) {
                     Ok(commit) => {
                         host.stats.static_failed += commit.fracture.failed.len() as u64;
+                        host.record_broken(
+                            DamageSpace::StaticWorld,
+                            commit.fracture.broken.len() as u64,
+                        );
                         host.stats.fragments_created += commit.fragments.len() as u64;
                         host.stats.total_work +=
                             commit.measurement.cells_visited + commit.measurement.bonds_considered;
@@ -414,6 +438,10 @@ pub fn process(resources: ProcessResources) {
                 ) {
                     Ok(commit) => {
                         host.stats.fragment_failed += commit.fracture.failed.len() as u64;
+                        host.record_broken(
+                            DamageSpace::FragmentLocal(id),
+                            commit.fracture.broken.len() as u64,
+                        );
                         host.stats.total_work +=
                             commit.measurement.cells_visited + commit.measurement.bonds_considered;
                         match commit.result {
@@ -477,6 +505,7 @@ impl ContactFractureHost {
         generation: u8,
         summary: &engine_destruction::fracture_jobs::JobSummary,
     ) {
+        self.record_broken(space, summary.broken);
         match space {
             DamageSpace::StaticWorld => self.stats.static_failed += summary.failed,
             DamageSpace::FragmentLocal(id) => {
@@ -486,7 +515,6 @@ impl ContactFractureHost {
         }
         self.stats.fragments_created += summary.created;
         self.stats.total_work += summary.work;
-        self.stats.broken_bonds += summary.broken;
         for &id in &summary.ids {
             self.generations.insert(id, generation);
         }
@@ -533,5 +561,36 @@ mod tests {
         .unwrap();
         assert_eq!(hit.impact.origin_milli(), [250, 0, 0]);
         assert_eq!(hit.impact.direction_milli(), [1000, 0, 0]);
+    }
+
+    #[test]
+    fn contact_bond_attribution_distinguishes_static_and_fragments() {
+        let mut host = ContactFractureHost::default();
+        let a = FragmentId::new(7, 2);
+        let b = FragmentId::new(9, 1);
+
+        host.record_broken(DamageSpace::StaticWorld, 3);
+        host.record_broken(DamageSpace::FragmentLocal(a), 5);
+        host.record_broken(DamageSpace::FragmentLocal(a), 2);
+        host.record_broken(DamageSpace::FragmentLocal(b), 11);
+
+        let snapshot = host.snapshot();
+        assert_eq!(snapshot["broken_bonds"].as_u64(), Some(21));
+        assert_eq!(snapshot["static_broken_bonds"].as_u64(), Some(3));
+        let by_fragment = snapshot["broken_bonds_by_fragment"]
+            .as_object()
+            .expect("fragment attribution object");
+        assert_eq!(
+            by_fragment
+                .get(&a.to_string())
+                .and_then(serde_json::Value::as_u64),
+            Some(7)
+        );
+        assert_eq!(
+            by_fragment
+                .get(&b.to_string())
+                .and_then(serde_json::Value::as_u64),
+            Some(11)
+        );
     }
 }

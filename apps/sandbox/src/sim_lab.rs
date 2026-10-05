@@ -587,6 +587,77 @@ fn diagnostics_dir() -> PathBuf {
         .join("destruction_lab")
 }
 
+fn reference_house_broken_bond_map(
+    lab: &SimulationLab,
+    fragments: &DynamicFragments,
+) -> Option<serde_json::Value> {
+    if std::env::var_os("MICROLOGY_REFERENCE_HOUSE").is_none() {
+        return None;
+    }
+    let house = engine_stress::reference_house::build();
+    let authored = engine_stress::reference_house_joints::authored_joint_bonds(&house);
+    let mut rows = Vec::new();
+    for (id, fragment) in fragments.iter() {
+        let mut total = 0u64;
+        let mut authored_count = 0u64;
+        let mut axes = std::collections::BTreeMap::<String, u64>::new();
+        let mut mapped = Vec::new();
+        let mut min = [i32::MAX; 3];
+        let mut max = [i32::MIN; 3];
+        for record in lab
+            .fracture_state
+            .bonds_in(DamageSpace::FragmentLocal(id))
+            .filter(engine_destruction::BondFracture::is_broken)
+        {
+            let local = record.site.bond;
+            let p = local.lower();
+            let source_lower = engine_core::CellPos::new(
+                p.x.checked_add(fragment.source_origin.x)?,
+                p.y.checked_add(fragment.source_origin.y)?,
+                p.z.checked_add(fragment.source_origin.z)?,
+            );
+            let source = engine_destruction::BondKey::along(source_lower, local.axis())?;
+            let is_authored = authored.contains(&source);
+            total += 1;
+            authored_count += u64::from(is_authored);
+            *axes.entry(format!("{:?}", source.axis())).or_default() += 1;
+            for cell in source.cells() {
+                min[0] = min[0].min(cell.x);
+                min[1] = min[1].min(cell.y);
+                min[2] = min[2].min(cell.z);
+                max[0] = max[0].max(cell.x);
+                max[1] = max[1].max(cell.y);
+                max[2] = max[2].max(cell.z);
+            }
+            mapped.push(serde_json::json!({
+                "bond": source.to_string(),
+                "authored_joint": is_authored,
+            }));
+        }
+        if total != 0 {
+            rows.push(serde_json::json!({
+                "id": id.to_string(),
+                "cells": fragment.cell_count(),
+                "source_origin": [
+                    fragment.source_origin.x,
+                    fragment.source_origin.y,
+                    fragment.source_origin.z
+                ],
+                "broken_total": total,
+                "authored_joint_broken": authored_count,
+                "non_authored_broken": total - authored_count,
+                "axis_counts": axes,
+                "source_bounds": { "min": min, "max": max },
+                "broken_bonds": mapped,
+            }));
+        }
+    }
+    Some(serde_json::json!({
+        "authored_joint_bonds_in_reference_house": authored.len(),
+        "fragments": rows,
+    }))
+}
+
 fn dump_state(
     label: &str,
     lab: &SimulationLab,
@@ -668,6 +739,7 @@ fn dump_state(
         },
         "last_separation": separation,
         "fragment_dynamics": dynamics,
+        "house_broken_bond_map": reference_house_broken_bond_map(lab, fragments),
         "replay": replay,
     });
 
