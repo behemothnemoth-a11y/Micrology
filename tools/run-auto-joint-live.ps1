@@ -5,12 +5,13 @@ $diag=Join-Path $repo 'target\diagnostics\destruction_lab'
 New-Item -ItemType Directory -Force -Path $diag | Out-Null
 Get-ChildItem $diag -Filter 'autoj_*' -ErrorAction SilentlyContinue | Remove-Item -Force
 $env:MICROLOGY_REFERENCE_HOUSE='1'
-$env:MICROLOGY_REPLAY_SCRIPT=Join-Path $repo 'house-auto-joint-live.json'
+$env:MICROLOGY_REPLAY_SCRIPT=Join-Path $repo 'fixtures\destruction\replay-reference-house-auto-joints.json'
 $env:MICROLOGY_REPLAY_CAPTURE='1'
 $env:MICROLOGY_CAPTURE_COMPACT='1'
 $exe='C:\Users\behem\Projects\Micrology\target-msvc\release\sandbox.exe'
-$out=Join-Path $repo 'autoj-live.stdout.log'
-$err=Join-Path $repo 'autoj-live.stderr.log'
+$evidence=Join-Path $repo 'docs\diagnostics\house_joint_load_step9_20261004'
+$out=Join-Path $evidence 'live_autojoint_stdout.log'
+$err=Join-Path $evidence 'live_autojoint_stderr.log'
 Remove-Item $out,$err -Force -ErrorAction SilentlyContinue
 $proc=Start-Process -FilePath $exe -WorkingDirectory $repo -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
 Write-Host "SANDBOX_PID=$($proc.Id)"

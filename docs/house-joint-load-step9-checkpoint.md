@@ -3,7 +3,7 @@
 Date: 2026-10-04.
 Base: `665d8ecfc4ac2cd6168c88963ca303a144e01181`.
 Branch: `chatgpt/house-joint-load-step9-20261004`.
-Status: local implementation and Windows live acceptance in progress; not merged.
+Status: implementation complete and independently re-verified headlessly; not merged.
 
 ## Goal
 
@@ -125,6 +125,28 @@ to different native owners is a topology boundary, not one static-world bond
 record that can remain meaningful across both owners. The worker summary is the
 transaction evidence that the 1,048 joints broke.
 
+## Independent headless re-verification
+
+The structural claims in this document were re-run from a clean checkout of
+`81de6a1` on Linux (Ubuntu 24.04, rustc 1.97.0), with no shared target
+directory and no GPU, and reproduce exactly:
+
+| Measurement | Documented | Re-run |
+|---|---:|---:|
+| authored joint bonds broken | 1,048 | 1,048 |
+| foundation cells removed | 27,648 | 27,648 |
+| native fragments | 5 | 5 |
+| fragment cells | 88,508 | 88,508 |
+| largest fragment | 87,188 | 87,188 |
+| remaining static cells | 51,036 | 51,036 |
+
+Cell accounting closes: 51,036 + 88,508 = 139,544 = 167,192 - 27,648.
+
+The **live Windows/Vulkan numbers below are the authoring machine's own
+measurements.** They were not re-verified here, because this environment has no
+Vulkan device at all. Treat them as the Windows run's evidence, not as a second
+independent confirmation.
+
 ## Live Windows/Vulkan result
 
 The canonical replay
@@ -175,6 +197,35 @@ The next problem is internal dynamic load after a detached assembly starts
 moving: bending, torque and impacts need a way to load remaining authored joints
 inside native fragments. Do not solve that by globally weakening every joint or
 by lowering a universal fragment-size target.
+
+## Follow-up applied during review
+
+Four changes were made on top of `81de6a1`; none alter engine behaviour, and
+every structural number above is unchanged after them.
+
+- **The replay fixture is now generated, not hand-authored.**
+  `reference_house_auto_joints_replay()` joins the window, weak-repeat and
+  damaged-area generators, and the test asserts committed bytes equal canonical
+  output. Previously the fixture was valid and its embedded checksum was
+  correct, but nothing pinned its bytes, so a `ReplayScript` serialization
+  change would have let it drift silently while the other three failed loudly.
+  The regenerated file is semantically identical to the authored one.
+- **Four solver tests added** for rebuild-identical graphs, an exhausted
+  interface budget deferring (alongside parts and augmentations), canonical
+  sorted overloaded pairs and bonds, and no breakable interface ever naming a
+  concrete foundation bond.
+- **A dropped invariant comment was restored** in `fracture_jobs.rs`, above the
+  support-witness branch, recording that supported paths are not partial
+  component sets and must not be handed to detachment as such.
+- **Evidence and tooling were separated from the repository root.** The three
+  `patch_*.py` scripts were one-shot source mutators carrying absolute paths
+  into the authoring worktree; their edits are already in the committed source
+  and they would now fail their own `assert s.count(old) == count`, so they are
+  removed (recoverable from `81de6a1`). The empty `autoj-live.stdout.log` and
+  the `house-auto-joint-live.json` duplicate of the committed fixture are also
+  removed, and the live harness now reads the canonical fixture directly. The
+  live run helpers moved to `tools/` beside the existing capture and verify
+  scripts, and the live logs to this checkpoint's evidence folder.
 
 ## Invariants
 

@@ -15,6 +15,8 @@ pub const WEAK_REPEAT_REPLAY_PATH: &str = "fixtures/destruction/replay-weak-repe
 pub const DAMAGED_AREA_REPLAY_PATH: &str = "fixtures/destruction/replay-damaged-area.json";
 pub const REFERENCE_HOUSE_REPLAY_PATH: &str =
     "fixtures/destruction/replay-reference-house-window.json";
+pub const REFERENCE_HOUSE_AUTO_JOINTS_REPLAY_PATH: &str =
+    "fixtures/destruction/replay-reference-house-auto-joints.json";
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -188,6 +190,48 @@ pub fn reference_house_replay() -> ReplayScript {
 
 pub fn reference_house_replay_json() -> serde_json::Result<String> {
     replay_to_json(&reference_house_replay())
+}
+
+/// The automatic authored-joint overload case, as a generated script.
+///
+/// This exists so the committed fixture is canonical output rather than
+/// hand-authored bytes: the same reason the window/weak-repeat/damaged-area
+/// replays have generators. A serialization change then shows up as a failing
+/// equality test and a reviewed fixture diff instead of silent drift.
+pub fn reference_house_auto_joints_replay() -> ReplayScript {
+    let world = crate::reference_house::build();
+    ReplayScript {
+        version: DESTRUCTION_REPLAY_VERSION,
+        name: "reference_house_foundation_half_auto_joints_live".into(),
+        fixture_checksum_fnv1a64: structural_state_digest(&world, &FragmentStore::default())
+            .checksum_fnv1a64,
+        commands: vec![
+            ReplayCommand::ReferenceHouse,
+            ReplayCommand::Pause,
+            ReplayCommand::Dump {
+                label: "autoj_intact".into(),
+            },
+            ReplayCommand::ContactFracture { enabled: true },
+            ReplayCommand::HouseScenario {
+                scenario: crate::house_scenarios::HouseScenario::FoundationHalfAutoJoints,
+            },
+            ReplayCommand::Dump {
+                label: "autoj_after_failure".into(),
+            },
+            ReplayCommand::AdvanceFixed { steps: 25 },
+            ReplayCommand::Dump {
+                label: "autoj_after_25".into(),
+            },
+            ReplayCommand::AdvanceFixed { steps: 95 },
+            ReplayCommand::Dump {
+                label: "autoj_after_120".into(),
+            },
+        ],
+    }
+}
+
+pub fn reference_house_auto_joints_replay_json() -> serde_json::Result<String> {
+    replay_to_json(&reference_house_auto_joints_replay())
 }
 
 pub fn weak_repeat_replay() -> ReplayScript {
@@ -542,10 +586,11 @@ mod tests {
 
     #[test]
     fn automatic_joint_house_replay_is_valid_and_keeps_failure_explicit() {
-        let replay: ReplayScript = serde_json::from_str(include_str!(
-            "../../../fixtures/destruction/replay-reference-house-auto-joints.json"
-        ))
-        .unwrap();
+        let generated = reference_house_auto_joints_replay_json().unwrap();
+        let committed =
+            include_str!("../../../fixtures/destruction/replay-reference-house-auto-joints.json");
+        assert_eq!(generated, committed);
+        let replay: ReplayScript = serde_json::from_str(committed).unwrap();
         validate_replay(&replay).unwrap();
         assert!(matches!(
             replay.commands.first(),

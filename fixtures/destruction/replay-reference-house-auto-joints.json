@@ -3,15 +3,43 @@
   "name": "reference_house_foundation_half_auto_joints_live",
   "fixture_checksum_fnv1a64": "0914c4bcec7ce205",
   "commands": [
-    {"op":"reference_house"},
-    {"op":"pause"},
-    {"op":"dump","label":"autoj_intact"},
-    {"op":"contact_fracture","enabled":true},
-    {"op":"house_scenario","scenario":"foundation_half_auto_joints"},
-    {"op":"dump","label":"autoj_after_failure"},
-    {"op":"advance_fixed","steps":25},
-    {"op":"dump","label":"autoj_after_25"},
-    {"op":"advance_fixed","steps":95},
-    {"op":"dump","label":"autoj_after_120"}
+    {
+      "op": "reference_house"
+    },
+    {
+      "op": "pause"
+    },
+    {
+      "op": "dump",
+      "label": "autoj_intact"
+    },
+    {
+      "op": "contact_fracture",
+      "enabled": true
+    },
+    {
+      "op": "house_scenario",
+      "scenario": "foundation_half_auto_joints"
+    },
+    {
+      "op": "dump",
+      "label": "autoj_after_failure"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 25
+    },
+    {
+      "op": "dump",
+      "label": "autoj_after_25"
+    },
+    {
+      "op": "advance_fixed",
+      "steps": 95
+    },
+    {
+      "op": "dump",
+      "label": "autoj_after_120"
+    }
   ]
 }

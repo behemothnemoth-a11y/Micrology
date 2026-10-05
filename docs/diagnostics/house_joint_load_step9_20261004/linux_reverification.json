@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "scope": "Independent headless re-run of the Step 9 structural claims from a clean checkout. No shared target directory, no GPU, no Vulkan device.",
+  "environment": {
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.18.44",
+    "rustc": "1.97.0",
+    "gpu": null,
+    "note": "The live Windows/Vulkan numbers in the checkpoint document were NOT re-verified here; this environment has no Vulkan device."
+  },
+  "commit_verified": "81de6a1f407c24e649a7e2778a64ff4b73af442e",
+  "base": "665d8ecfc4ac2cd6168c88963ca303a144e01181",
+  "automatic_scenario": {
+    "scenario": "foundation_half_auto_joints",
+    "authored_joint_bonds_broken": 1048,
+    "planned_bonds": 1048,
+    "foundation_cells_removed": 27648,
+    "native_fragments": 5,
+    "fragment_cells": 88508,
+    "largest_fragment": 87188,
+    "remaining_static_cells": 51036,
+    "fragment_sizes_top5": [87188, 400, 320, 320, 280],
+    "final_static_broken_bonds": 0,
+    "final_static_broken_bonds_note": "Expected: a broken face whose endpoints now belong to different native owners is a topology boundary, not one static-world bond record. The worker summary is the transaction evidence.",
+    "cell_accounting": {
+      "initial": 167192,
+      "static_plus_fragment": 139544,
+      "erased": 27648,
+      "closes_exactly": true
+    },
+    "matches_documented_values": true
+  },
+  "gate": {
+    "fmt_all_check": "pass",
+    "engine_clippy_deny_warnings": "pass",
+    "engine_all_target_tests": {"passed": 886, "failed": 0},
+    "engine_doc_tests": {"passed": 1, "failed": 0},
+    "solver_tests": {"passed": 8, "failed": 0},
+    "worker_tests": {"passed": 4, "failed": 0},
+    "house_scenario_tests": {"passed": 5, "failed": 0},
+    "baselines": {
+      "material_specimen": "pass",
+      "house_window_step7": "pass",
+      "destruction_benchmark": "pass",
+      "destruction_replay": "pass",
+      "fragment_distribution": "pass",
+      "fracture_locality": "ran"
+    },
+    "old_fixtures_modified": 0,
+    "git_diff_check": "clean"
+  },
+  "baseline_reference": {
+    "engine_all_target_tests_at_base_665d8ec": 873,
+    "engine_all_target_tests_at_wip_81de6a1": 882,
+    "delta_from_review_additions": 4
+  }
+}

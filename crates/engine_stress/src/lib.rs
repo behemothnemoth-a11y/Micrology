@@ -37,10 +37,12 @@ pub use destruction_benchmark::{
 };
 pub use destruction_replay::{
     DAMAGED_AREA_REPLAY_PATH, DESTRUCTION_REPLAY_VERSION, MAX_FIXED_STEPS_PER_COMMAND,
-    MAX_REPLAY_COMMANDS, MAX_SPEED_MILLI, REFERENCE_HOUSE_REPLAY_PATH, ReplayCommand, ReplayScript,
-    ReplayValidationError, StructuralStateDigest, WEAK_REPEAT_REPLAY_PATH, damaged_area_replay,
-    damaged_area_replay_json, reference_house_replay, reference_house_replay_json, replay_to_json,
-    structural_state_digest, validate_replay, weak_repeat_replay, weak_repeat_replay_json,
+    MAX_REPLAY_COMMANDS, MAX_SPEED_MILLI, REFERENCE_HOUSE_AUTO_JOINTS_REPLAY_PATH,
+    REFERENCE_HOUSE_REPLAY_PATH, ReplayCommand, ReplayScript, ReplayValidationError,
+    StructuralStateDigest, WEAK_REPEAT_REPLAY_PATH, damaged_area_replay, damaged_area_replay_json,
+    reference_house_auto_joints_replay, reference_house_auto_joints_replay_json,
+    reference_house_replay, reference_house_replay_json, replay_to_json, structural_state_digest,
+    validate_replay, weak_repeat_replay, weak_repeat_replay_json,
 };
 pub use destruction_runner::{
     AcceptanceFailure, DESTRUCTION_RESULTS_PATH, DESTRUCTION_RESULTS_VERSION,

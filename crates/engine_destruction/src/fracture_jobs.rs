@@ -377,6 +377,9 @@ impl FractureJobInput {
                 self.limits.transaction.structure,
             )
             .map_err(|_| JobRefusal::Analysis(FractureTransactionRefusal::StructureInconclusive))?;
+            // Success explicitly accounts for every root by support proof or
+            // fully closed detached component. Supported paths are NOT partial
+            // Component sets and must not be passed to detachment as such.
             (result.separation, Some(result.work))
         } else {
             let separation = separation_from_cracks(
