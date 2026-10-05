@@ -17,6 +17,14 @@ fn controlled_house_scenarios_keep_their_measured_material_character() {
             46302,
             2274,
         ),
+        (
+            HouseScenario::FoundationHalfAutoJoints,
+            1048,
+            27648,
+            5,
+            88508,
+            87188,
+        ),
     ];
     for (scenario, broken, erased, objects, fragment_cells, largest) in expected {
         let (_, report) = house_scenarios::run(scenario).unwrap();

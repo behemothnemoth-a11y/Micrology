@@ -65,6 +65,7 @@ pub mod demolition;
 pub mod material_specimens;
 
 pub mod reference_house;
+pub mod reference_house_joint_load;
 pub mod reference_house_joints;
 
 pub mod house_impact;

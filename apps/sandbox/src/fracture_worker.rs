@@ -27,6 +27,7 @@ pub enum Effect {
 pub enum Work {
     Impact(FractureImpact),
     Remove(Vec<DamageTarget>),
+    RemoveAndBreak(Vec<DamageTarget>, Vec<BondKey>),
     Capacity(u8),
 }
 pub struct Request {
@@ -35,6 +36,8 @@ pub struct Request {
     pub space: DamageSpace,
     pub geometry: Option<Revision>,
     pub static_volume: Option<(engine_core::VolumePos, Option<Revision>)>,
+    /// Optional one-request override. None uses the host's normal bounded caps.
+    pub limits: Option<FractureJobLimits>,
 }
 enum PreparedAnswer {
     Impact(PolicyFractureJobResult),
@@ -292,6 +295,7 @@ pub fn drive(resources: Resources) {
             space: DamageSpace::StaticWorld,
             geometry: None,
             static_volume: None,
+            limits: None,
         });
     }
     let Some((request, queued)) = lab.background.pending.pop_front() else {
@@ -344,6 +348,7 @@ pub fn drive(resources: Resources) {
         })
         .collect();
     let start = std::time::Instant::now();
+    let job_limits = request.limits.unwrap_or(lab.background.job_limits);
     let input = FractureJobInput::capture(
         &world.0,
         fragments.store_ref(),
@@ -351,7 +356,7 @@ pub fn drive(resources: Resources) {
         destruction.sequence,
         request.space,
         known,
-        lab.background.job_limits,
+        job_limits,
     );
     sample(
         &mut lab.background.capture_ms,
@@ -360,6 +365,7 @@ pub fn drive(resources: Resources) {
     let work = match &request.work {
         Work::Impact(i) => Work::Impact(*i),
         Work::Remove(t) => Work::Remove(t.clone()),
+        Work::RemoveAndBreak(t, b) => Work::RemoveAndBreak(t.clone(), b.clone()),
         Work::Capacity(g) => Work::Capacity(*g),
     };
     let impact_policy = lab.background.current_impact_policy();
@@ -373,6 +379,10 @@ pub fn drive(resources: Resources) {
                 .map(Some),
             Work::Remove(targets) => input
                 .run_removals(targets)
+                .map(PreparedAnswer::Geometry)
+                .map(Some),
+            Work::RemoveAndBreak(targets, bonds) => input
+                .run_removals_with_bond_breaks(targets, bonds)
                 .map(PreparedAnswer::Geometry)
                 .map(Some),
             Work::Capacity(g) => {
@@ -417,7 +427,8 @@ mod tests {
                 effect: Effect::Capacity(n),
                 space: DamageSpace::StaticWorld,
                 geometry: None,
-                static_volume: None
+                static_volume: None,
+                limits: None
             }));
         }
         assert!(!worker.enqueue(Request {
@@ -425,7 +436,8 @@ mod tests {
             effect: Effect::Capacity(33),
             space: DamageSpace::StaticWorld,
             geometry: None,
-            static_volume: None
+            static_volume: None,
+            limits: None
         }));
         assert_eq!(worker.capped, 1);
         for n in 0..32 {

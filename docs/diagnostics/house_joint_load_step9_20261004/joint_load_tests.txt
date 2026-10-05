@@ -1,0 +1,11 @@
+   Compiling engine_stress v0.1.0 (C:\Users\behem\.chatgpt-worktrees\Micrology-house-joint-load\crates\engine_stress)
+    Finished `test` profile [optimized + debuginfo] target(s) in 2.21s
+     Running tests\reference_house_joint_load.rs (C:\Users\behem\Projects\Micrology\target-msvc\debug\deps\reference_house_joint_load-70957752e88300ac.exe)
+
+running 4 tests
+test assembly_graph_has_independent_part_interface_and_augmentation_budgets ... ok
+test lowering_joint_strength_can_overload_the_intact_control_but_reference_strength_does_not ... ok
+test fifty_mm_scaling_leaves_intact_and_three_eighths_loss_sound_at_reference_joint_strength ... ok
+test half_foundation_loss_overloads_only_authored_interfaces_and_names_exact_bonds ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s

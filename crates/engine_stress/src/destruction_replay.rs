@@ -541,6 +541,25 @@ mod tests {
     }
 
     #[test]
+    fn automatic_joint_house_replay_is_valid_and_keeps_failure_explicit() {
+        let replay: ReplayScript = serde_json::from_str(include_str!(
+            "../../../fixtures/destruction/replay-reference-house-auto-joints.json"
+        ))
+        .unwrap();
+        validate_replay(&replay).unwrap();
+        assert!(matches!(
+            replay.commands.first(),
+            Some(ReplayCommand::ReferenceHouse)
+        ));
+        assert!(replay.commands.iter().any(|command| matches!(
+            command,
+            ReplayCommand::HouseScenario {
+                scenario: crate::house_scenarios::HouseScenario::FoundationHalfAutoJoints
+            }
+        )));
+    }
+
+    #[test]
     fn canonical_replay_is_valid_and_pinned_to_the_benchmark_wall() {
         let replay = weak_repeat_replay();
         validate_replay(&replay).unwrap();

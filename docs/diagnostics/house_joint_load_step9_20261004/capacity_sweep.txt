@@ -1,0 +1,28 @@
+Reference house authored-joint capacity sweep
+cell_length_milli=50
+reference_joint_strength_milli=350
+
+CASE intact
+strength=1000 SAT parts=175 interfaces=472 aug=176 demand=11924200 carried=11924200
+strength=750 SAT parts=175 interfaces=472 aug=176 demand=11924200 carried=11924200
+strength=500 SAT parts=175 interfaces=472 aug=183 demand=11924200 carried=11924200
+strength=350 SAT parts=175 interfaces=472 aug=188 demand=11924200 carried=11924200
+strength=250 OVER parts=175 interfaces=472 aug=196 demand=11924200 carried=11821600 pairs=2 bonds=218 rigid=0
+
+CASE foundation_quarter_removed
+strength=350 SAT parts=175 interfaces=467 aug=232 demand=10265320 carried=10265320
+
+CASE foundation_three_eighths_removed
+strength=350 SAT parts=175 interfaces=467 aug=232 demand=9435880 carried=9435880
+
+CASE foundation_half_removed
+strength=500 SAT parts=175 interfaces=462 aug=220 demand=8606440 carried=8606440
+strength=350 OVER parts=175 interfaces=462 aug=249 demand=8606440 carried=8422740 pairs=54 bonds=1048 rigid=0
+strength=250 OVER parts=175 interfaces=462 aug=172 demand=8606440 carried=7320420 pairs=55 bonds=1197 rigid=0
+
+Interpretation:
+- 350/1000 is provisional effective authored-joint strength, not real fastener calibration.
+- At 350, intact, quarter-foundation loss and three-eighths loss remain satisfied.
+- Half-foundation loss is the first tested loss level that overloads.
+- Its minimum cut crosses only authored interfaces: rigid_cut_interfaces=0.
+- 54 part-pair interfaces map to 1,048 exact BondKeys.

@@ -5,7 +5,7 @@ use crate::fracture_policy::OwnedFracturePolicy;
 use crate::*;
 use engine_core::{CellPos, FaceDir, RegionPos, Revision};
 use engine_world::{World, WorldEditBatch};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug)]
 pub struct FractureJobLimits {
@@ -287,14 +287,23 @@ impl FractureJobInput {
     }
     /// Mechanical failures and explicit cuts use the same worker transaction
     /// boundary and independent occupancy cross-check as impact-driven changes.
-    pub fn run_removals(
+    pub fn run_removals(self, targets: Vec<DamageTarget>) -> Result<FractureJobResult, JobRefusal> {
+        self.run_removals_with_bond_breaks(targets, Vec::new())
+    }
+
+    /// Apply authored/mechanical bond failures in the same owned transaction as
+    /// explicit cell removals. The live state is untouched until ordinary commit
+    /// stale/admission checks pass.
+    pub fn run_removals_with_bond_breaks(
         mut self,
         targets: Vec<DamageTarget>,
+        bonds: Vec<BondKey>,
     ) -> Result<FractureJobResult, JobRefusal> {
         if self.space != DamageSpace::StaticWorld {
             return Err(JobRefusal::MissingParent);
         }
         if targets.len() as u64 > self.limits.transaction.fracture.max_cells_visited
+            || bonds.len() as u64 > self.limits.transaction.fracture.max_bonds_considered
             || targets.iter().any(|target| match target {
                 DamageTarget::StaticCell { cell, material } => {
                     !self.residency.is_resident(*cell) || self.world.get(*cell) != Some(*material)
@@ -304,15 +313,59 @@ impl FractureJobInput {
         {
             return Err(JobRefusal::InvalidTargets);
         }
+
         let before = self.state.clone();
         let mut next = self.sequence;
         let edit = self.world.apply(&static_failure_batch(&targets));
         let mut leaving: BTreeSet<_> = edit.removed_cells.iter().copied().collect();
         self.state
             .forget_removed(DamageSpace::StaticWorld, leaving.iter().copied());
+
+        let bonds: BTreeSet<_> = bonds.into_iter().collect();
+        let mut records = BTreeMap::<RegionPos, Vec<BondFracture>>::new();
+        let mut newly_broken = 0u64;
+        for bond in &bonds {
+            let lower = bond.lower();
+            let upper = bond.upper();
+            if !self.residency.is_resident(lower)
+                || !self.residency.is_resident(upper)
+                || self.world.get(lower).is_none()
+                || self.world.get(upper).is_none()
+            {
+                return Err(JobRefusal::InvalidTargets);
+            }
+            let site = BondSite {
+                space: DamageSpace::StaticWorld,
+                bond: *bond,
+            };
+            newly_broken += u64::from(self.state.integrity(site).0 != 0);
+            records
+                .entry(lower.region())
+                .or_default()
+                .push(BondFracture {
+                    site,
+                    material: self.world.get(lower).expect("validated occupied lower"),
+                    integrity: DamageAmount::ZERO,
+                });
+        }
+        for (region, bonds) in records {
+            self.state
+                .restore_region(
+                    RegionFracture {
+                        region,
+                        cells: Vec::new(),
+                        bonds,
+                    },
+                    self.limits.transaction.fracture,
+                )
+                .map_err(|error| JobRefusal::Analysis(FractureTransactionRefusal::State(error)))?;
+        }
+
         let roots: BTreeSet<_> = leaving
             .iter()
             .flat_map(|p| FaceDir::ALL.into_iter().filter_map(|d| p.checked_step(d)))
+            .chain(bonds.iter().flat_map(|bond| bond.cells()))
+            .filter(|cell| self.world.get(*cell).is_some())
             .collect();
         let (separation, witness_work) = if self.limits.transaction.support_witnesses {
             let result = crate::fracture_witness::separation_with_support_witnesses(
@@ -324,9 +377,6 @@ impl FractureJobInput {
                 self.limits.transaction.structure,
             )
             .map_err(|_| JobRefusal::Analysis(FractureTransactionRefusal::StructureInconclusive))?;
-            // Success explicitly accounts for every root by support proof or
-            // fully closed detached component. Supported paths are NOT partial
-            // Component sets and must not be passed to detachment as such.
             (result.separation, Some(result.work))
         } else {
             let separation = separation_from_cracks(
@@ -374,6 +424,7 @@ impl FractureJobInput {
         }
         let summary = JobSummary {
             failed: edit.removed_cells.len() as u64,
+            broken: newly_broken,
             structure_cells,
             occupancy_cross_check_cells,
             witness_work,

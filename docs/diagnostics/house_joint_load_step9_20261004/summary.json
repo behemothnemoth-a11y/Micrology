@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "scope": "Reference-house-only automatic static authored-joint overload prototype. Gravity/load capacity on a bounded part graph; no dynamic bending/torque solver.",
+  "physical_convention": {
+    "cell_mm_annotation": 50,
+    "cell_length_milli_relative_reference": 50,
+    "joint_strength_milli": 350,
+    "joint_strength_note": "provisional effective diagnostic strength, not real fastener calibration"
+  },
+  "assembly_graph": {
+    "intact": {
+      "parts": 175,
+      "interfaces": 472,
+      "augmentations": 188,
+      "demand_raw": 11924200,
+      "carried_raw": 11924200,
+      "outcome": "satisfied"
+    },
+    "foundation_three_eighths_removed": {
+      "parts": 175,
+      "interfaces": 467,
+      "augmentations": 232,
+      "demand_raw": 9435880,
+      "carried_raw": 9435880,
+      "outcome": "satisfied"
+    },
+    "foundation_half_removed": {
+      "parts": 175,
+      "interfaces": 462,
+      "augmentations": 249,
+      "demand_raw": 8606440,
+      "carried_raw": 8422740,
+      "outcome": "overloaded",
+      "breakable_part_pairs": 54,
+      "exact_bonds": 1048,
+      "rigid_cut_interfaces": 0
+    }
+  },
+  "atomic_worker_result": {
+    "foundation_cells_removed": 27648,
+    "automatically_broken_joint_bonds": 1048,
+    "fragments_created": 5,
+    "fragment_cells": 88508,
+    "largest_fragment_cells": 87188,
+    "remaining_static_cells": 51036,
+    "cell_accounting_closes": true,
+    "final_static_fracture_broken_bonds": 0,
+    "fracture_state_note": "cut bonds become topology boundaries; records crossing newly separate owners are not retained as one static bond record"
+  },
+  "live_windows_vulkan": {
+    "gpu": "NVIDIA GeForce RTX 5050 Laptop GPU",
+    "driver": "581.34",
+    "backend": "Vulkan",
+    "worker": {
+      "accepted": 1,
+      "refused": 0,
+      "stale": 0,
+      "capture_ms": 0.294,
+      "worker_ms": 166.7292,
+      "commit_ms": 26.1961,
+      "response_ms": 175.3638
+    },
+    "after_120_fixed_ticks": {
+      "fragments": 5,
+      "fragment_cells": 88508,
+      "largest_fragment_cells": 87188,
+      "contact_jobs_processed": 0,
+      "largest_same_id_motion_cells": 0.005493,
+      "motion_note": "detached assemblies remain almost stationary because they rest against surviving structure; this is not yet a dynamic bending-collapse model"
+    }
+  },
+  "safety": {
+    "normal_house_startup_has_seeded_damage": false,
+    "cell_deletion_used_to_represent_joint_failure": false,
+    "unknown_or_budget_exhaustion_grants_failure": false,
+    "worker_analysis_mutates_authority_before_commit": false,
+    "admission_refusal_is_atomic": true
+  }
+}

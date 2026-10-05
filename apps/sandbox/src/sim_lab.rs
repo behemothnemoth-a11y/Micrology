@@ -36,6 +36,7 @@ fn cut_support(lab: &mut SimulationLab, world: &WorldRes, index: usize) -> Resul
         space: DamageSpace::StaticWorld,
         geometry: None,
         static_volume: None,
+        limits: None,
     }) {
         return Err("cut held: queue full".into());
     }
@@ -258,6 +259,7 @@ pub fn strike(
             space,
             geometry,
             static_volume: None,
+            limits: None,
         });
         status.0 = if queued {
             "strike queued"
@@ -332,7 +334,9 @@ fn queue_house_scenario(
     world: &WorldRes,
     scenario: engine_stress::house_scenarios::HouseScenario,
 ) -> Result<String, String> {
-    use engine_stress::house_scenarios::{HouseAction, HouseScenario, action, impact_spec};
+    use engine_stress::house_scenarios::{
+        HouseAction, HouseScenario, action, automatic_joint_breaks, impact_spec,
+    };
     if scenario == HouseScenario::SupportBandReleasedJoints {
         let released =
             engine_stress::reference_house_joints::seed(&mut lab.fracture_state, &world.0, 0)
@@ -353,17 +357,29 @@ fn queue_house_scenario(
                 ),
             )
         }
-        HouseAction::Remove(targets) => (
-            crate::fracture_worker::Work::Remove(targets),
-            crate::fracture_worker::Effect::Cut,
-        ),
+        HouseAction::Remove(targets) => {
+            let bonds = automatic_joint_breaks(&world.0, scenario)?;
+            let work = if bonds.is_empty() {
+                crate::fracture_worker::Work::Remove(targets)
+            } else {
+                crate::fracture_worker::Work::RemoveAndBreak(targets, bonds)
+            };
+            (work, crate::fracture_worker::Effect::Cut)
+        }
     };
+    let mut request_limits = lab.background.job_limits;
+    request_limits.transaction.fracture.max_cells_visited =
+        engine_stress::house_scenarios::limits_for(scenario)
+            .transaction
+            .fracture
+            .max_cells_visited;
     if !lab.background.enqueue(crate::fracture_worker::Request {
         work,
         effect,
         space: DamageSpace::StaticWorld,
         geometry: None,
         static_volume: None,
+        limits: Some(request_limits),
     }) {
         return Err("house scenario held: queue full".into());
     }
@@ -499,6 +515,11 @@ pub fn seed(resources: LabSeedResources) {
     lab.background.job_limits = engine_destruction::fracture_jobs::FractureJobLimits::default();
     if house {
         lab.background.job_limits.volumes = 256;
+        lab.background
+            .job_limits
+            .transaction
+            .fracture
+            .max_cells_visited = 32_768;
         lab.background.job_limits.transaction.support_witnesses = true;
         lab.background.job_limits.transaction.partition =
             engine_destruction::fragment_partition::FragmentPartitionPolicy::CONSERVATIVE;

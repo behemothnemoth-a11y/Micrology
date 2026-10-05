@@ -1,0 +1,292 @@
+{
+  "base_commit": "665d8ecfc4ac2cd6168c88963ca303a144e01181",
+  "started_utc": "2026-10-04T23:51:19.699442+00:00",
+  "platform": "win32",
+  "source_sha256": {
+    "crates/engine_destruction/src/fracture_jobs.rs": "0e4d8a63fcb535d983c96021c731e5705581aa3ce90697125c6fdd01f4a8fb60",
+    "crates/engine_stress/src/reference_house_joint_load.rs": "986570a1356851cd7c9192c86d70cabe10b15b7be2dec9d94eb98bafc0e0058e",
+    "crates/engine_stress/src/house_scenarios.rs": "72e0b2712c78b54534705465059e75f13f7c9fd067830637dee9fb7f338cbb53",
+    "crates/engine_stress/src/destruction_replay.rs": "65e7248a52b226867470d866b41a9a2b166193be9b260d0cd37624cf080dfbbb",
+    "crates/engine_stress/src/lib.rs": "85615b67224dc075433ed37a55defdf8af77780ff41956e7f139927187379ddd",
+    "crates/engine_stress/tests/reference_house_joint_load.rs": "643bbbdebdab854eaa86862abbb7584096a80b626445265a3d9180c650a7a17a",
+    "crates/engine_stress/tests/house_joint_worker.rs": "764cb3f0c266e82631329fb57c94c1be23a67324570bc917dadad6af8aea66fb",
+    "crates/engine_stress/tests/house_scenarios.rs": "678489a7ad191354e05fe486a0217a3e1d0946d6ed294b32ef2880088e7f5de0",
+    "apps/sandbox/src/fracture_worker.rs": "ae961b2bcece68a8a940055cb148c2823d5171439338b39317d4058fd06ad9bd",
+    "apps/sandbox/src/sim_lab.rs": "3d39a45f0274d003c1395259a5671cf6f2c94fc7f8c1bd90033500eaa80384ce",
+    "apps/sandbox/src/contact_fracture.rs": "8303fc0f3332a37934fe574117b97dc78c922f695c3317fa65e73c1e492248c8",
+    "apps/sandbox/src/interaction.rs": "696ce816b4a3cf1f56c2a2c3a8f7a48268630153b36a32cd3baba44cf2a6a6ef",
+    "fixtures/destruction/replay-reference-house-auto-joints.json": "0a7969d7295e782af1b354452902823832828a07e0b406679e8fb97429dc9a0f"
+  },
+  "checks": [
+    {
+      "name": "joint_load_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "reference_house_joint_load"
+      ],
+      "exit_code": 0,
+      "tests_passed": 4,
+      "elapsed_seconds": 3.504,
+      "log_sha256": "de512ea00f67bff84f6332908b6541fd4424d177f821551ec4fd5aa95943af93"
+    },
+    {
+      "name": "joint_worker_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "house_joint_worker"
+      ],
+      "exit_code": 0,
+      "tests_passed": 4,
+      "elapsed_seconds": 0.745,
+      "log_sha256": "a3089771cae17e8cdafb0241ca2488374aadb95c756d159cadb7a0d666b24de4"
+    },
+    {
+      "name": "house_scenarios",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "engine_stress",
+        "--test",
+        "house_scenarios"
+      ],
+      "exit_code": 0,
+      "tests_passed": 5,
+      "elapsed_seconds": 4.379,
+      "log_sha256": "c6809376ff3b701c9433525a72131a09b7ce5e6a3bbf722bec3dbc8f382edd7f"
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 1.695,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "engine_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 882,
+      "elapsed_seconds": 99.166,
+      "log_sha256": "479d42349538fef78ab73216ed8405a992e214dfd604fbf5b0d56a017b1865db"
+    },
+    {
+      "name": "engine_docs",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "tests_passed": 1,
+      "elapsed_seconds": 4.769,
+      "log_sha256": "dde19fb3ae45c19b853cd9f43a1204ac4115c53ea0595527790a9067e3568f57"
+    },
+    {
+      "name": "engine_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--exclude",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.567,
+      "log_sha256": "2bc0fbe6e8c1bffa4438fb96c8adbceb7a5203c4cb8fb877cafd241bdec6e671"
+    },
+    {
+      "name": "sandbox_tests",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "tests_passed": 13,
+      "elapsed_seconds": 1.685,
+      "log_sha256": "0cb1992ffd0a058ccdd3d61dae654be1ca2bf7796c972a2165ac73ab167ab053"
+    },
+    {
+      "name": "sandbox_clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "sandbox",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.686,
+      "log_sha256": "81889bb574209b72b7186751f74a79de612cf8558d6a7a6781effcdf75e77820"
+    },
+    {
+      "name": "material_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "material_specimen_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.471,
+      "log_sha256": "4f44d54bdea1ba30f8631ca70e19c3e89e9d850f04dc94a10f3c01b8a3577651"
+    },
+    {
+      "name": "window_baseline",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "house_window_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.705,
+      "log_sha256": "811f2969643401d923feac4666271a8504c33cdc19ac176cb4f89cd1301c0c82"
+    },
+    {
+      "name": "destruction_bench",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.236,
+      "log_sha256": "fbd09cce31fc450e60b14861eff574977da30d1e6fd969e96f83734fa4b327bb"
+    },
+    {
+      "name": "destruction_replay",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "destruction_replay",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.239,
+      "log_sha256": "6a97021bf74a8c7d49f4fe70b1440118743809f0dcddbcaad982927e192c780e"
+    },
+    {
+      "name": "fragment_distribution",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fragment_distribution_bench",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.805,
+      "log_sha256": "8a1252acb8419b9390799d76238b4181d9eb2d7f3ed2cb3d5ccf7a2a8c374edc"
+    },
+    {
+      "name": "fracture_locality",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-q",
+        "-p",
+        "engine_stress",
+        "--bin",
+        "fracture_locality_bench"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 3.753,
+      "log_sha256": "a38fbb3673970bcd43fccae2c137ea1c228764935fb8a1be1d09ce6f7bb6d2e9"
+    },
+    {
+      "name": "whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "tests_passed": 0,
+      "elapsed_seconds": 0.064,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "fixture_changes": [
+    "fixtures/destruction/replay-reference-house-auto-joints.json"
+  ],
+  "existing_fixtures_unchanged": true,
+  "source_unchanged_during_run": true,
+  "all_ok": true,
+  "finished_utc": "2026-10-04T23:53:23.249454+00:00"
+}

@@ -5,7 +5,7 @@ use crate::{
     fragment_distribution::{BUCKETS, measure_shape},
     house_impact,
     material_specimens::specimen_policy,
-    reference_house, reference_house_joints, structural_state_digest,
+    reference_house, reference_house_joint_load, reference_house_joints, structural_state_digest,
 };
 use engine_core::{CellPos, CellSource, GlobalPos, MaterialId};
 use engine_destruction::{
@@ -27,9 +27,10 @@ pub enum HouseScenario {
     RoofHit,
     SupportBand,
     SupportBandReleasedJoints,
+    FoundationHalfAutoJoints,
 }
 impl HouseScenario {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Window,
         Self::FrameJoint,
         Self::WallBreach,
@@ -37,6 +38,7 @@ impl HouseScenario {
         Self::RoofHit,
         Self::SupportBand,
         Self::SupportBandReleasedJoints,
+        Self::FoundationHalfAutoJoints,
     ];
     pub const fn name(self) -> &'static str {
         match self {
@@ -47,6 +49,7 @@ impl HouseScenario {
             Self::RoofHit => "roof_hit",
             Self::SupportBand => "support_band",
             Self::SupportBandReleasedJoints => "support_band_released_joints",
+            Self::FoundationHalfAutoJoints => "foundation_half_auto_joints",
         }
     }
 }
@@ -55,6 +58,9 @@ pub enum HouseAction {
     Remove(Vec<DamageTarget>),
 }
 
+pub const AUTO_JOINT_STRENGTH_MILLI: u32 = 350;
+pub const HOUSE_CELL_LENGTH_MILLI: u32 = 50;
+
 pub fn impact_spec(scenario: HouseScenario) -> Option<([f64; 3], u32, u32)> {
     match scenario {
         HouseScenario::Window => Some((house_impact::CENTER, 4, 2400)),
@@ -62,7 +68,9 @@ pub fn impact_spec(scenario: HouseScenario) -> Option<([f64; 3], u32, u32)> {
         HouseScenario::WallBreach => Some(([4.5, 16.5, 50.5], 6, 12000)),
         HouseScenario::Chimney => Some(([13.5, 81.5, 80.5], 5, 12000)),
         HouseScenario::RoofHit => Some(([64.5, 85.5, 54.5], 5, 12000)),
-        HouseScenario::SupportBand | HouseScenario::SupportBandReleasedJoints => None,
+        HouseScenario::SupportBand
+        | HouseScenario::SupportBandReleasedJoints
+        | HouseScenario::FoundationHalfAutoJoints => None,
     }
 }
 pub fn limits() -> FractureJobLimits {
@@ -73,7 +81,30 @@ pub fn limits() -> FractureJobLimits {
     caps.transaction.partition = FragmentPartitionPolicy::CONSERVATIVE;
     caps
 }
+pub fn limits_for(scenario: HouseScenario) -> FractureJobLimits {
+    let mut caps = limits();
+    if scenario == HouseScenario::FoundationHalfAutoJoints {
+        // Half the 4-cell slab is 27,648 cells. This one diagnostic receives a
+        // finite removal-work allowance above that while byte/topology/bond
+        // ceilings remain independent and unchanged.
+        caps.transaction.fracture.max_cells_visited = 32_768;
+    }
+    caps
+}
 pub fn action(scenario: HouseScenario, world: &World) -> HouseAction {
+    if scenario == HouseScenario::FoundationHalfAutoJoints {
+        let targets = house_impact::world_cells(world)
+            .into_iter()
+            .filter(|(p, material)| {
+                *material == reference_house::CONCRETE
+                    && p.x >= 64
+                    && (0..=3).contains(&p.y)
+                    && (0..=107).contains(&p.z)
+            })
+            .map(|(cell, material)| DamageTarget::StaticCell { cell, material })
+            .collect();
+        return HouseAction::Remove(targets);
+    }
     if matches!(
         scenario,
         HouseScenario::SupportBand | HouseScenario::SupportBandReleasedJoints
@@ -97,6 +128,54 @@ pub fn action(scenario: HouseScenario, world: &World) -> HouseAction {
         )
         .expect("fixed valid pulse"),
     )
+}
+
+pub fn automatic_joint_breaks(
+    world: &World,
+    scenario: HouseScenario,
+) -> Result<Vec<BondKey>, String> {
+    if scenario != HouseScenario::FoundationHalfAutoJoints {
+        return Ok(Vec::new());
+    }
+    let HouseAction::Remove(targets) = action(scenario, world) else {
+        return Err("automatic joint case must be a removal".into());
+    };
+    let mut staged = world.clone();
+    staged.apply(&static_failure_batch(&targets));
+    let graph = reference_house_joint_load::build(
+        &staged,
+        AUTO_JOINT_STRENGTH_MILLI,
+        HOUSE_CELL_LENGTH_MILLI,
+        reference_house_joint_load::AssemblyLimits::default(),
+    )?;
+    match reference_house_joint_load::evaluate(
+        &graph,
+        reference_house_joint_load::AssemblyLimits::default(),
+    ) {
+        reference_house_joint_load::AssemblyOutcome::Satisfied { .. } => Ok(Vec::new()),
+        reference_house_joint_load::AssemblyOutcome::Overloaded {
+            breakable_pairs,
+            rigid_cut_interfaces,
+            ..
+        } => {
+            if rigid_cut_interfaces != 0 {
+                return Err(format!(
+                    "assembly overload crosses {rigid_cut_interfaces} non-authored interfaces"
+                ));
+            }
+            let bonds: Vec<_> =
+                reference_house_joint_load::bonds_for_pairs(&graph, &breakable_pairs)
+                    .into_iter()
+                    .collect();
+            if bonds.is_empty() {
+                return Err("assembly overload named no authored joint bonds".into());
+            }
+            Ok(bonds)
+        }
+        reference_house_joint_load::AssemblyOutcome::Deferred { reason, .. } => {
+            Err(format!("assembly capacity deferred: {reason}"))
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Piece {
@@ -139,6 +218,7 @@ pub fn execute(
         reference_house_joints::seed(&mut state.fracture, &state.world, 0)
             .map_err(|e| format!("joint release: {e:?}"))?;
     }
+    let automatic_bonds = automatic_joint_breaks(&state.world, scenario)?;
     let work = action(scenario, &state.world);
     let input = state
         .capture(house_impact::known(), caps)
@@ -158,10 +238,16 @@ pub fn execute(
                 .map_err(|e| format!("commit: {e:?}"))
         }
         HouseAction::Remove(targets) => {
-            let result = std::thread::spawn(move || input.run_removals(targets))
-                .join()
-                .map_err(|_| "worker panic")?
-                .map_err(|e| format!("cut: {e:?}"))?;
+            let result = std::thread::spawn(move || {
+                if automatic_bonds.is_empty() {
+                    input.run_removals(targets)
+                } else {
+                    input.run_removals_with_bond_breaks(targets, automatic_bonds)
+                }
+            })
+            .join()
+            .map_err(|_| "worker panic")?
+            .map_err(|e| format!("cut: {e:?}"))?;
             result
                 .commit(
                     &mut state.world,
@@ -182,6 +268,7 @@ pub fn run(scenario: HouseScenario) -> Result<(house_impact::State, CaseReport),
     let intact = reference_house::build();
     let before = house_impact::world_cells(&intact);
     let mut state = house_impact::State::from_intact(&intact);
+    let caps = limits_for(scenario);
     let mut pairs = BTreeMap::new();
     if let HouseAction::Impact(i) = action(scenario, &state.world) {
         let load = evaluate_fracture(
@@ -189,7 +276,7 @@ pub fn run(scenario: HouseScenario) -> Result<(house_impact::State, CaseReport),
             FractureScene::static_world(&state.world, &state.world, &AllResident),
             &specimen_policy(),
             &state.fracture,
-            limits().transaction.fracture,
+            caps.transaction.fracture,
         )
         .map_err(|e| format!("load: {e:?}"))?;
         if let FractureEvaluation::Loaded(load) = load {
@@ -204,7 +291,7 @@ pub fn run(scenario: HouseScenario) -> Result<(house_impact::State, CaseReport),
             }
         }
     }
-    let summary = execute(&mut state, scenario, limits())?;
+    let summary = execute(&mut state, scenario, caps)?;
     let mut remaining = house_impact::world_cells(&state.world);
     let mut pieces = Vec::new();
     for (_, f) in state.fragments.iter() {

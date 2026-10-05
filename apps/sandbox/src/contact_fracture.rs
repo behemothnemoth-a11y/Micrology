@@ -347,6 +347,7 @@ pub fn process(resources: ProcessResources) {
                 space,
                 geometry: hit.geometry,
                 static_volume: hit.static_volume,
+                limits: None,
             });
             continue;
         }

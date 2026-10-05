@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "reference_house_quarter_remaining_auto_joints_live",
+  "fixture_checksum_fnv1a64": "0914c4bcec7ce205",
+  "commands": [
+    {"op":"reference_house"},
+    {"op":"pause"},
+    {"op":"dump","label":"autoq_intact"},
+    {"op":"contact_fracture","enabled":true},
+    {"op":"house_scenario","scenario":"foundation_quarter_remaining_auto_joints"},
+    {"op":"dump","label":"autoq_after_failure"},
+    {"op":"advance_fixed","steps":25},
+    {"op":"dump","label":"autoq_after_25"},
+    {"op":"advance_fixed","steps":95},
+    {"op":"dump","label":"autoq_after_120"}
+  ]
+}
